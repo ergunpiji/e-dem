@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_title_block %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+
+    <div class="mb-3">
+      <a href="/services" class="text-muted text-decoration-none" style="font-size:13px;">
+        <i class="bi bi-arrow-left me-1"></i> Hizmet Kataloğuna Dön
+      </a>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h5 class="fw-bold mb-4">
+          {% if service %}
+            <i class="bi bi-pencil-square me-2 text-primary"></i>Hizmet Düzenle
+          {% else %}
+            <i class="bi bi-plus-circle me-2 text-primary"></i>Yeni Hizmet
+          {% endif %}
+        </h5>
+
+        {% if error %}
+        <div class="alert alert-danger d-flex align-items-center gap-2 py-2">
+          <i class="bi bi-exclamation-circle-fill"></i>
+          <small>{{ error }}</small>
+        </div>
+        {% endif %}
+
+        <form method="post" action="/services/new">
+          <div class="row g-3">
+
+            <div class="col-12">
+              <label class="form-label fw-semibold" style="font-size:13px;">Kategori <span class="text-danger">*</span></label>
+              <select name="category" class="form-select" required>
+                {% for cat in categories %}
+                <option value="{{ cat.id if cat.id is defined else cat.value }}"
+                  {% if service and service.category == (cat.id if cat.id is defined else cat.value) %}selected{% endif %}>
+                  {% if cat.icon is defined %}{{ cat.icon }} {% endif %}
+                  {{ cat.label if cat.label is defined else cat.name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label fw-semibold" style="font-size:13px;">Hizmet Adı <span class="text-danger">*</span></label>
+              <input type="text" name="name" class="form-control" required
+                     value="{{ service.name if service else '' }}"
+                     placeholder="Hizmet adı...">
+            </div>
+
+            <div class="col-12">
+              <label class="form-label fw-semibold" style="font-size:13px;">Birim <span class="text-danger">*</span></label>
+              <input type="text" name="unit" class="form-control" required
+                     value="{{ service.unit if service else 'Adet' }}"
+                     placeholder="örn. Adet, Gün, Kişi, m², Saat">
+            </div>
+
+            <div class="col-12 pt-2 d-flex gap-2">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check-lg me-1"></i>
+                {% if service %}Güncelle{% else %}Kaydet{% endif %}
+              </button>
+              <a href="/services" class="btn btn-outline-secondary">İptal</a>
+            </div>
+
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

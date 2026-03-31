@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_title_block %}{{ page_title }}{% endblock %}
+
+{% block topbar_actions %}
+{% if can_edem_edit %}
+<a href="/budgets/{{ budget.id }}/edit" class="btn btn-primary btn-sm">
+  <i class="bi bi-pencil me-1"></i> Düzenle
+</a>
+{% endif %}
+{% if can_manager_price %}
+<a href="/budgets/{{ budget.id }}/price" class="btn btn-warning btn-sm">
+  <i class="bi bi-tag me-1"></i> Fiyat Gir
+</a>
+{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .budget-detail-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #64748b; background: #f8fafc; white-space: nowrap; }
+  .budget-detail-table td { vertical-align: middle; font-size: 13px; }
+  .section-header-row { background: #1e293b; color: white; font-size: 11px; font-weight: 700; letter-spacing: .5px; }
+  .subtotals-row td { font-weight: 600; background: #f1f5f9; }
+  .grand-total-row td { font-weight: 800; font-size: 14px; background: #eff6ff; color: #1d4ed8; border-top: 2px solid #93c5fd; }
+  .service-fee-row td { background: #fefce8; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-3">
+  <a href="/budgets" class="text-muted text-decoration-none" style="font-size:13px;">
+    <i class="bi bi-arrow-left me-1"></i> Bütçe Listesine Dön
+  </a>
+</div>
+
+{# ─── BAŞLIK ─── #}
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+      <div>
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <h4 class="fw-bold mb-0">{{ budget.venue_name or 'Bütçe' }}</h4>
+          <span class="badge bg-{{ status_color }}" style="font-size:12px;">{{ status_label }}</span>
+        </div>
+        {% if req %}
+        <div class="d-flex gap-2 flex-wrap">
+          <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:12px; letter-spacing:.5px;">
+            {{ req.request_no }}
+          </span>
+          <span class="text-muted" style="font-size:13px;">
+            <i class="bi bi-calendar me-1"></i>{{ req.event_name }}
+          </span>
+          <span class="text-muted" style="font-size:13px;">
+            <i class="bi bi-building me-1"></i>{{ req.client_name }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        {% if can_edem_edit %}
+        {# E-dem silebilir sadece draft_edem durumunda #}
+        {% if budget.budget_status == 'draft_edem' or current_user.role == 'admin' %}
+        <form method="post" action="/budgets/{{ budget.id }}/delete"
+              onsubmit="return confirm('Bu bütçeyi silmek istediğinizden emin misiniz?')">
+          <button type="submit" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-trash me-1"></i> Sil
+          </button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% if budget.budget_status == 'approved' and current_user.role in ('admin', 'project_manager') %}
+        <a href="/budgets/{{ budget.id }}/export" class="btn btn-success btn-sm">
+          <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if budget.revision_notes and current_user.role in ('admin', 'e_dem') %}
+<div class="alert alert-danger mb-3">
+  <i class="bi bi-arrow-counterclockwise me-2"></i>
+  <strong>Revizyon Talebi:</strong> {{ budget.revision_notes }}
+</div>
+{% endif %}
+
+{% if budget.manager_notes and current_user.role in ('admin', 'project_manager') %}
+<div class="alert alert-info mb-3">
+  <i class="bi bi-sticky me-2"></i>
+  <strong>Manager Notu:</strong> {{ budget.manager_notes }}
+</div>
+{% endif %}
+
+{% if req %}
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <div class="d-flex flex-wrap gap-4">
+      <div>
+        <span class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Tarih</span>
+        <div style="font-size:13px;">
+          {% if req.check_in %}{{ req.check_in | date_tr }}{% else %}—{% endif %}
+          {% if req.check_out %} → {{ req.check_out | date_tr }}{% endif %}
+        </div>
+      </div>
+      <div>
+        <span class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Katılımcı</span>
+        <div style="font-size:13px;">{{ req.attendee_count or '—' }} kişi</div>
+      </div>
+      <div>
+        <span class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Şehir</span>
+        <div style="font-size:13px;">{{ req.cities_display or '—' }}</div>
+      </div>
+      <div>
+        <span class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Oluşturma</span>
+        <div style="font-size:13px;">{{ budget.created_at | date_tr }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ─── BÜTÇE TABLOSU ─── #}
+{% set SECTION_LABELS = {
+  'accommodation': '🛏 Konaklama',
+  'meeting':       '🏛 Toplantı / Salon',
+  'fb':            '🍽 F&B (Yiyecek & İçecek)',
+  'teknik':        '🔧 Teknik',
+  'dekor':         '🎨 Dekor',
+  'transfer':      '🚌 Transfer',
+  'tasarim':       '🖨 Tasarım & Baskı',
+  'other':         '📦 Diğer'
+} %}
+
+{% set sections_order = ['accommodation', 'meeting', 'fb', 'teknik', 'dekor', 'transfer', 'tasarim', 'other'] %}
+
+{% set show_cost = true %}
+
+<div class="card mb-4">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table budget-detail-table mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">Hizmet</th>
+            <th>Birim</th>
+            <th>Miktar</th>
+            <th>Gece</th>
+            {% if show_cost %}
+            <th>Birim Maliyet</th>
+            {% endif %}
+            <th>Satış Toplamı (KDV hariç)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(grand_cost_ex=0, grand_sale_ex=0) %}
+
+          {% for sec in sections_order %}
+          {% set sec_rows = rows_by_section.get(sec, []) %}
+          {% if sec_rows %}
+
+          {% set colspan_val = 6 if show_cost else 5 %}
+          <tr class="section-header-row">
+            <td class="ps-3" colspan="{{ colspan_val }}">{{ SECTION_LABELS.get(sec, sec) }}</td>
+          </tr>
+
+          {% set sec_ns = namespace(cost_ex=0, sale_ex=0) %}
+
+          {% for row in sec_rows %}
+          {% set qty      = row.qty|float if row.qty else 1 %}
+          {% set nights   = row.nights|float if row.nights else 1 %}
+          {% set cost     = row.cost_price|float if row.cost_price else 0 %}
+          {% set sale     = row.sale_price|float if row.sale_price else 0 %}
+          {% set vat      = row.vat_rate|float if row.vat_rate else 0 %}
+          {% set cost_sub = cost * qty * nights %}
+          {% set sale_sub = sale * qty * nights %}
+          {% set sec_ns.cost_ex  = sec_ns.cost_ex  + cost_sub %}
+          {% set sec_ns.sale_ex  = sec_ns.sale_ex  + sale_sub %}
+          {% set ns.grand_cost_ex = ns.grand_cost_ex + cost_sub %}
+          {% set ns.grand_sale_ex = ns.grand_sale_ex + sale_sub %}
+          <tr>
+            <td class="ps-3 fw-semibold">
+              {{ row.service_name or '—' }}
+              {% set sel_quotes = row.get('quotes', []) | selectattr('selected', 'equalto', true) | list %}
+              {% if sel_quotes %}
+              <span class="badge bg-primary bg-opacity-15 text-primary ms-1"
+                    style="font-size:10px; font-weight:600;">{{ sel_quotes[0].supplier }}</span>
+              {% endif %}
+            </td>
+            <td style="color:#64748b;">{{ row.unit or 'Adet' }}</td>
+            <td>{{ row.qty or 1 }}</td>
+            <td>{% if sec == 'accommodation' %}{{ row.nights or 1 }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            {% if show_cost %}
+            <td>
+              {% if cost %}
+                {{ cost | money }}
+                {% if (qty > 1 or nights > 1) %}
+                <div class="text-muted" style="font-size:10px; margin-top:1px;">
+                  × {{ qty|int }}{% if nights > 1 %} × {{ nights|int }}g{% endif %} = {{ cost_sub | money }}
+                </div>
+                {% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            {% endif %}
+            <td class="fw-semibold">
+              {{ sale_sub | money }}
+              {% if vat %}
+              <span class="badge bg-secondary bg-opacity-10 text-secondary ms-1" style="font-size:10px;">%{{ vat|int }} KDV</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+
+          <tr class="subtotals-row">
+            <td class="ps-3" colspan="4" style="font-size:12px; color:#64748b;">Alt Toplam (KDV hariç)</td>
+            {% if show_cost %}
+            <td>{{ sec_ns.cost_ex | money }}</td>
+            {% endif %}
+            <td>{{ sec_ns.sale_ex | money }}</td>
+          </tr>
+
+          {% endif %}
+          {% endfor %}
+
+          {# Hizmet bedeli #}
+          {% for row in budget.rows %}
+          {% if row.get('is_service_fee') %}
+          {% set sf_sale = row.sale_price|float if row.sale_price else 0 %}
+          {% set sf_vat  = row.vat_rate|float if row.vat_rate else 0 %}
+          {% set ns.grand_sale_ex = ns.grand_sale_ex + sf_sale %}
+          <tr class="service-fee-row">
+            <td class="ps-3" colspan="4">
+              💼 Hizmet Bedeli
+              {% if sf_vat %}<span class="badge bg-secondary bg-opacity-10 text-secondary ms-1" style="font-size:10px;">%{{ sf_vat|int }} KDV</span>{% endif %}
+            </td>
+            {% if show_cost %}<td>—</td>{% endif %}
+            <td class="fw-semibold">{{ sf_sale | money }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+
+        </tbody>
+        <tfoot>
+          <tr class="grand-total-row">
+            <td class="ps-3" colspan="4">TOPLAM (KDV hariç)</td>
+            {% if show_cost %}
+            <td>{{ ns.grand_cost_ex | money }}</td>
+            {% endif %}
+            <td>{{ ns.grand_sale_ex | money }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ─── ÖZET ─── #}
+<div class="card">
+  <div class="card-body">
+    <div class="row g-3">
+      {% if show_cost %}
+      <div class="col-md-3">
+        <div class="border rounded p-3 text-center">
+          <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Toplam Maliyet (KDV hariç)</div>
+          <div class="fw-bold text-secondary" style="font-size:18px;">{{ ns.grand_cost_ex | money }}</div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="col-md-{{ '5' if show_cost else '7' }}">
+        <div class="border rounded p-3">
+          <div class="text-muted mb-2" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">KDV Hesabı</div>
+          <div class="d-flex justify-content-between border-bottom pb-2 mb-1">
+            <span style="font-size:13px;">Satış Toplamı (KDV hariç)</span>
+            <span class="fw-bold text-primary">{{ ns.grand_sale_ex | money }}</span>
+          </div>
+          {% for rate, amt in vat_by_rate %}
+          <div class="d-flex justify-content-between border-bottom py-1">
+            <span class="text-muted" style="font-size:13px;">+ %{{ rate }} KDV</span>
+            <span class="fw-semibold" style="font-size:13px;">{{ amt | money }}</span>
+          </div>
+          {% endfor %}
+          {% if not vat_by_rate %}
+          <div class="text-muted" style="font-size:12px;">KDV hesaplanmadı (satış fiyatı girilmemiş)</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 text-center bg-success bg-opacity-10 h-100 d-flex flex-column justify-content-center">
+          <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">TOPLAM SATIŞ (KDV dahil)</div>
+          <div class="fw-bold text-success" style="font-size:24px;">{{ budget.grand_sale | money }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

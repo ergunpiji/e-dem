@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_title_block %}{{ page_title }}{% endblock %}
+
+{% block topbar_actions %}
+{% if can_edit %}
+<a href="/venues/new" class="btn btn-primary btn-sm">
+  <i class="bi bi-building-add me-1"></i> Yeni Tedarikçi
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{# ─── FİLTRE BARI ─── #}
+<div class="card mb-3">
+  <div class="card-body py-3">
+    <form method="get" action="/venues" class="row g-2 align-items-end">
+      <div class="col-sm-4">
+        <label class="form-label fw-semibold mb-1" style="font-size:12px;">Ara</label>
+        <input type="text" name="q" class="form-control form-control-sm"
+               placeholder="Tedarikçi adı..." value="{{ filter_q }}">
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label fw-semibold mb-1" style="font-size:12px;">Şehir</label>
+        <select name="city" class="form-select form-select-sm">
+          <option value="">Tüm Şehirler</option>
+          {% for city in tr_cities %}
+          <option value="{{ city }}" {% if filter_city == city %}selected{% endif %}>{{ city }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label fw-semibold mb-1" style="font-size:12px;">Tür</label>
+        <select name="stype" class="form-select form-select-sm">
+          <option value="">Tüm Türler</option>
+          {% for st in supplier_types %}
+          <option value="{{ st.value }}" {% if filter_stype == st.value %}selected{% endif %}>{{ st.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <button type="submit" class="btn btn-primary btn-sm w-100">
+          <i class="bi bi-search me-1"></i> Filtrele
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ─── TABLO ─── #}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th class="ps-4">Ad</th>
+            <th>Şehir</th>
+            <th>Tür</th>
+            <th>Yıldız</th>
+            <th>Toplam Oda</th>
+            <th>İletişim Kişisi</th>
+            <th>Durum</th>
+            <th class="text-end pe-4">İşlemler</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for venue in venues %}
+          <tr>
+            <td class="ps-4">
+              <div class="fw-semibold" style="font-size:13px;">{{ venue.name }}</div>
+              {% if venue.website %}
+              <div style="font-size:11px;">
+                <a href="{{ venue.website }}" target="_blank" class="text-muted text-decoration-none">
+                  <i class="bi bi-link-45deg"></i> {{ venue.website | truncate(40) }}
+                </a>
+              </div>
+              {% endif %}
+            </td>
+            <td style="font-size:13px;">
+              {{ venue.city or '—' }}
+              {% set extra_cities = venue.cities | reject("equalto", venue.city) | list %}
+              {% if extra_cities %}
+              <div style="font-size:11px; color:#94a3b8;">
+                +{{ extra_cities | length }} şehir
+              </div>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:11px;">
+                {{ venue.supplier_type_label }}
+              </span>
+            </td>
+            <td style="font-size:13px;">
+              {% if venue.stars %}
+                {% for i in range(venue.stars) %}⭐{% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px; color:#64748b;">
+              {{ venue.total_rooms if venue.total_rooms else '—' }}
+            </td>
+            <td style="font-size:13px;">
+              {% set pc = venue.primary_contact %}
+              {% if pc %}
+                <div class="fw-semibold">{{ pc.name }}</div>
+                {% if pc.phone %}<div style="font-size:11px; color:#64748b;"><i class="bi bi-telephone"></i> {{ pc.phone }}</div>{% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if venue.active %}
+                <span class="badge bg-success bg-opacity-10 text-success">
+                  <i class="bi bi-check-circle me-1"></i>Aktif
+                </span>
+              {% else %}
+                <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                  <i class="bi bi-x-circle me-1"></i>Pasif
+                </span>
+              {% endif %}
+            </td>
+            <td class="text-end pe-4">
+              <a href="/venues/{{ venue.id }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-eye"></i>
+              </a>
+              {% if can_edit %}
+              <a href="/venues/{{ venue.id }}/edit" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-pencil"></i>
+              </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center py-5 text-muted">
+              <i class="bi bi-building" style="font-size:3rem; opacity:.3;"></i>
+              <p class="mt-2 mb-0">Henüz tedarikçi bulunmuyor.</p>
+              {% if can_edit %}
+              <a href="/venues/new" class="btn btn-primary btn-sm mt-3">
+                <i class="bi bi-building-add me-1"></i> İlk Tedarikçiyi Ekle
+              </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
