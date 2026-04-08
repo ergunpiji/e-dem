@@ -201,7 +201,29 @@
                     </span>
                     {% if is_best %}<span class="badge bg-success" style="font-size:9px;">⭐ En İyi</span>{% endif %}
                   </div>
-                  {# Onay / İptal butonları — sadece manager/admin görebilir #}
+                  {# E-dem: Managera Gönder butonu #}
+                  {% if current_user.role in ('admin','e_dem') and bs == 'draft_edem' %}
+                  <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end;">
+                    <form method="post" action="/budgets/{{ b.id }}/send-to-manager" style="margin:0;">
+                      <input type="hidden" name="back" value="{{ req.id }}">
+                      <button type="submit" class="btn btn-primary btn-sm py-0 px-2" style="font-size:10px;">
+                        <i class="bi bi-send me-1"></i>Managera Gönder
+                      </button>
+                    </form>
+                  </div>
+                  {% endif %}
+                  {# E-dem: Revizyon sonrası tekrar gönder #}
+                  {% if current_user.role in ('admin','e_dem') and bs == 'revision_requested' %}
+                  <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end;">
+                    <form method="post" action="/budgets/{{ b.id }}/send-to-manager" style="margin:0;">
+                      <input type="hidden" name="back" value="{{ req.id }}">
+                      <button type="submit" class="btn btn-warning btn-sm py-0 px-2" style="font-size:10px;">
+                        <i class="bi bi-send me-1"></i>Tekrar Gönder
+                      </button>
+                    </form>
+                  </div>
+                  {% endif %}
+                  {# Onay / İptal / Export butonları — sadece manager/admin görebilir #}
                   {% if current_user.role in ('admin','project_manager') %}
                   <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
                     {% if bs not in ('approved','cancelled') %}

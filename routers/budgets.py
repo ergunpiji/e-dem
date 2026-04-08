@@ -415,6 +415,7 @@ async def budgets_update(
 @router.post("/{budget_id}/send-to-manager", name="budgets_send_to_manager")
 async def budgets_send_to_manager(
     budget_id: str,
+    back: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -425,6 +426,8 @@ async def budgets_send_to_manager(
         budget.budget_status = "pending_manager"
         budget.updated_at    = _now()
         db.commit()
+    if back:
+        return RedirectResponse(url=f"/requests/{back}#tab-summary", status_code=status.HTTP_302_FOUND)
     return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
 
 
