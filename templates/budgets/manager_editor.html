@@ -1028,9 +1028,8 @@ function updateTotals() {
   if (atsEl) atsEl.textContent = fmtMoney(accomTaxAmt);
 
   const totalVat = Object.values(vatByRate).reduce((a, b) => a + b, 0);
-  const sfInc    = sfSale + sfVatAmt;
-  // Genel toplam KDV dahil = tüm satışlar (konaklama vergisi dahil) + KDV (hizmet bedeli KDV dahil)
-  const saleInc  = saleEx + totalVat + sfInc;
+  // totalVat zaten sfVatAmt içeriyor (vatByRate'e eklendi), sfSale ayrıca eklenir
+  const saleInc  = saleEx + totalVat + sfSale;
 
   // KDV dökümü (%0 satırı yok — vatByRate'e eklenmedi; hizmet bedeli KDV'si %20'ye dahil)
   const vatEl = document.getElementById('vatBreakdown');
