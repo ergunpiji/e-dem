@@ -184,6 +184,7 @@ async def budgets_new(
             preferred_venues = (
                 db.query(VenueModel)
                   .filter(VenueModel.id.in_(req.preferred_venues))
+                  .filter(VenueModel.supplier_type.in_(["otel", "etkinlik"]))
                   .order_by(VenueModel.name)
                   .all()
             )
@@ -198,15 +199,19 @@ async def budgets_new(
         "grouped_services":   json.dumps(grouped_services, ensure_ascii=False),
         "initial_rows_json":  json.dumps(initial_rows, ensure_ascii=False),
         "preferred_venues":   preferred_venues,
+        "offer_currency":     "TRY",
+        "exchange_rates":     {},
     })
 
 
 @router.post("/new", name="budgets_create")
 async def budgets_create(
     request: Request,
-    req_id:     str = Form(...),
-    venue_name: str = Form(""),
-    rows_json:  str = Form("[]"),
+    req_id:              str = Form(...),
+    venue_name:          str = Form(""),
+    rows_json:           str = Form("[]"),
+    offer_currency:      str = Form("TRY"),
+    exchange_rates_json: str = Form("{}"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -232,6 +237,8 @@ async def budgets_create(
         created_by=current_user.id,
         created_at=_now(),
         updated_at=_now(),
+        offer_currency=offer_currency.upper() or "TRY",
+        exchange_rates_json=exchange_rates_json or "{}",
     )
     db.add(budget)
     req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
@@ -246,6 +253,7 @@ async def budgets_create(
 async def budgets_detail(
     budget_id: str,
     request: Request,
+    back: str = "",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -258,20 +266,35 @@ async def budgets_detail(
         sec = row.get("section", "other")
         rows_by_section.setdefault(sec, []).append(row)
 
-    # KDV rate bazlı döküm (detail sayfası alt özet için)
+    # KDV rate bazlı döküm (detail sayfası alt özet için) — TRY cinsinden
+    _ex_rates = budget.exchange_rates  # {'EUR': 38.5, 'USD': 32.1}
+    _offer_currency = budget.offer_currency or "TRY"
     vat_by_rate: dict = {}
     for row in budget.rows:
-        qty    = float(row.get("qty", 1) or 1)
-        nights = float(row.get("nights", 1) or 1)
-        sale   = float(row.get("sale_price", 0) or 0)
-        vrate  = float(row.get("vat_rate", 0) or 0)
+        qty      = float(row.get("qty", 1) or 1)
+        nights   = float(row.get("nights", 1) or 1)
+        sale     = float(row.get("sale_price", 0) or 0)
+        vrate    = float(row.get("vat_rate", 0) or 0)
+        currency = row.get("currency", "TRY") or "TRY"
+        rate     = 1.0 if currency == "TRY" else float(_ex_rates.get(currency, 1.0) or 1.0)
         if row.get("is_service_fee"):
             qty, nights = 1, 1
-        sale_sub = sale * qty * nights
+        sale_sub = sale * qty * nights * rate  # TRY tutarı
         vat_amt  = round(sale_sub * (vrate / 100), 2)
         if vat_amt > 0 and vrate > 0:
             vat_by_rate[int(vrate)] = round(vat_by_rate.get(int(vrate), 0) + vat_amt, 2)
     vat_by_rate_sorted = sorted(vat_by_rate.items())  # [(10, 30000), (20, 5000)]
+
+    # Geri dön URL: ?back=req_id → referans özet sayfası; yoksa bütçe listesi
+    if back:
+        back_url = f"/requests/{back}#btpane-summary"
+        back_label = "Referansa Dön"
+    elif req:
+        back_url = f"/requests/{req.id}#btpane-summary"
+        back_label = "Referansa Dön"
+    else:
+        back_url = "/budgets"
+        back_label = "Bütçe Listesine Dön"
 
     return templates.TemplateResponse("budgets/detail.html", {
         "request":            request,
@@ -286,6 +309,10 @@ async def budgets_detail(
         "can_manager_price":  _can_manager_price(budget) and current_user.role in ("admin", "project_manager"),
         "status_label":       BUDGET_STATUS_LABELS.get(budget.budget_status, budget.budget_status),
         "status_color":       BUDGET_STATUS_COLORS.get(budget.budget_status, "secondary"),
+        "back_url":           back_url,
+        "back_label":         back_label,
+        "offer_currency":     _offer_currency,
+        "exchange_rates":     _ex_rates,
     })
 
 
@@ -308,24 +335,48 @@ async def budgets_edit(
     grouped_services: dict = {}
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
+    all_request_budgets = (
+        db.query(Budget)
+        .filter(Budget.request_id == budget.request_id)
+        .order_by(Budget.created_at)
+        .all()
+    )
+    preferred_venues = []
+    if req and req.preferred_venues:
+        from models import Venue as VenueModel
+        preferred_venues = (
+            db.query(VenueModel)
+            .filter(VenueModel.id.in_(req.preferred_venues))
+            .filter(VenueModel.supplier_type.in_(["otel", "etkinlik"]))
+            .order_by(VenueModel.name)
+            .all()
+        )
     return templates.TemplateResponse("budgets/editor.html", {
-        "request":            request,
-        "current_user":       current_user,
-        "budget":             budget,
-        "req":                req,
-        "page_title":         f"Bütçe Düzenle — {budget.venue_name}",
-        "service_categories": SERVICE_CATEGORIES,
-        "grouped_services":   json.dumps(grouped_services, ensure_ascii=False),
-        "initial_rows_json":  "[]",
-        "preferred_venues":   [],
+        "request":             request,
+        "current_user":        current_user,
+        "budget":              budget,
+        "req":                 req,
+        "page_title":          f"Bütçe Düzenle — {budget.venue_name}",
+        "service_categories":  SERVICE_CATEGORIES,
+        "grouped_services":    json.dumps(grouped_services, ensure_ascii=False),
+        "initial_rows_json":   "[]",
+        "preferred_venues":    preferred_venues,
+        "all_request_budgets": all_request_budgets,
+        "status_labels":       BUDGET_STATUS_LABELS,
+        "status_colors":       BUDGET_STATUS_COLORS,
+        "offer_currency":      budget.offer_currency or "TRY",
+        "exchange_rates":      budget.exchange_rates,
     })
 
 
 @router.post("/{budget_id}/edit", name="budgets_update")
 async def budgets_update(
-    budget_id: str,
-    venue_name: str = Form(""),
-    rows_json:  str = Form("[]"),
+    budget_id:           str,
+    venue_name:          str = Form(""),
+    rows_json:           str = Form("[]"),
+    next_action:         str = Form(""),
+    offer_currency:      str = Form("TRY"),
+    exchange_rates_json: str = Form("{}"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -345,10 +396,19 @@ async def budgets_update(
     except Exception:
         pass
 
-    budget.venue_name = venue_name.strip()
-    budget.rows_json  = rows_json
-    budget.updated_at = _now()
+    budget.venue_name          = venue_name.strip()
+    budget.rows_json           = rows_json
+    budget.offer_currency      = offer_currency.upper() or "TRY"
+    budget.exchange_rates_json = exchange_rates_json or "{}"
+    budget.updated_at          = _now()
+
+    if next_action == "send_to_manager" and budget.budget_status in ("draft_edem", "revision_requested"):
+        budget.budget_status = "pending_manager"
+
     db.commit()
+
+    if next_action == "send_to_manager":
+        return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
     return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
 
 
@@ -366,6 +426,29 @@ async def budgets_send_to_manager(
         budget.updated_at    = _now()
         db.commit()
     return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/{budget_id}/json", name="budgets_json")
+async def budgets_json(
+    budget_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bütçe verisini JSON olarak döner (AJAX sekme geçişi için)"""
+    from fastapi.responses import JSONResponse
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if not budget:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({
+        "id":                  budget.id,
+        "venue_name":          budget.venue_name or "",
+        "rows":                budget.rows,
+        "service_fee_pct":     budget.service_fee_pct or 0,
+        "manager_notes":       budget.manager_notes or "",
+        "budget_status":       budget.budget_status,
+        "offer_currency":      budget.offer_currency or "TRY",
+        "exchange_rates":      budget.exchange_rates,
+    })
 
 
 @router.get("/{budget_id}/price", response_class=HTMLResponse, name="budgets_price")
@@ -390,27 +473,53 @@ async def budgets_price(
     grouped_services: dict = {}
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
+    # Aynı talebe ait tüm bütçeler (sekme çubuğu için)
+    all_request_budgets = (
+        db.query(Budget)
+        .filter(Budget.request_id == budget.request_id)
+        .order_by(Budget.created_at)
+        .all()
+    )
+    # Talepteki tercih edilen mekanlar (dropdown için)
+    preferred_venues = []
+    if req and req.preferred_venues:
+        from models import Venue as VenueModel
+        preferred_venues = (
+            db.query(VenueModel)
+            .filter(VenueModel.id.in_(req.preferred_venues))
+            .filter(VenueModel.supplier_type.in_(["otel", "etkinlik"]))
+            .order_by(VenueModel.name)
+            .all()
+        )
     return templates.TemplateResponse("budgets/manager_editor.html", {
-        "request":         request,
-        "current_user":    current_user,
-        "budget":          budget,
-        "req":             req,
-        "customer":        customer,
-        "page_title":      f"Satış Fiyatı — {budget.venue_name}",
-        "rows_by_section": rows_by_section,
-        "status_label":    BUDGET_STATUS_LABELS.get(budget.budget_status, budget.budget_status),
-        "status_color":    BUDGET_STATUS_COLORS.get(budget.budget_status, "secondary"),
-        "grouped_services": json.dumps(grouped_services, ensure_ascii=False),
+        "request":             request,
+        "current_user":        current_user,
+        "budget":              budget,
+        "req":                 req,
+        "customer":            customer,
+        "page_title":          f"Satış Fiyatı — {budget.venue_name}",
+        "rows_by_section":     rows_by_section,
+        "status_label":        BUDGET_STATUS_LABELS.get(budget.budget_status, budget.budget_status),
+        "status_color":        BUDGET_STATUS_COLORS.get(budget.budget_status, "secondary"),
+        "grouped_services":    json.dumps(grouped_services, ensure_ascii=False),
+        "all_request_budgets": all_request_budgets,
+        "status_labels":       BUDGET_STATUS_LABELS,
+        "status_colors":       BUDGET_STATUS_COLORS,
+        "preferred_venues":    preferred_venues,
+        "offer_currency":      budget.offer_currency or "TRY",
+        "exchange_rates":      budget.exchange_rates,
     })
 
 
 @router.post("/{budget_id}/price", name="budgets_price_save")
 async def budgets_price_save(
-    budget_id:       str,
-    rows_json:       str = Form("[]"),
-    service_fee_pct: str = Form("0"),
-    manager_notes:   str = Form(""),
-    venue_name:      str = Form(""),
+    budget_id:           str,
+    rows_json:           str = Form("[]"),
+    service_fee_pct:     str = Form("0"),
+    manager_notes:       str = Form(""),
+    venue_name:          str = Form(""),
+    next_action:         str = Form(""),
+    exchange_rates_json: str = Form("{}"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -420,20 +529,43 @@ async def budgets_price_save(
     if not budget:
         return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
 
-    budget.rows_json       = rows_json
-    budget.service_fee_pct = float(service_fee_pct or 0)
-    budget.manager_notes   = manager_notes.strip()
+    budget.rows_json           = rows_json
+    budget.service_fee_pct     = float(service_fee_pct or 0)
+    budget.manager_notes       = manager_notes.strip()
+    budget.exchange_rates_json = exchange_rates_json or "{}"
     if venue_name.strip():
-        budget.venue_name  = venue_name.strip()
-    budget.budget_status   = "draft_manager"
-    budget.updated_at      = _now()
+        budget.venue_name      = venue_name.strip()
+    budget.budget_status       = "draft_manager"
+    budget.updated_at          = _now()
     db.commit()
+
+    # Kopyala ve yeni sekmeye git
+    if next_action == "copy":
+        new_budget = Budget(
+            id=_uuid(),
+            request_id=budget.request_id,
+            venue_name=(budget.venue_name or "Bütçe") + " (Kopya)",
+            rows_json=rows_json,
+            budget_status="pending_manager",
+            service_fee_pct=float(service_fee_pct or 0),
+            offer_currency=budget.offer_currency or "TRY",
+            exchange_rates_json=exchange_rates_json or budget.exchange_rates_json or "{}",
+            created_by=budget.created_by,
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        db.add(new_budget)
+        db.commit()
+        db.refresh(new_budget)
+        return RedirectResponse(url=f"/budgets/{new_budget.id}/price", status_code=status.HTTP_302_FOUND)
+
     return RedirectResponse(url=f"/budgets/{budget_id}/price", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{budget_id}/approve", name="budgets_approve")
 async def budgets_approve(
     budget_id: str,
+    back: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -448,6 +580,8 @@ async def budgets_approve(
             req.status     = "completed"
             req.updated_at = _now()
         db.commit()
+    if back:
+        return RedirectResponse(url=f"/requests/{back}#tab-summary", status_code=status.HTTP_302_FOUND)
     return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
 
 
@@ -472,6 +606,7 @@ async def budgets_request_revision(
 @router.post("/{budget_id}/cancel", name="budgets_cancel")
 async def budgets_cancel(
     budget_id: str,
+    back: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -486,15 +621,24 @@ async def budgets_cancel(
             req.status     = "cancelled"
             req.updated_at = _now()
         db.commit()
+    if back:
+        return RedirectResponse(url=f"/requests/{back}#tab-summary", status_code=status.HTTP_302_FOUND)
     return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/{budget_id}/export", name="budgets_export")
 async def budgets_export(
     budget_id: str,
+    vat: str = "exclusive",           # ?vat=exclusive | inclusive
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    Excel teklif dosyası indirir.
+    - Maliyet/karlılık bilgisi HİÇ gönderilmez (yalnızca satış fiyatları)
+    - ?vat=exclusive → KDV hariç göster | ?vat=inclusive → KDV dahil göster
+    - Müşteriye özel template varsa filler.py, yoksa builder.py kullanılır
+    """
     if current_user.role not in ("admin", "project_manager"):
         raise HTTPException(403)
 
@@ -503,153 +647,72 @@ async def budgets_export(
         return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
 
     req      = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
-    customer = db.query(Customer).filter(Customer.id == req.customer_id).first() if req and req.customer_id else None
+    customer = (db.query(Customer)
+                  .filter(Customer.id == req.customer_id)
+                  .first()
+                if req and req.customer_id else None)
+    creator  = db.query(User).filter(User.id == budget.created_by).first()
+
+    # KDV modu öncelik: query param > customer config > varsayılan 'exclusive'
+    cfg = customer.excel_config if customer else {}
+    vat_mode = vat if vat in ("exclusive", "inclusive") else cfg.get("vat_mode", "exclusive")
+
+    # Özel kategorileri çek
+    from models import CustomCategory
+    custom_cats = [
+        {"id": cc.id, "name": cc.name}
+        for cc in db.query(CustomCategory).all()
+    ]
 
     try:
-        import openpyxl
-        from openpyxl.styles import Font, Alignment, PatternFill
-        from openpyxl.utils import get_column_letter
-    except ImportError:
-        raise HTTPException(500, "openpyxl kurulu değil. pip install openpyxl")
+        template_path = customer.excel_template_path if customer else ""
+        cell_map      = cfg.get("cell_map") or {}
 
-    # ── Template varsa yükle, yoksa boş oluştur ──
-    template_path = customer.excel_template_path if customer else ""
-    if template_path and os.path.exists(template_path):
-        wb = openpyxl.load_workbook(template_path)
-        ws = wb.active
-        config = customer.excel_config if customer else {}
-        data_start_row = int(config.get("data_start_row", 1))
-        col_map = config.get("columns", {})
-    else:
-        # Standart format
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Teklif"
-        # Başlık satırı
-        headers = [
-            "Hizmet", "Birim", "Miktar", "Gün/Gece",
-            "Birim Fiyat (KDV hariç)", "KDV %",
-            "Birim Fiyat (KDV dahil)", "Toplam (KDV dahil)"
-        ]
-        for ci, h in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=ci, value=h)
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="1E293B")
-            cell.alignment = Alignment(horizontal="center")
-        data_start_row = 2
-        col_map = {
-            "service_name":   "A",
-            "unit":           "B",
-            "qty":            "C",
-            "nights":         "D",
-            "sale_price":     "E",
-            "vat_rate":       "F",
-            "sale_price_inc": "G",
-            "total_inc":      "H",
-        }
+        if template_path and os.path.exists(template_path) and cell_map:
+            # ── Müşteri template'i ─────────────────────────────────────────
+            from excel_export import fill_customer_template
+            output = fill_customer_template(
+                template_path=template_path,
+                cell_map=cell_map,
+                budget=budget,
+                request=req,
+                customer=customer,
+                creator=creator,
+            )
+        else:
+            # ── E-dem standart format ──────────────────────────────────────
+            from excel_export import build_standard
+            output = build_standard(
+                budget=budget,
+                request=req,
+                customer=customer,
+                creator=creator,
+                vat_mode=vat_mode,
+                custom_sections=custom_cats,
+            )
+    except Exception as exc:
+        raise HTTPException(500, f"Excel oluşturma hatası: {exc}")
 
-    def col_letter_to_num(letter):
-        if not letter:
-            return None
-        letter = str(letter).upper().strip()
-        if letter.isdigit():
-            return int(letter)
-        from openpyxl.utils import column_index_from_string
-        try:
-            return column_index_from_string(letter)
-        except Exception:
-            return None
+    # Dosya adı: Türkçe karakterleri ASCII'ye çevir (HTTP header latin-1 sınırı)
+    import unicodedata
+    raw_name = (budget.venue_name or "teklif")[:30]
+    ascii_name = unicodedata.normalize("NFKD", raw_name)
+    ascii_name = "".join(c for c in ascii_name if ord(c) < 128)
+    ascii_name = ascii_name.replace(" ", "_").replace("/", "-").strip("_") or "teklif"
+    filename_ascii = f"{ascii_name}_teklif.xlsx"
 
-    SECTION_LABELS = {
-        "accommodation": "Konaklama",
-        "meeting":       "Toplantı / Salon",
-        "fb":            "F&B (Yiyecek & İçecek)",
-        "teknik":        "Teknik",
-        "dekor":         "Dekor",
-        "transfer":      "Transfer",
-        "tasarim":       "Tasarım & Baskı",
-        "other":         "Diğer",
-    }
-    SECTIONS_ORDER = ["accommodation", "meeting", "fb", "teknik", "dekor", "transfer", "tasarim", "other"]
-
-    current_row = data_start_row
-    rows_by_sec = {}
-    for row in budget.rows:
-        if row.get("is_service_fee"):
-            continue
-        sec = row.get("section", "other")
-        rows_by_sec.setdefault(sec, []).append(row)
-
-    for sec in SECTIONS_ORDER:
-        sec_rows = rows_by_sec.get(sec, [])
-        if not sec_rows:
-            continue
-        # Bölüm başlığı
-        if col_map:
-            first_col = col_letter_to_num(list(col_map.values())[0])
-            last_col  = col_letter_to_num(list(col_map.values())[-1])
-            if first_col and last_col:
-                ws.cell(row=current_row, column=first_col, value=SECTION_LABELS.get(sec, sec))
-                header_cell = ws.cell(row=current_row, column=first_col)
-                header_cell.font = Font(bold=True, color="FFFFFF")
-                header_cell.fill = PatternFill("solid", fgColor="334155")
-                current_row += 1
-
-        for row in sec_rows:
-            qty    = float(row.get("qty", 1) or 1)
-            nights = float(row.get("nights", 1) or 1)
-            sale   = float(row.get("sale_price", 0) or 0)
-            vat    = float(row.get("vat_rate", 0) or 0)
-            sale_inc  = sale * (1 + vat / 100)
-            total_inc = sale_inc * qty * nights
-
-            def wc(field, value, r=current_row):
-                col = col_letter_to_num(col_map.get(field))
-                if col:
-                    ws.cell(row=r, column=col, value=value)
-
-            wc("service_name",   row.get("service_name", ""))
-            wc("unit",           row.get("unit", "Adet"))
-            wc("qty",            qty)
-            wc("nights",         nights)
-            wc("sale_price",     sale)
-            wc("vat_rate",       f"%{int(vat)}")
-            wc("sale_price_inc", round(sale_inc, 2))
-            wc("total_inc",      round(total_inc, 2))
-            current_row += 1
-
-    # Hizmet bedeli
-    sf_row = next((r for r in budget.rows if r.get("is_service_fee")), None)
-    if sf_row:
-        sf_sale = float(sf_row.get("sale_price", 0) or 0)
-        sf_vat  = float(sf_row.get("vat_rate", 20) or 20)
-        sf_inc  = sf_sale * (1 + sf_vat / 100)
-
-        def wc_sf(field, value, r=current_row):
-            col = col_letter_to_num(col_map.get(field))
-            if col:
-                ws.cell(row=r, column=col, value=value)
-
-        wc_sf("service_name",   "Hizmet Bedeli")
-        wc_sf("unit",           "Hizmet")
-        wc_sf("qty",            1)
-        wc_sf("nights",         1)
-        wc_sf("sale_price",     sf_sale)
-        wc_sf("vat_rate",       f"%{int(sf_vat)}")
-        wc_sf("sale_price_inc", round(sf_inc, 2))
-        wc_sf("total_inc",      round(sf_inc, 2))
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    safe_name = (budget.venue_name or "teklif").replace(" ", "_").replace("/", "-")[:30]
-    filename  = f"{safe_name}_teklif.xlsx"
+    # RFC 5987 ile UTF-8 dosya adı (modern tarayıcılar için)
+    import urllib.parse
+    filename_utf8 = urllib.parse.quote(f"{raw_name}_teklif.xlsx")
+    content_disposition = (
+        f'attachment; filename="{filename_ascii}"; '
+        f"filename*=UTF-8''{filename_utf8}"
+    )
 
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition},
     )
 
 
@@ -666,6 +729,37 @@ async def budgets_delete(
         db.delete(budget)
         db.commit()
     return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{budget_id}/copy-edem", name="budgets_copy_edem")
+async def budgets_copy_edem(
+    budget_id: str,
+    rows_json: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """E-dem maliyet kopyası oluşturur → /edit'e yönlendirir"""
+    if current_user.role not in ("admin", "e_dem"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if not budget:
+        raise HTTPException(404)
+    src_rows = rows_json.strip() or budget.rows_json
+    new_budget = Budget(
+        id=_uuid(),
+        request_id=budget.request_id,
+        venue_name=budget.venue_name + " (Kopya)",
+        rows_json=src_rows,
+        budget_status="draft_edem",
+        service_fee_pct=budget.service_fee_pct,
+        created_by=current_user.id,
+        created_at=_now(),
+        updated_at=_now(),
+    )
+    db.add(new_budget)
+    db.commit()
+    db.refresh(new_budget)
+    return RedirectResponse(url=f"/budgets/{new_budget.id}/edit", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{budget_id}/copy", name="budgets_copy")

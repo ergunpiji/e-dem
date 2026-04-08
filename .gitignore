@@ -28,3 +28,8 @@ env/
 
 # Claude
 .claude/
+
+# Upload / Excel templates (müşteriye özel dosyalar)
+uploads/
+*.xlsx
+*.pdf

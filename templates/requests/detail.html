@@ -14,9 +14,7 @@
 <style>
   .info-label { font-size: 12px; font-weight: 600; color: #64748b; white-space: nowrap; }
   .info-value { font-size: 13px; color: #1e293b; }
-  .rfq-card  { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-  .rfq-card .rfq-venue-name { font-weight: 700; font-size: 14px; color: #1e293b; }
-  .rfq-card .rfq-venue-city { font-size: 12px; color: #64748b; }
+  /* rfq-card artık inline style ile tanımlı */
   /* Venue search dropdown (paylaşılan) */
   .vs-wrapper { position: relative; }
   .vs-dropdown {
@@ -140,16 +138,25 @@
   <div class="card-body p-0">
 
     {# Tab başlıkları #}
-    <ul class="nav nav-tabs px-3 pt-2" id="budgetTabs" role="tablist">
+    <ul class="nav nav-tabs px-3 pt-2" id="budgetTabs" role="tablist" style="flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden;">
+      {# ─── Özet Sekmesi (ilk) ─── #}
+      <li class="nav-item flex-shrink-0" role="presentation">
+        <button class="nav-link active fw-semibold"
+                data-bs-toggle="tab"
+                data-bs-target="#btpane-summary"
+                type="button" style="white-space:nowrap;">
+          <i class="bi bi-bar-chart-line me-1 text-success"></i>Özet Karşılaştırma
+        </button>
+      </li>
       {% for bd in budgets_data %}
       {% set b = bd.budget %}
       {% set bs = b.budget_status %}
       {% set scolor = {'draft_edem':'secondary','pending_manager':'warning','draft_manager':'info','approved':'success','revision_requested':'danger','cancelled':'dark'}.get(bs, 'secondary') %}
-      <li class="nav-item" role="presentation">
-        <button class="nav-link {% if loop.first %}active{% endif %}"
+      <li class="nav-item flex-shrink-0" role="presentation">
+        <button class="nav-link"
                 data-bs-toggle="tab"
                 data-bs-target="#btpane-{{ b.id }}"
-                type="button">
+                type="button" style="white-space:nowrap;">
           <i class="bi bi-building me-1"></i>{{ b.venue_name or ('Bütçe #' + loop.index|string) }}
           <span class="badge bg-{{ scolor }} ms-1" style="font-size:10px;">{{ {'draft_edem':'Taslak','pending_manager':'Onayda','draft_manager':'Düzenleniyor','approved':'Onaylandı','revision_requested':'Revizyon','cancelled':'İptal'}.get(bs, bs) }}</span>
         </button>
@@ -159,10 +166,223 @@
 
     {# Tab içerikleri #}
     <div class="tab-content">
+
+      {# ══════════════════════════════════════════════
+         ÖZET KARŞILAŞTIRMA SEKMESİ
+         ══════════════════════════════════════════════ #}
+      <div class="tab-pane fade show active" id="btpane-summary">
+        {% set SLABELS = {'accommodation':'🛏 Konaklama','meeting':'🏛 Toplantı','fb':'🍽 F&B',
+                          'teknik':'🔧 Teknik','dekor':'🎨 Dekor','transfer':'🚌 Transfer',
+                          'tasarim':'🖨 Tasarım','other':'📦 Diğer'} %}
+        {% set show_cost = current_user.role in ('admin', 'e_dem', 'project_manager') %}
+
+        {# En düşük grand total → vurgu için (TRY bazlı karşılaştırma) #}
+        {% set min_grand = namespace(val=999999999) %}
+        {% for bd in budgets_data %}
+          {% if bd.totals.grand_try > 0 and bd.totals.grand_try < min_grand.val %}
+            {% set min_grand.val = bd.totals.grand_try %}
+          {% endif %}
+        {% endfor %}
+
+        <div class="table-responsive">
+          <table class="table table-sm mb-0" style="font-size:12px;">
+            <thead>
+              <tr style="background:#1e293b; color:white;">
+                <th class="ps-3" style="min-width:170px; font-size:11px; letter-spacing:.4px;">KALEM</th>
+                {% for bd in budgets_data %}
+                {% set b = bd.budget %}
+                {% set bs = b.budget_status %}
+                {% set is_best = bd.totals.grand_try > 0 and bd.totals.grand_try == min_grand.val %}
+                <th class="text-end pe-3" style="min-width:170px;">
+                  <div style="font-size:12px; font-weight:700;">{{ b.venue_name or ('Bütçe #' + loop.index|string) }}</div>
+                  <div style="margin-top:3px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
+                    <span class="badge bg-{{ {'draft_edem':'secondary','pending_manager':'warning','draft_manager':'info','approved':'success','revision_requested':'danger','cancelled':'dark'}.get(bs,'secondary') }}" style="font-size:9px;">
+                      {{ {'draft_edem':'Taslak','pending_manager':'Onayda','draft_manager':'Düzenleniyor','approved':'Onaylandı','revision_requested':'Revizyon','cancelled':'İptal'}.get(bs, bs) }}
+                    </span>
+                    {% if is_best %}<span class="badge bg-success" style="font-size:9px;">⭐ En İyi</span>{% endif %}
+                  </div>
+                  {# Onay / İptal butonları — sadece manager/admin görebilir #}
+                  {% if current_user.role in ('admin','project_manager') %}
+                  <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
+                    {% if bs not in ('approved','cancelled') %}
+                    <form method="post" action="/budgets/{{ b.id }}/approve" style="margin:0;">
+                      <input type="hidden" name="back" value="{{ req.id }}">
+                      <button type="submit" class="btn btn-success btn-sm py-0 px-2" style="font-size:10px;">
+                        <i class="bi bi-check-lg"></i> Onayla
+                      </button>
+                    </form>
+                    <form method="post" action="/budgets/{{ b.id }}/cancel" style="margin:0;">
+                      <input type="hidden" name="back" value="{{ req.id }}">
+                      <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size:10px;"
+                              onclick="return confirm('İptal edilsin mi?')">
+                        <i class="bi bi-x-lg"></i>
+                      </button>
+                    </form>
+                    {% endif %}
+                    {% if bs == 'approved' %}
+                    <a href="/budgets/{{ b.id }}/export?vat=exclusive"
+                       class="btn btn-outline-success btn-sm py-0 px-2" style="font-size:10px;"
+                       title="Bu mekanı Excel'e aktar">
+                      <i class="bi bi-file-earmark-excel"></i>
+                    </a>
+                    {% endif %}
+                  </div>
+                  {% endif %}
+                </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+
+              {# ── Bölüm satırları ── #}
+              {% for sec in all_sections %}
+              <tr style="background:#f1f5f9;">
+                <td class="ps-3 fw-bold" colspan="{{ budgets_data|length + 1 }}" style="font-size:11px; letter-spacing:.5px; text-transform:uppercase; color:#475569;">
+                  {{ SLABELS.get(sec, sec) }}
+                </td>
+              </tr>
+              {% if show_cost %}
+              <tr>
+                <td class="ps-3 text-muted" style="padding-left:24px!important;">Maliyet (KDV hariç)</td>
+                {% for bd in budgets_data %}
+                {% set ns_sec = namespace(cost=0) %}
+                {% for s, sv in bd.totals.sections %}{% if s == sec %}{% set ns_sec.cost = sv.cost %}{% endif %}{% endfor %}
+                <td class="text-end pe-3" style="color:#94a3b8;">{{ ns_sec.cost | money | replace('₺', bd.totals.offer_sym) if ns_sec.cost else '—' }}</td>
+                {% endfor %}
+              </tr>
+              {% endif %}
+              <tr>
+                <td class="ps-3 text-muted" style="padding-left:24px!important;">Satış (KDV hariç)</td>
+                {% for bd in budgets_data %}
+                {% set ns_sec = namespace(sale=0) %}
+                {% for s, sv in bd.totals.sections %}{% if s == sec %}{% set ns_sec.sale = sv.sale %}{% endif %}{% endfor %}
+                <td class="text-end pe-3 fw-semibold">{{ ns_sec.sale | money | replace('₺', bd.totals.offer_sym) if ns_sec.sale else '—' }}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+
+              {# ── Ara toplam ── #}
+              <tr style="background:#e2e8f0; font-weight:700; font-size:12px; border-top:2px solid #94a3b8;">
+                <td class="ps-3">Hizmetler Toplamı</td>
+                {% for bd in budgets_data %}
+                {% set t = bd.totals %}
+                <td class="text-end pe-3">
+                  {% if show_cost %}<div style="color:#94a3b8; font-size:11px;">M: {{ t.cost_ex | money | replace('₺', t.offer_sym) }}</div>{% endif %}
+                  <div>S: {{ t.sale_ex | money | replace('₺', t.offer_sym) }}</div>
+                </td>
+                {% endfor %}
+              </tr>
+
+              {# ── Hizmet bedeli ── #}
+              <tr style="background:#fefce8;">
+                <td class="ps-3 fw-semibold" style="color:#92400e;">
+                  <i class="bi bi-briefcase me-1"></i>Hizmet Bedeli
+                </td>
+                {% for bd in budgets_data %}
+                {% set t = bd.totals %}
+                <td class="text-end pe-3 fw-semibold" style="color:#b45309;">
+                  {% if t.sf_pct > 0 %}
+                  <div style="font-size:10px; color:#92400e; font-weight:400;">%{{ t.sf_pct | int if t.sf_pct % 1 == 0 else t.sf_pct }}</div>
+                  {{ t.sf_amount | money | replace('₺', t.offer_sym) }}
+                  {% else %}
+                  <span class="text-muted fw-normal">—</span>
+                  {% endif %}
+                </td>
+                {% endfor %}
+              </tr>
+
+              {# ── KDV ── #}
+              <tr>
+                <td class="ps-3 text-muted">KDV</td>
+                {% for bd in budgets_data %}
+                {% set t = bd.totals %}
+                <td class="text-end pe-3 text-muted">{{ (t.vat + t.sf_vat) | money | replace('₺', t.offer_sym) }}</td>
+                {% endfor %}
+              </tr>
+
+              {# ── Genel toplam ── #}
+              <tr style="border-top:2px solid #3b82f6;">
+                {% for bd in budgets_data %}{% endfor %}
+              </tr>
+              <tr style="background:#1e3a5f; color:white; font-weight:800; font-size:13px;">
+                <td class="ps-3">GENEL TOPLAM (KDV dahil)</td>
+                {% for bd in budgets_data %}
+                {% set t = bd.totals %}
+                {% set is_best = t.grand_try > 0 and t.grand_try == min_grand.val %}
+                <td class="text-end pe-3" style="{{ 'color:#4ade80;' if is_best else '' }}">
+                  {{ t.grand | money | replace('₺', t.offer_sym) }}
+                  {% if t.offer_currency != 'TRY' %}
+                  <div style="font-size:10px; opacity:.65; font-weight:400;">{{ t.grand_try | money }}</div>
+                  {% endif %}
+                </td>
+                {% endfor %}
+              </tr>
+
+              {# ── Kâr marjı ── #}
+              {% if show_cost %}
+              <tr style="background:#f8fafc;">
+                <td class="ps-3 text-muted fw-semibold" style="font-size:11px;">KÂR MARJI</td>
+                {% for bd in budgets_data %}
+                {% set t = bd.totals %}
+                {% set mclass = 'text-success' if t.margin >= 20 else ('text-warning' if t.margin >= 10 else 'text-danger') %}
+                <td class="text-end pe-3 fw-bold {{ mclass }}">
+                  {{ '%' + t.margin|string if t.margin else '—' }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endif %}
+
+            </tbody>
+          </table>
+        </div>
+
+        {# Aksiyon butonları özet altında #}
+        <div class="d-flex gap-2 px-3 py-2 border-top flex-wrap align-items-center">
+          {% for bd in budgets_data %}
+          {% set b = bd.budget %}
+          <a href="/budgets/{{ b.id }}?back={{ req.id }}"
+             class="btn btn-outline-primary btn-sm" style="font-size:11px;">
+            <i class="bi bi-eye me-1"></i>{{ b.venue_name or ('Bütçe #' + loop.index|string) }} Detay
+          </a>
+          {% endfor %}
+
+          {# Tüm onaylıları Excel'e aktar #}
+          {% set has_approved = budgets_data | selectattr('budget.budget_status', 'equalto', 'approved') | list %}
+          {% if has_approved and current_user.role in ('admin','project_manager','e_dem') %}
+          <div class="ms-auto d-flex align-items-center gap-2">
+            <div class="btn-group" role="group">
+              <a href="/requests/{{ req.id }}/export?vat=exclusive"
+                 class="btn btn-success btn-sm" style="font-size:11px;">
+                <i class="bi bi-file-earmark-excel me-1"></i>Tüm Onaylıları Excel'e Aktar (KDV Hariç)
+              </a>
+              <button type="button" class="btn btn-success btn-sm dropdown-toggle dropdown-toggle-split"
+                      data-bs-toggle="dropdown" aria-expanded="false" style="font-size:11px;">
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <a class="dropdown-item" href="/requests/{{ req.id }}/export?vat=exclusive">
+                    <i class="bi bi-file-earmark-excel me-2 text-success"></i>KDV Hariç
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/requests/{{ req.id }}/export?vat=inclusive">
+                    <i class="bi bi-file-earmark-excel me-2 text-primary"></i>KDV Dahil
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ══════════════════════════════════════════════
+         BİREYSEL BÜTÇE SEKMELERİ
+         ══════════════════════════════════════════════ #}
       {% for bd in budgets_data %}
       {% set b = bd.budget %}
       {% set rbs = bd.rows_by_section %}
-      <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="btpane-{{ b.id }}">
+      <div class="tab-pane fade" id="btpane-{{ b.id }}">
 
         {# Aksiyon butonları #}
         <div class="d-flex gap-2 px-3 pt-3 pb-2 border-bottom">
@@ -187,35 +407,46 @@
         </div>
 
         {# Mini bütçe tablosu #}
+        {% set show_cost = current_user.role in ('admin', 'e_dem', 'project_manager') %}
+        {% set col_count = 6 if show_cost else 5 %}
         <div class="table-responsive">
           <table class="table table-sm mb-0" style="font-size:12px;">
             <thead>
               <tr style="background:#f8fafc;">
                 <th class="ps-3">Hizmet</th>
                 <th>Miktar</th>
-                {% if current_user.role in ('admin', 'e_dem') %}<th>Maliyet</th>{% endif %}
+                {% if show_cost %}<th style="color:#94a3b8;">Maliyet (KDV hariç)</th>{% endif %}
                 <th>Satış (KDV hariç)</th>
                 <th>KDV</th>
                 <th class="fw-bold">Toplam</th>
               </tr>
             </thead>
+            {% set bd_offer_sym = {'TRY':'₺','EUR':'€','USD':'$'}.get(b.offer_currency or 'TRY', b.offer_currency or '₺') %}
+            {% set bd_offer_cur = b.offer_currency or 'TRY' %}
+            {% set bd_ex_rates  = b.exchange_rates %}
+            {% set bd_offer_rate = (bd_ex_rates.get(bd_offer_cur, 1.0)|float) if bd_offer_cur != 'TRY' else 1.0 %}
             <tbody>
-              {% set gns = namespace(sale_ex=0, vat=0, total=0) %}
+              {% set gns = namespace(cost_ex=0, sale_ex=0, vat=0, total=0) %}
               {% for sec in SECTIONS_ORDER %}
               {% set sec_rows = rbs.get(sec, []) %}
               {% if sec_rows %}
               <tr style="background:#1e293b; color:white;">
-                <td class="ps-3 fw-bold" colspan="{{ 6 if current_user.role in ('admin','e_dem') else 5 }}" style="font-size:10px; letter-spacing:.5px; text-transform:uppercase;">{{ SECTION_LABELS.get(sec, sec) }}</td>
+                <td class="ps-3 fw-bold" colspan="{{ col_count }}" style="font-size:10px; letter-spacing:.5px; text-transform:uppercase;">{{ SECTION_LABELS.get(sec, sec) }}</td>
               </tr>
               {% for row in sec_rows %}
-              {% set qty = row.qty|float if row.qty else 1 %}
-              {% set nights = row.nights|float if row.nights else 1 %}
-              {% set sale = row.sale_price|float if row.sale_price else 0 %}
-              {% set cost = row.cost_price|float if row.cost_price else 0 %}
-              {% set vat = row.vat_rate|float if row.vat_rate else 0 %}
-              {% set sale_sub = sale * qty * nights %}
-              {% set vat_amt = sale_sub * (vat / 100) %}
+              {% set qty      = row.qty|float if row.qty else 1 %}
+              {% set nights   = row.nights|float if row.nights else 1 %}
+              {% set sale     = row.sale_price|float if row.sale_price else 0 %}
+              {% set cost     = row.cost_price|float if row.cost_price else 0 %}
+              {% set vat      = row.vat_rate|float if row.vat_rate else 0 %}
+              {% set row_cur  = row.get('currency', 'TRY') or 'TRY' %}
+              {% set row_rate = (bd_ex_rates.get(row_cur, 1.0)|float) if row_cur != 'TRY' else 1.0 %}
+              {% set conv     = (row_rate / bd_offer_rate) if bd_offer_rate else 1.0 %}
+              {% set cost_sub = cost * qty * nights * conv %}
+              {% set sale_sub = sale * qty * nights * conv %}
+              {% set vat_amt  = sale_sub * (vat / 100) %}
               {% set row_total = sale_sub + vat_amt %}
+              {% set gns.cost_ex = gns.cost_ex + cost_sub %}
               {% set gns.sale_ex = gns.sale_ex + sale_sub %}
               {% set gns.vat = gns.vat + vat_amt %}
               {% set gns.total = gns.total + row_total %}
@@ -226,21 +457,51 @@
                   {% if sel_q %}<span class="badge bg-primary bg-opacity-10 text-primary ms-1" style="font-size:10px;">{{ sel_q[0].supplier }}</span>{% endif %}
                 </td>
                 <td class="text-muted">{{ row.qty or 1 }}{% if sec == 'accommodation' %} × {{ row.nights or 1 }}g{% endif %}</td>
-                {% if current_user.role in ('admin', 'e_dem') %}<td class="text-muted">{{ (cost * qty * nights) | money }}</td>{% endif %}
-                <td>{{ sale_sub | money }}</td>
+                {% if show_cost %}<td style="color:#94a3b8;">{{ cost_sub | money | replace('₺', bd_offer_sym) if cost else '—' }}</td>{% endif %}
+                <td>{{ sale_sub | money | replace('₺', bd_offer_sym) }}</td>
                 <td class="text-muted">%{{ vat|int }}</td>
-                <td class="fw-semibold">{{ row_total | money }}</td>
+                <td class="fw-semibold">{{ row_total | money | replace('₺', bd_offer_sym) }}</td>
               </tr>
               {% endfor %}
               {% endif %}
               {% endfor %}
             </tbody>
             <tfoot>
-              <tr style="background:#eff6ff; font-weight:800; color:#1d4ed8; border-top:2px solid #93c5fd;">
-                <td class="ps-3" colspan="{{ 3 if current_user.role in ('admin','e_dem') else 2 }}">TOPLAM</td>
-                <td>{{ gns.sale_ex | money }}</td>
-                <td>{{ gns.vat | money }}</td>
-                <td>{{ gns.total | money }}</td>
+              {# Alt toplam satırı (KDV hariç) #}
+              {% set sf_pct = b.service_fee_pct or 0 %}
+              {% set sf_amount = (gns.sale_ex * sf_pct / 100) | round(2) %}
+              {% set sf_vat = (sf_amount * 0.20) | round(2) %}
+              {% set grand_total = gns.total + sf_amount + sf_vat %}
+              {% set grand_total_try = grand_total * bd_offer_rate %}
+              <tr style="background:#f1f5f9; font-size:12px; color:#475569; font-weight:600; border-top:1px solid #e2e8f0;">
+                <td class="ps-3" colspan="2">Hizmetler Toplamı</td>
+                {% if show_cost %}<td style="color:#94a3b8;">{{ gns.cost_ex | money | replace('₺', bd_offer_sym) }}</td>{% endif %}
+                <td>{{ gns.sale_ex | money | replace('₺', bd_offer_sym) }}</td>
+                <td>{{ gns.vat | money | replace('₺', bd_offer_sym) }}</td>
+                <td>{{ gns.total | money | replace('₺', bd_offer_sym) }}</td>
+              </tr>
+              {# Hizmet bedeli satırı (varsa) #}
+              {% if sf_pct > 0 %}
+              <tr style="background:#fefce8; font-size:12px;">
+                <td class="ps-3 fw-semibold" colspan="2" style="color:#92400e;">
+                  <i class="bi bi-briefcase me-1"></i>Hizmet Bedeli
+                  <span class="badge bg-warning bg-opacity-20 text-warning ms-1" style="font-size:10px;">%{{ sf_pct | int if sf_pct % 1 == 0 else sf_pct }}</span>
+                </td>
+                {% if show_cost %}<td style="color:#94a3b8;">—</td>{% endif %}
+                <td class="fw-semibold" style="color:#b45309;">{{ sf_amount | money | replace('₺', bd_offer_sym) }}</td>
+                <td class="text-muted">{{ sf_vat | money | replace('₺', bd_offer_sym) }}</td>
+                <td class="fw-semibold" style="color:#b45309;">{{ (sf_amount + sf_vat) | money | replace('₺', bd_offer_sym) }}</td>
+              </tr>
+              {% endif %}
+              {# Genel toplam #}
+              <tr style="background:#1e3a5f; color:white; font-weight:800; border-top:2px solid #3b82f6;">
+                <td class="ps-3" colspan="{{ col_count - 1 }}">GENEL TOPLAM (KDV dahil)</td>
+                <td style="font-size:13px; white-space:nowrap;">
+                  {{ grand_total | money | replace('₺', bd_offer_sym) }}
+                  {% if bd_offer_cur != 'TRY' %}
+                  <div style="font-size:10px; opacity:.65; font-weight:400;">{{ grand_total_try | money }}</div>
+                  {% endif %}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -251,6 +512,46 @@
 
   </div>
 </div>
+{% endif %}
+
+{# ─── Tab kalıcılığı: sekme seçimini localStorage + URL hash ile koru ─── #}
+{% if budgets_data and budgets_data | length > 1 %}
+<script>
+(function () {
+  const TAB_KEY = 'req_tab_{{ req.id }}';
+  const tabsEl  = document.getElementById('budgetTabs');
+  if (!tabsEl) return;
+
+  // 1) Aktif sekmeyi kaydet (hash + localStorage)
+  tabsEl.addEventListener('shown.bs.tab', function (e) {
+    const target = e.target.getAttribute('data-bs-target');
+    if (target) {
+      const id = target.slice(1);   // '#btpane-...' → 'btpane-...'
+      localStorage.setItem(TAB_KEY, id);
+      history.replaceState(null, '', '#' + id);
+    }
+  });
+
+  // 2) Sayfa yüklenince: URL hash → localStorage → varsayılan (özet)
+  function restore() {
+    const fromHash  = location.hash ? location.hash.slice(1) : null;
+    const fromStore = localStorage.getItem(TAB_KEY);
+    const targetId  = fromHash || fromStore || 'btpane-summary';
+
+    const btn = tabsEl.querySelector(`[data-bs-target="#${targetId}"]`);
+    if (btn && !btn.classList.contains('active')) {
+      bootstrap.Tab.getOrCreateInstance(btn).show();
+    }
+  }
+
+  // Bootstrap tab'ları DOM'a hazır olduğunda çalıştır
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', restore);
+  } else {
+    restore();
+  }
+})();
+</script>
 {% endif %}
 
 <div class="row g-4">
@@ -530,16 +831,17 @@
       </div>
     </div>
 
-    {# Seçilen Tedarikçiler (kompakt) #}
+    {# Seçilen Tedarikçiler (kompakt, aktif sekmeye göre filtrelenir) #}
     {% if pref_venues %}
-    <div class="card mb-4">
+    <div class="card mb-4" id="selectedVenuesCard">
       <div class="card-body py-2">
         <span class="text-muted fw-semibold me-2" style="font-size:11px; text-transform:uppercase; letter-spacing:.4px;">
           <i class="bi bi-building me-1"></i>Seçilen Tedarikçiler:
         </span>
         {% for venue in venues %}
         {% if venue.id in pref_venues %}
-        <a href="/venues/{{ venue.id }}" class="text-decoration-none">
+        <a href="/venues/{{ venue.id }}" class="text-decoration-none selected-venue-badge"
+           data-supplier-type="{{ venue.supplier_type }}">
           <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1"
                 style="font-size:12px; padding:4px 10px;">
             {{ venue.name }} <span class="text-muted">· {{ venue.city }}</span>
@@ -706,86 +1008,158 @@ function escH(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── E-posta içeriği (section'a veya supplier_type'a göre ilgili kalemleri göster) ───
+// ─── E-posta içeriği ───
 function buildEmailHtml(venue, contactNames, filterSection) {
   const greeting = contactNames.length ? `Sayın ${contactNames[0]},` : 'Sayın İlgili,';
   const items = REQ_DATA.items || {};
-  // filterSection varsa sadece o section; yoksa supplier_type'a göre tüm ilgili sectionlar
   const relevantSections = filterSection
     ? [filterSection]
     : (SUPPLIER_SECTIONS[venue.supplier_type] || Object.keys(SECTION_TITLES));
 
-  const cs = 'padding:8px 12px; border:1px solid #d1d5db; font-size:13px;';
-  const ls = cs + 'background:#f0f4f8; color:#1e293b; font-weight:600; width:160px;';
-  const vs = cs + 'background:#ffffff; color:#1e293b;';
-  const hs = 'background:#1a3a5c; color:#ffffff; font-weight:bold; padding:10px 12px; font-size:13px;';
-  const ss = 'background:#1e5f8c; color:#ffffff; font-weight:bold; padding:8px 12px; font-size:12px;';
+  const brand  = '#1a3a5c';
+  const accent = '#1e5f8c';
+  const light  = '#f8fafc';
+  const border = '#e2e8f0';
+  const tDark  = '#1e293b';
+  const tMuted = '#64748b';
+  const thBg   = '#f0f4f8';
+  const SEC_ICONS = {accommodation:'🛏',meeting:'🏛',fb:'🍽',teknik:'🔧',dekor:'🎨',transfer:'🚌',tasarim:'🖨',other:'📦'};
 
-  let html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:700px;color:#1e293b;">
-<p style="font-size:14px;">${greeting}</p>
-<p style="font-size:13px;">
-  Aşağıda detayları bildirilmiş olan <strong>${fmtDate(REQ_DATA.check_in)}</strong> – <strong>${fmtDate(REQ_DATA.check_out)}</strong>
-  tarihleri arasında gerçekleştirilecek <strong>${escH(REQ_DATA.event_name)}</strong> etkinliğimiz için
-  müsaitlik durumunuzu ve fiyatlarınızı bildirmenizi rica ederiz.
-</p>
-<table style="border-collapse:collapse;width:100%;margin-bottom:16px;">
-  <tr><td colspan="2" style="${hs}">${escH(REQ_DATA.event_name).toUpperCase()}</td></tr>
-  <tr><td style="${ls}">Müşteri</td><td style="${vs}">${escH(REQ_DATA.client_name)}</td></tr>
-  <tr><td style="${ls}">Tarih</td><td style="${vs}">${fmtDate(REQ_DATA.check_in)} – ${fmtDate(REQ_DATA.check_out)}</td></tr>
-  <tr><td style="${ls}">Kişi Sayısı</td><td style="${vs}">${REQ_DATA.attendee_count} kişi</td></tr>
-</table>`;
+  function secTable(secKey, title, rows) {
+    const icon    = SEC_ICONS[secKey] || '📋';
+    const isAccom = secKey === 'accommodation';
+    const cols    = isAccom ? 5 : 4;
+    const thStyle = `padding:8px 12px;background:${thBg};color:${tMuted};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;text-align:left;border-bottom:1px solid ${border};white-space:nowrap;`;
+    let t = `<div style="margin-bottom:28px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${border};border-radius:8px;overflow:hidden;">
+    <tr>
+      <td colspan="${cols}" style="background:${accent};padding:11px 16px;">
+        <span style="color:#ffffff;font-weight:700;font-size:12px;letter-spacing:.8px;text-transform:uppercase;">${icon} ${escH(title)}</span>
+      </td>
+    </tr>
+    <tr>
+      <th style="${thStyle}">Talep Edilen Servis</th>
+      ${isAccom
+        ? `<th style="${thStyle}">Giriş Tarihi</th><th style="${thStyle}">Çıkış Tarihi</th>`
+        : `<th style="${thStyle}">Tarih</th>`}
+      <th style="${thStyle}">Kişi / Miktar</th>
+      <th style="${thStyle.replace('white-space:nowrap;','')}">Notlar</th>
+    </tr>`;
+    rows.forEach((r, i) => {
+      const bg = i%2===0 ? '#ffffff' : light;
+      const bb = i<rows.length-1 ? `border-bottom:1px solid ${border};` : '';
+      const tdS  = `padding:10px 12px;background:${bg};font-size:12px;white-space:nowrap;${bb}`;
+      t += `
+    <tr>
+      <td style="padding:10px 12px;background:${bg};color:${tDark};font-size:13px;font-weight:500;${bb}">${escH(r.svc)}</td>
+      ${isAccom
+        ? `<td style="${tdS}color:${tMuted};">${escH(r.checkin||'')}</td><td style="${tdS}color:${tMuted};">${escH(r.checkout||'')}</td>`
+        : `<td style="${tdS}color:${tMuted};">${escH(r.date||'')}</td>`}
+      <td style="${tdS}color:${tMuted};">${escH(r.qty)}</td>
+      <td style="padding:10px 12px;background:${bg};color:${tMuted};font-size:12px;${bb}">${escH(r.notes)}</td>
+    </tr>`;
+    });
+    t += `</table></div>`;
+    return t;
+  }
 
-  // Konaklama — sadece konaklama tarihi seçilmişse göster
+  let html = `<div style="font-family:'Segoe UI',Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;">
+
+  <div style="background:${brand};padding:28px 36px 24px;border-radius:10px 10px 0 0;">
+    <div style="color:#93c5fd;font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:8px;">FİYAT TEKLİFİ TALEBİ &nbsp;·&nbsp; ${escH(REQ_DATA.request_no)}</div>
+    <div style="color:#ffffff;font-size:21px;font-weight:700;line-height:1.3;margin-bottom:8px;">${escH(REQ_DATA.event_name)}</div>
+    <div style="display:inline-block;background:rgba(255,255,255,0.12);border-radius:20px;padding:4px 14px;">
+      <span style="color:#cbd5e1;font-size:12px;">${fmtDate(REQ_DATA.check_in)} – ${fmtDate(REQ_DATA.check_out)}</span>
+      <span style="color:#64748b;margin:0 6px;">|</span>
+      <span style="color:#cbd5e1;font-size:12px;">${REQ_DATA.attendee_count} kişi</span>
+    </div>
+  </div>
+
+  <div style="background:#ffffff;padding:28px 36px;border-left:1px solid ${border};border-right:1px solid ${border};">
+
+    <p style="font-size:14px;color:${tDark};margin:0 0 14px;font-weight:600;">${greeting}</p>
+    <p style="font-size:13px;color:${tMuted};margin:0 0 28px;line-height:1.7;">
+      <strong>${fmtDate(REQ_DATA.check_in)} – ${fmtDate(REQ_DATA.check_out)}</strong> tarihleri arasında
+      düzenleyeceğimiz <strong style="color:${tDark};">${escH(REQ_DATA.event_name)}</strong> etkinliğimiz için
+      fiyat teklifinizi ve müsaitlik durumunuzu bildirmenizi rica ederiz.
+    </p>
+
+    <div style="margin-bottom:28px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${border};border-radius:8px;overflow:hidden;">
+        <tr>
+          <td colspan="4" style="background:${brand};padding:10px 16px;">
+            <span style="color:#ffffff;font-weight:700;font-size:11px;letter-spacing:.8px;text-transform:uppercase;">ETKİNLİK BİLGİLERİ</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:${thBg};color:${tMuted};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid ${border};width:20%;">Müşteri</td>
+          <td style="padding:10px 14px;color:${tDark};font-size:13px;border-bottom:1px solid ${border};width:30%;">${escH(REQ_DATA.client_name)}</td>
+          <td style="padding:10px 14px;background:${thBg};color:${tMuted};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid ${border};width:20%;">Kişi Sayısı</td>
+          <td style="padding:10px 14px;color:${tDark};font-size:13px;border-bottom:1px solid ${border};width:30%;">${REQ_DATA.attendee_count} kişi</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;background:${thBg};color:${tMuted};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Etkinlik Tarihleri</td>
+          <td colspan="3" style="padding:10px 14px;color:${tDark};font-size:13px;">${fmtDate(REQ_DATA.check_in)} – ${fmtDate(REQ_DATA.check_out)}</td>
+        </tr>
+      </table>
+    </div>
+`;
+
   const hasAccomDates = REQ_DATA.accom_check_in || (items.accommodation||[]).some(r => r.date_from);
-  if (hasAccomDates && relevantSections.includes('accommodation') && (items.accommodation||[]).filter(r=>r.description).length) {
+  if (hasAccomDates && relevantSections.includes('accommodation')) {
     const rows = (items.accommodation||[]).filter(r=>r.description);
-    html += `<table style="border-collapse:collapse;width:100%;margin-bottom:16px;">
-  <tr><td colspan="4" style="${hs}">🛏 KONAKLAMA DETAYLARI</td></tr>`;
-    if (REQ_DATA.accom_check_in) html += `<tr><td style="${ls}">Giriş Tarihi</td><td colspan="3" style="${vs}">${fmtDate(REQ_DATA.accom_check_in)}</td></tr>`;
-    if (REQ_DATA.accom_check_out) html += `<tr><td style="${ls}">Çıkış Tarihi</td><td colspan="3" style="${vs}">${fmtDate(REQ_DATA.accom_check_out)}</td></tr>`;
-    html += `<tr><th style="${ss}">Oda Tipi</th><th style="${ss}">Miktar</th><th style="${ss}">Birim</th><th style="${ss}">Notlar</th></tr>`;
-    rows.forEach(r => {
-      html += `<tr><td style="${vs}">${escH(r.description)}</td><td style="${vs}">${r.qty||1}</td><td style="${vs}">${escH(r.unit||'')}</td><td style="${vs}">${escH(r.notes||'')}</td></tr>`;
-    });
-    html += `</table>`;
+    if (rows.length) {
+      const acIn  = REQ_DATA.accom_check_in  || (rows[0]?.date_from ?? '');
+      const acOut = REQ_DATA.accom_check_out || (rows[0]?.date_to   ?? '');
+      html += secTable('accommodation', 'Konaklama', rows.map(r => ({
+        svc: r.description,
+        checkin:  acIn  ? fmtDate(acIn)  : '',
+        checkout: acOut ? fmtDate(acOut) : '',
+        qty: `${r.qty||1} ${r.unit||''}`.trim(), notes: r.notes||''
+      })));
+    }
   }
 
-  // Toplantı
-  if (relevantSections.includes('meeting') && (items.meeting||[]).filter(r=>r.description).length) {
+  if (relevantSections.includes('meeting')) {
     const rows = (items.meeting||[]).filter(r=>r.description);
-    html += `<table style="border-collapse:collapse;width:100%;margin-bottom:16px;">
-  <tr><td colspan="5" style="${hs}">🏛 TOPLANTI / SALON DETAYLARI</td></tr>
-  <tr><th style="${ss}">Hizmet</th><th style="${ss}">Miktar</th><th style="${ss}">Birim</th><th style="${ss}">Tarih</th><th style="${ss}">Düzen</th></tr>`;
-    rows.forEach(r => {
-      const dateStr = r.date_from ? (r.date_to && r.date_to!==r.date_from ? `${fmtDate(r.date_from)} – ${fmtDate(r.date_to)}` : fmtDate(r.date_from)) : '';
-      html += `<tr><td style="${vs}">${escH(r.description)}</td><td style="${vs}">${r.qty||1}</td><td style="${vs}">${escH(r.unit||'')}</td><td style="${vs}">${escH(dateStr)}</td><td style="${vs}">${escH(r.seating_layout||'')}</td></tr>`;
-    });
-    html += `</table>`;
+    if (rows.length) {
+      html += secTable('meeting', 'Toplantı / Salon', rows.map(r => ({
+        svc: r.description,
+        date: r.date_from ? (r.date_to && r.date_to!==r.date_from ? `${fmtDate(r.date_from)} – ${fmtDate(r.date_to)}` : fmtDate(r.date_from)) : '',
+        qty: `${r.qty||1} ${r.unit||''}`.trim(),
+        notes: [r.seating_layout, r.notes].filter(Boolean).join(' · ')
+      })));
+    }
   }
 
-  // Diğer ilgili seksiyonlar
-  const otherSecs = relevantSections.filter(s => s !== 'accommodation' && s !== 'meeting');
+  const otherSecs = relevantSections.filter(s => s!=='accommodation' && s!=='meeting');
   otherSecs.forEach(sec => {
     const rows = (items[sec]||[]).filter(r=>r.description);
     if (!rows.length) return;
-    html += `<table style="border-collapse:collapse;width:100%;margin-bottom:16px;">
-  <tr><td colspan="5" style="${hs}">${escH(SECTION_TITLES[sec]||sec)}</td></tr>
-  <tr><th style="${ss}">Hizmet</th><th style="${ss}">Miktar</th><th style="${ss}">Birim</th><th style="${ss}">Tarih</th><th style="${ss}">Notlar</th></tr>`;
-    rows.forEach(r => {
-      const dateStr = r.date_from ? (r.date_to && r.date_to!==r.date_from ? `${fmtDate(r.date_from)} – ${fmtDate(r.date_to)}` : fmtDate(r.date_from)) : '';
-      html += `<tr><td style="${vs}">${escH(r.description)}</td><td style="${vs}">${r.qty||1}</td><td style="${vs}">${escH(r.unit||'')}</td><td style="${vs}">${escH(dateStr)}</td><td style="${vs}">${escH(r.notes||'')}</td></tr>`;
-    });
-    html += `</table>`;
+    html += secTable(sec, SECTION_TITLES[sec]||sec, rows.map(r => ({
+      svc: r.description,
+      date: r.date_from ? (r.date_to && r.date_to!==r.date_from ? `${fmtDate(r.date_from)} – ${fmtDate(r.date_to)}` : fmtDate(r.date_from)) : '',
+      qty: `${r.qty||1} ${r.unit||''}`.trim(),
+      notes: r.notes||''
+    })));
   });
 
-  html += `<table style="border-collapse:collapse;width:100%;margin-bottom:16px;">
-  <tr><td colspan="2" style="${hs}">TEKLİF FORMATI</td></tr>
-  <tr><td colspan="2" style="${vs}">
-    Lütfen fiyatlarınıza <strong>KDV oranlarını</strong> ve <strong>KDV'nin dahil olup olmadığını</strong> belirtiniz.<br>
-    <strong>Teklif son tarihi: ${deadlineDate()}</strong>
-  </td></tr>
-</table>
-<p style="font-size:13px;color:#64748b;margin-top:16px;">Saygılarımızla,<br>E-dem Etkinlik Yönetimi</p>
+  html += `
+    <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:16px 20px;margin-top:4px;">
+      <div style="color:#78350f;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">⏰ Teklif Son Tarihi</div>
+      <div style="color:#92400e;font-size:16px;font-weight:700;margin-bottom:6px;">${deadlineDate()}</div>
+      <div style="color:#78350f;font-size:12px;line-height:1.5;">Lütfen fiyatlarınıza <strong>KDV oranlarını</strong> ve <strong>KDV'nin dahil olup olmadığını</strong> belirtiniz.</div>
+    </div>
+
+  </div>
+
+  <div style="background:${light};padding:18px 36px;border-radius:0 0 10px 10px;border:1px solid ${border};border-top:none;">
+    <p style="margin:0;font-size:12px;color:${tMuted};line-height:1.8;">
+      Saygılarımızla,<br>
+      <strong style="color:${tDark};font-size:13px;">E-dem Etkinlik Yönetimi</strong>
+    </p>
+  </div>
+
 </div>`;
   return html;
 }
@@ -793,54 +1167,98 @@ function buildEmailHtml(venue, contactNames, filterSection) {
 function buildEmailText(venue, contactNames, filterSection) {
   const greeting = contactNames.length ? `Sayın ${contactNames[0]},` : 'Sayın İlgili,';
   const items = REQ_DATA.items || {};
-  const hasAccomDates = REQ_DATA.accom_check_in || (items.accommodation||[]).some(r => r.date_from);
   const relevantSections = filterSection
     ? [filterSection]
     : (SUPPLIER_SECTIONS[venue.supplier_type] || Object.keys(SECTION_TITLES));
 
+  // Türkçe ay isimleriyle tarih formatlama
+  const TR_MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
+                     'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  function trDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${d.getDate()} ${TR_MONTHS[d.getMonth()]}`;
+  }
+  function trDateFull(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  }
+  // "25 & 26 Mart 2026" veya "25 Mart – 2 Nisan 2026"
+  function trRange(from, to) {
+    if (!from) return '';
+    if (!to || from === to) return trDateFull(from);
+    const d1 = new Date(from), d2 = new Date(to);
+    if (d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear()) {
+      return `${d1.getDate()} & ${d2.getDate()} ${TR_MONTHS[d1.getMonth()]} ${d1.getFullYear()}`;
+    }
+    return `${trDate(from)} – ${trDateFull(to)}`;
+  }
+
   let txt = `${greeting}\n\n`;
-  txt += `${fmtDate(REQ_DATA.check_in)} – ${fmtDate(REQ_DATA.check_out)} tarihleri arasında gerçekleştirilecek "${REQ_DATA.event_name}" etkinliğimiz için müsaitlik ve fiyat bildiriminizi rica ederiz.\n\n`;
-  txt += `ETKİNLİK BİLGİLERİ\n─────────────────\n`;
-  txt += `Müşteri     : ${REQ_DATA.client_name}\n`;
-  txt += `Tarih       : ${fmtDate(REQ_DATA.check_in)} – ${fmtDate(REQ_DATA.check_out)}\n`;
-  txt += `Kişi Sayısı : ${REQ_DATA.attendee_count} kişi\n\n`;
+  txt += `${REQ_DATA.event_name} etkinliğimiz için fiyat teklifi talebimizi iletmek istiyoruz.\n\n`;
+  txt += `Referans No  : ${REQ_DATA.request_no}\n`;
+  txt += `Müşteri      : ${REQ_DATA.client_name}\n`;
+  txt += `Tarih        : ${trRange(REQ_DATA.check_in, REQ_DATA.check_out)}\n`;
+  txt += `Kişi Sayısı  : ${REQ_DATA.attendee_count} kişi\n`;
 
-  if (hasAccomDates && relevantSections.includes('accommodation')) {
-    const rows = (items.accommodation||[]).filter(r=>r.description);
+  // ── KONAKLAMA DETAYLARI ──
+  if (relevantSections.includes('accommodation')) {
+    const rows = (items.accommodation||[]).filter(r => r.description);
     if (rows.length) {
-      txt += `KONAKLAMA\n─────────\n`;
-      if (REQ_DATA.accom_check_in) txt += `Giriş : ${fmtDate(REQ_DATA.accom_check_in)}\n`;
-      if (REQ_DATA.accom_check_out) txt += `Çıkış : ${fmtDate(REQ_DATA.accom_check_out)}\n`;
-      rows.forEach(r => txt += `• ${r.description}  ${r.qty||1} ${r.unit||''}\n`);
-      txt += '\n';
+      const acIn  = REQ_DATA.accom_check_in  || rows[0]?.date_from || '';
+      const acOut = REQ_DATA.accom_check_out || rows[0]?.date_to   || '';
+      txt += `\nKONAKLAMA DETAYLARI\n`;
+      if (acIn || acOut) {
+        txt += `${trDate(acIn)} giriş – ${trDate(acOut)} çıkış\n`;
+      }
+      rows.forEach(r => {
+        const qty = parseInt(r.qty) || 1;
+        let line = qty > 1 ? `${qty} ${r.description}` : r.description;
+        if (r.notes) line += ` (${r.notes})`;
+        txt += `${line}\n`;
+      });
     }
   }
+
+  // ── TOPLANTI DETAYLARI ──
   if (relevantSections.includes('meeting')) {
-    const rows = (items.meeting||[]).filter(r=>r.description);
+    const rows = (items.meeting||[]).filter(r => r.description);
     if (rows.length) {
-      txt += `TOPLANTI / SALON\n────────────────\n`;
+      const allFrom = rows.map(r => r.date_from).filter(Boolean).sort();
+      const allTo   = rows.map(r => r.date_to || r.date_from).filter(Boolean).sort();
+      const firstD  = allFrom[0] || REQ_DATA.check_in;
+      const lastD   = allTo[allTo.length - 1] || REQ_DATA.check_out;
+      txt += `\nTOPLANTI DETAYLARI\n`;
+      if (firstD) txt += `${trRange(firstD, lastD)}\n`;
+      txt += `${REQ_DATA.attendee_count} kişi\n`;
       rows.forEach(r => {
-        const d = r.date_from ? fmtDate(r.date_from) : '';
-        txt += `• ${r.description}  ${r.qty||1} ${r.unit||''}${d?' — '+d:''}\n`;
+        let line = r.description;
+        if (r.notes) line += ` (${r.notes})`;
+        txt += `${line}\n`;
       });
-      txt += '\n';
     }
   }
-  const otherSecs = relevantSections.filter(s => s!=='accommodation' && s!=='meeting');
-  otherSecs.forEach(sec => {
-    const rows = (items[sec]||[]).filter(r=>r.description);
-    if (rows.length) {
-      txt += `${SECTION_TITLES[sec]||sec}\n${'─'.repeat(24)}\n`;
-      rows.forEach(r => {
-        const d = r.date_from ? (r.date_to && r.date_to!==r.date_from ? `${fmtDate(r.date_from)} – ${fmtDate(r.date_to)}` : fmtDate(r.date_from)) : '';
-        const n = r.notes ? ` (${r.notes})` : '';
-        txt += `• ${r.description}  ${r.qty||1} ${r.unit||''}${d?' — '+d:''}${n}\n`;
-      });
-      txt += '\n';
-    }
-  });
 
-  txt += `Teklif son tarihi: ${deadlineDate()}\nLütfen fiyatlarınıza KDV oranlarını ve KDV'nin dahil olup olmadığını belirtiniz.\n\nSaygılarımızla,\nE-dem Etkinlik Yönetimi`;
+  // ── TALEP EDİLEN SERVİSLER (F&B + diğer tüm seksiyonlar) ──
+  const serviceSecs = relevantSections.filter(s => s !== 'accommodation' && s !== 'meeting');
+  const serviceRows = [];
+  serviceSecs.forEach(sec => {
+    (items[sec]||[]).filter(r => r.description).forEach(r => serviceRows.push(r));
+  });
+  if (serviceRows.length) {
+    txt += `\nTALEP EDİLEN SERVİSLER\n`;
+    serviceRows.forEach(r => {
+      let line = r.description;
+      if (r.notes) line += ` (${r.notes})`;
+      txt += `${line}\n`;
+    });
+  }
+
+  txt += `\n─────────────────────────────────────\n`;
+  txt += `Teklif son tarihi: ${deadlineDate()}\n`;
+  txt += `Lütfen fiyatlarınıza KDV oranlarını ve KDV'nin dahil olup olmadığını belirtiniz.\n\n`;
+  txt += `Saygılarımızla,\nE-dem Etkinlik Yönetimi`;
   return txt;
 }
 
@@ -885,9 +1303,42 @@ let _activeSection = null;
   if (firstActive) _activeSection = firstActive.getAttribute('data-section');
 })();
 
+const _SECTION_SUPPLIER_TYPES = {
+  accommodation: ['otel', 'etkinlik'],
+  meeting:       ['otel', 'etkinlik'],
+  fb:            ['otel', 'etkinlik', 'restaurant'],
+  teknik:        ['teknik'],
+  dekor:         ['dekor', 'susleme'],
+  transfer:      ['transfer'],
+  tasarim:       ['tasarim'],
+  other:         ['ik', 'diger', 'restaurant', 'susleme'],
+};
+
+function filterSelectedVenues(section) {
+  const allowed = _SECTION_SUPPLIER_TYPES[section] || null;
+  document.querySelectorAll('.selected-venue-badge').forEach(el => {
+    if (!allowed || allowed.includes(el.getAttribute('data-supplier-type'))) {
+      el.style.display = '';
+    } else {
+      el.style.display = 'none';
+    }
+  });
+  // Hiç görünen yoksa kartı gizle
+  const card = document.getElementById('selectedVenuesCard');
+  if (card) {
+    const anyVisible = [...document.querySelectorAll('.selected-venue-badge')]
+      .some(el => el.style.display !== 'none');
+    card.style.display = anyVisible ? '' : 'none';
+  }
+}
+
 function onSectionTabClick(section) {
   _activeSection = section;
+  filterSelectedVenues(section);
 }
+
+// Sayfa yüklenince ilk aktif sekmeye göre filtrele
+if (_activeSection) filterSelectedVenues(_activeSection);
 
 // ─── RFQ kart sayacı ve aktif emailFilterSection ───
 let _rfqCardCount     = 0;
@@ -1198,86 +1649,105 @@ function updateRfqCard(vi) {
 function buildRfqCard(venue, vi, emailFilterSection) {
   const contacts = venue.contacts && venue.contacts.length ? venue.contacts : [];
 
-  // Venue datasını window'da sakla — onchange'de güvenli erişim için
   window[`_rfqVenueData${vi}`] = venue;
   window[`_rfqEFS${vi}`]       = emailFilterSection;
 
-  // İlk email: tüm kontaklar seçili
   const initNames  = contacts.map(c => c.name).filter(Boolean);
   const initEmails = contacts.map(c => c.email).filter(Boolean);
-  const initHtml = buildEmailHtml(venue, initNames, emailFilterSection);
-  const initText = buildEmailText(venue, initNames, emailFilterSection);
+  const initHtml   = buildEmailHtml(venue, initNames, emailFilterSection);
+  const initText   = buildEmailText(venue, initNames, emailFilterSection);
   window[`_rfqHtml${vi}`] = initHtml;
   window[`_rfqText${vi}`] = initText;
 
   const subject    = encodeURIComponent(`${REQ_DATA.event_name} Fiyat Teklifi - ${REQ_DATA.request_no}`);
   const initMailto = `mailto:${initEmails.join(',')}?subject=${subject}&body=${encodeURIComponent(initText)}`;
 
+  const typeLabel = escH(_RFQ_TYPE_LABELS[venue.supplier_type] || venue.supplier_type);
+
   const div = document.createElement('div');
-  div.className = 'rfq-card mb-4';
+  div.style.cssText = 'background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:20px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);';
   div.innerHTML = `
-    <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
-      <div style="flex:1; min-width:200px;">
-        <div class="rfq-venue-name">${escH(venue.name)}
-          <span class="badge bg-secondary bg-opacity-10 text-secondary ms-2" style="font-size:10px; font-weight:500;">
-            ${escH(_RFQ_TYPE_LABELS[venue.supplier_type] || venue.supplier_type)}
-          </span>
+    <!-- Card Header -->
+    <div style="background:#f8fafc;padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+        <div style="width:38px;height:38px;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="bi bi-building" style="color:#93c5fd;font-size:16px;"></i>
         </div>
-        <div class="rfq-venue-city"><i class="bi bi-geo-alt me-1"></i>${escH(venue.city)}</div>
+        <div style="min-width:0;">
+          <div style="font-weight:700;font-size:14px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${escH(venue.name)}
+            <span style="font-size:10px;font-weight:600;background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:10px;margin-left:6px;vertical-align:middle;">${typeLabel}</span>
+          </div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px;">
+            <i class="bi bi-geo-alt" style="font-size:11px;margin-right:3px;"></i>${escH(venue.city)}
+          </div>
+        </div>
       </div>
-      <div class="d-flex gap-2 flex-wrap align-items-start">
-        <button type="button" class="btn btn-outline-primary btn-sm"
-                onclick="copyHtmlToClipboard(window['_rfqHtml${vi}'])">
-          <i class="bi bi-clipboard-check me-1"></i>Zengin Metin
+      <div style="display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;">
+        <button type="button" onclick="copyHtmlToClipboard(window['_rfqHtml${vi}'])"
+          style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#2563eb;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          <i class="bi bi-clipboard-check"></i> Zengin Metin
         </button>
-        <button type="button" class="btn btn-outline-secondary btn-sm"
-                onclick="copyTextToClipboard(window['_rfqText${vi}'])">
-          <i class="bi bi-clipboard me-1"></i>Düz Metin
+        <button type="button" onclick="copyTextToClipboard(window['_rfqText${vi}'])"
+          style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#ffffff;color:#475569;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          <i class="bi bi-clipboard"></i> Düz Metin
         </button>
         ${contacts.length ? `
-        <a id="rfqMailto${vi}" href="${escH(initMailto)}" class="btn btn-warning btn-sm">
-          <i class="bi bi-envelope me-1"></i>Mail Aç
+        <a id="rfqMailto${vi}" href="${escH(initMailto)}"
+          style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#f59e0b;color:#ffffff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">
+          <i class="bi bi-envelope-arrow-up"></i> Mail Aç
         </a>` : ''}
       </div>
     </div>
 
-    ${contacts.length ? `
-    <div class="mb-2 p-2 border rounded" style="background:#f8fafc; font-size:12px;">
-      <div class="fw-semibold mb-1" style="font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#64748b;">
-        <i class="bi bi-people me-1"></i>Alıcılar — göndermek istediklerinizi seçin
+    <!-- Contacts -->
+    <div style="padding:14px 20px;border-bottom:1px solid #e2e8f0;">
+      ${contacts.length ? `
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;margin-bottom:8px;">
+        <i class="bi bi-people" style="margin-right:4px;"></i>Alıcılar
       </div>
-      <div id="rfqContacts${vi}">
+      <div id="rfqContacts${vi}" style="display:flex;flex-wrap:wrap;gap:6px;">
         ${contacts.map(c => `
-        <label style="display:inline-flex; align-items:center; gap:6px; margin:3px 8px 3px 0; cursor:pointer; font-size:12px;">
-          <input type="checkbox" checked
+        <label style="display:inline-flex;align-items:center;gap:7px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px;transition:background .15s;"
+               onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+          <input type="checkbox" checked style="width:14px;height:14px;cursor:pointer;accent-color:#2563eb;"
                  data-name="${escH(c.name||'')}"
                  data-email="${escH(c.email||'')}"
                  onchange="updateRfqCard(${vi})">
-          <span>
-            <strong>${escH(c.name||'')}</strong>
-            ${c.title ? `<span class="text-muted"> · ${escH(c.title)}</span>` : ''}
+          <div>
+            <div style="font-weight:600;color:#1e293b;line-height:1.3;">${escH(c.name||'')}${c.title ? `<span style="font-weight:400;color:#94a3b8;margin-left:4px;">${escH(c.title)}</span>` : ''}</div>
             ${c.email
-              ? `<a href="mailto:${escH(c.email)}" style="color:#3b82f6; margin-left:4px; font-size:11px;">${escH(c.email)}</a>`
-              : '<span class="text-danger ms-1" style="font-size:11px;">e-posta yok</span>'}
-          </span>
+              ? `<div style="font-size:11px;color:#3b82f6;">${escH(c.email)}</div>`
+              : `<div style="font-size:11px;color:#ef4444;">e-posta yok</div>`}
+          </div>
         </label>`).join('')}
-      </div>
-    </div>` : '<div class="text-danger mb-2" style="font-size:12px;"><i class="bi bi-exclamation-triangle me-1"></i>Bu tedarikçide kontak bilgisi tanımlı değil.</div>'}
-
-    <div class="text-muted mb-2" style="font-size:11px;">
-      Konu: <strong>${escH(REQ_DATA.event_name)} Fiyat Teklifi — ${escH(REQ_DATA.request_no)}</strong>
+      </div>` : `
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;">
+        <i class="bi bi-exclamation-circle" style="color:#ef4444;font-size:14px;"></i>
+        <span style="font-size:13px;color:#b91c1c;">Bu tedarikçide kontak bilgisi tanımlı değil.</span>
+      </div>`}
     </div>
 
-    <details>
-      <summary style="cursor:pointer; font-size:12px; color:#64748b; user-select:none; padding:4px 0;">
-        <i class="bi bi-eye me-1"></i>E-posta Önizleme
-      </summary>
-      <div class="mt-2">
-        <div id="rfqPreview${vi}" class="p-3 border rounded bg-white" style="max-height:400px; overflow-y:auto;">
-          ${initHtml}
-        </div>
+    <!-- Subject + Preview -->
+    <div style="padding:12px 20px;">
+      <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">
+        <span style="font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Konu:</span>
+        <span style="color:#475569;margin-left:6px;">${escH(REQ_DATA.event_name)} Fiyat Teklifi — ${escH(REQ_DATA.request_no)}</span>
       </div>
-    </details>`;
+      <details>
+        <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#2563eb;user-select:none;list-style:none;display:inline-flex;align-items:center;gap:5px;padding:5px 0;">
+          <i class="bi bi-eye" style="font-size:13px;"></i> E-posta Önizleme
+        </summary>
+        <div style="margin-top:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+          <div style="background:#f8fafc;padding:6px 14px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0;">
+            Önizleme — Outlook veya Gmail'e yapıştırıldığında bu görünümü korur
+          </div>
+          <div id="rfqPreview${vi}" style="padding:20px;background:#ffffff;max-height:500px;overflow-y:auto;">
+            ${initHtml}
+          </div>
+        </div>
+      </details>
+    </div>`;
 
   return div;
 }

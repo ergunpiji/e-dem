@@ -243,50 +243,99 @@
           <div class="form-text">Müşterinin teklif formatına uygun .xlsx dosyasını yükleyin.</div>
         </div>
 
-        {# Sütun eşleştirme #}
+        {# KDV Modu + AI Analiz + Cell Map #}
+        <hr>
+        {% set cfg = customer.excel_config %}
+        {% set current_vat_mode = cfg.get('vat_mode', 'exclusive') %}
+        {% set cell_map_json = cfg.get('cell_map', {}) | tojson(indent=2) %}
+
+        {# KDV Görüntüleme Tercihi #}
+        <div class="mb-4">
+          <h6 class="fw-semibold mb-2" style="font-size:13px;">
+            <i class="bi bi-percent me-1 text-warning"></i>KDV Görüntüleme Tercihi
+          </h6>
+          <form method="post" action="/customers/{{ customer.id }}/excel-config" id="vatModeForm">
+            <input type="hidden" name="cell_map" id="cellMapHiddenVat" value="{{ cell_map_json | e }}">
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="vat_mode" id="vatExcl" value="exclusive"
+                       {% if current_vat_mode == 'exclusive' %}checked{% endif %}>
+                <label class="form-check-label" for="vatExcl" style="font-size:13px;">
+                  <strong>KDV Hariç</strong> — Fiyatlar KDV hariç, KDV dökümü altta ayrıca gösterilir
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="vat_mode" id="vatIncl" value="inclusive"
+                       {% if current_vat_mode == 'inclusive' %}checked{% endif %}>
+                <label class="form-check-label" for="vatIncl" style="font-size:13px;">
+                  <strong>KDV Dahil</strong> — Fiyatlar KDV dahil, toplam tutarlar nihai
+                </label>
+              </div>
+            </div>
+            <div class="mt-2">
+              <button type="submit" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-check-lg me-1"></i>KDV Tercihini Kaydet
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {# AI Template Analizi #}
+        {% if customer.excel_template_path %}
+        <hr>
+        <div class="mb-4">
+          <h6 class="fw-semibold mb-2" style="font-size:13px;">
+            <i class="bi bi-cpu me-1 text-purple" style="color:#7c3aed;"></i>AI Template Analizi
+          </h6>
+          <p class="text-muted mb-3" style="font-size:12px;">
+            Yüklü template'i yapay zeka ile analiz edin. Claude, template'in hangi hücrelerine
+            hangi E-dem verilerinin yazılacağını otomatik belirler.
+          </p>
+          {% set has_map = cfg.get('cell_map') %}
+          {% if has_map %}
+          <div class="alert alert-success py-2 mb-3" style="font-size:12px;">
+            <i class="bi bi-check-circle me-1"></i>
+            <strong>Cell map kayıtlı.</strong> Template doldurma aktif.
+            Son güncelleme: mevcut kayıtlı eşleştirme kullanılıyor.
+          </div>
+          {% endif %}
+          <div class="d-flex gap-2 align-items-center">
+            <button type="button" class="btn btn-sm btn-primary" id="analyzeBtn"
+                    onclick="analyzeTemplate('{{ customer.id }}')">
+              <i class="bi bi-cpu me-1"></i>AI ile Analiz Et
+            </button>
+            <span id="analyzeSpinner" class="d-none">
+              <span class="spinner-border spinner-border-sm text-primary me-1"></span>
+              <span style="font-size:12px;">Analiz ediliyor...</span>
+            </span>
+          </div>
+          <div id="analyzeResult" class="mt-3 d-none">
+            <div class="alert" id="analyzeAlert"></div>
+          </div>
+        </div>
+        {% endif %}
+
+        {# Manuel Cell Map Düzenleme #}
         <hr>
         <div>
           <h6 class="fw-semibold mb-1" style="font-size:13px;">
-            <i class="bi bi-table me-1 text-primary"></i>Sütun Eşleştirmesi
+            <i class="bi bi-code-slash me-1 text-secondary"></i>Cell Map (Gelişmiş Düzenleme)
           </h6>
-          <p class="text-muted mb-3" style="font-size:12px;">
-            Template'deki hangi sütuna hangi verinin yazılacağını belirtin. Sütun harfi veya numarası girin (A, B, C... veya 1, 2, 3...).
-            Boş bırakılan sütunlar doldurulmaz.
+          <p class="text-muted mb-2" style="font-size:12px;">
+            AI analiz sonucunu veya manuel oluşturduğunuz cell_map JSON'ını yapıştırın.
+            <a href="https://github.com" target="_blank" style="font-size:11px;">Format hakkında bilgi</a>
           </p>
-          {% set cfg = customer.excel_config %}
-          {% set col_map = cfg.get('columns', {}) %}
           <form method="post" action="/customers/{{ customer.id }}/excel-config">
-            <div class="row g-2 mb-3">
-              <div class="col-md-3">
-                <label class="form-label fw-semibold" style="font-size:12px;">Veri Başlangıç Satırı</label>
-                <input type="number" name="data_start_row" class="form-control form-control-sm"
-                       value="{{ cfg.get('data_start_row', 2) }}" min="1" placeholder="2">
-                <div class="form-text" style="font-size:10px;">Başlık kaç satır? Veriler hangi satırdan başlayacak?</div>
-              </div>
-            </div>
-            <div class="row g-2">
-              {% set fields = [
-                ('col_service_name',   'Hizmet Adı',              'service_name'),
-                ('col_unit',           'Birim',                   'unit'),
-                ('col_qty',            'Miktar',                  'qty'),
-                ('col_nights',         'Gün / Gece',              'nights'),
-                ('col_sale_price',     'Satış Fiyatı (KDV hariç)','sale_price'),
-                ('col_vat_rate',       'KDV Oranı',               'vat_rate'),
-                ('col_sale_price_inc', 'Satış Fiyatı (KDV dahil)','sale_price_inc'),
-                ('col_total_inc',      'Toplam (KDV dahil)',       'total_inc'),
-              ] %}
-              {% for fname, label, key in fields %}
-              <div class="col-6 col-md-3">
-                <label class="form-label" style="font-size:11px; font-weight:600; color:#374151;">{{ label }}</label>
-                <input type="text" name="{{ fname }}" class="form-control form-control-sm text-center fw-bold"
-                       style="letter-spacing:2px; text-transform:uppercase;"
-                       value="{{ col_map.get(key, '') }}" placeholder="—" maxlength="3">
-              </div>
-              {% endfor %}
-            </div>
-            <div class="mt-3">
+            <input type="hidden" name="vat_mode" value="{{ current_vat_mode }}">
+            <textarea name="cell_map" id="cellMapTextarea" class="form-control form-control-sm font-monospace"
+                      rows="10" style="font-size:11px; background:#f8fafc;">{{ cell_map_json }}</textarea>
+            <div class="mt-2">
               <button type="submit" class="btn btn-sm btn-primary">
-                <i class="bi bi-check-lg me-1"></i>Sütun Eşleştirmesini Kaydet
+                <i class="bi bi-check-lg me-1"></i>Cell Map'i Kaydet
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-2"
+                      onclick="formatCellMap()">
+                <i class="bi bi-braces me-1"></i>Formatla
               </button>
             </div>
           </form>
@@ -302,6 +351,54 @@
 
 {% block extra_scripts %}
 <script>
+// ─── AI Template Analiz ───
+async function analyzeTemplate(customerId) {
+  const btn     = document.getElementById('analyzeBtn');
+  const spinner = document.getElementById('analyzeSpinner');
+  const result  = document.getElementById('analyzeResult');
+  const alert   = document.getElementById('analyzeAlert');
+  const textarea = document.getElementById('cellMapTextarea');
+
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+  result.classList.add('d-none');
+
+  try {
+    const res  = await fetch(`/customers/${customerId}/analyze-template`, { method: 'POST' });
+    const data = await res.json();
+
+    result.classList.remove('d-none');
+
+    if (data.error) {
+      alert.className = 'alert alert-danger py-2';
+      alert.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i><strong>Hata:</strong> ${data.error}`;
+    } else {
+      alert.className = 'alert alert-success py-2';
+      alert.innerHTML = `<i class="bi bi-check-circle me-1"></i><strong>Analiz tamamlandı!</strong> Cell map oluşturuldu ve kaydedildi.`;
+      if (textarea && data.cell_map) {
+        textarea.value = JSON.stringify(data.cell_map, null, 2);
+      }
+    }
+  } catch (err) {
+    result.classList.remove('d-none');
+    alert.className = 'alert alert-danger py-2';
+    alert.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i>İstek hatası: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+  }
+}
+
+function formatCellMap() {
+  const ta = document.getElementById('cellMapTextarea');
+  if (!ta) return;
+  try {
+    ta.value = JSON.stringify(JSON.parse(ta.value), null, 2);
+  } catch (e) {
+    alert('Geçersiz JSON formatı');
+  }
+}
+
 // ─── Kontak Kişiler ───
 let contacts = [];
 try {

@@ -235,44 +235,82 @@ async def customers_upload_template(
 
 @router.post("/{customer_id}/excel-config", name="customers_excel_config")
 async def customers_excel_config(
-    customer_id:        str,
-    data_start_row:     str = Form("2"),
-    col_service_name:   str = Form(""),
-    col_unit:           str = Form(""),
-    col_qty:            str = Form(""),
-    col_nights:         str = Form(""),
-    col_sale_price:     str = Form(""),
-    col_vat_rate:       str = Form(""),
-    col_sale_price_inc: str = Form(""),
-    col_total_inc:      str = Form(""),
-    current_user:       User = Depends(require_admin),
-    db:                 Session = Depends(get_db),
+    customer_id: str,
+    vat_mode:    str = Form("exclusive"),   # exclusive | inclusive
+    cell_map:    str = Form("{}"),          # JSON string
+    current_user: User = Depends(require_admin),
+    db:           Session = Depends(get_db),
 ):
+    """
+    Müşteriye ait Excel export ayarlarını kaydeder.
+    cell_map: AI analiz sonucu veya manuel düzenleme (JSON string)
+    vat_mode: 'exclusive' → KDV hariç | 'inclusive' → KDV dahil
+    """
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
 
-    config = {
-        "data_start_row": int(data_start_row or 2),
-        "columns": {
-            "service_name":   col_service_name.strip().upper() or None,
-            "unit":           col_unit.strip().upper() or None,
-            "qty":            col_qty.strip().upper() or None,
-            "nights":         col_nights.strip().upper() or None,
-            "sale_price":     col_sale_price.strip().upper() or None,
-            "vat_rate":       col_vat_rate.strip().upper() or None,
-            "sale_price_inc": col_sale_price_inc.strip().upper() or None,
-            "total_inc":      col_total_inc.strip().upper() or None,
-        },
-    }
-    # None değerleri kaldır
-    config["columns"] = {k: v for k, v in config["columns"].items() if v}
-    customer.excel_config_json = json.dumps(config, ensure_ascii=False)
+    try:
+        parsed_map = json.loads(cell_map or "{}")
+    except json.JSONDecodeError:
+        parsed_map = {}
+
+    # Mevcut config'i al, sadece ilgili alanları güncelle
+    existing = customer.excel_config
+    existing["vat_mode"] = vat_mode if vat_mode in ("exclusive", "inclusive") else "exclusive"
+    if parsed_map:
+        existing["cell_map"] = parsed_map
+
+    customer.excel_config_json = json.dumps(existing, ensure_ascii=False)
     db.commit()
     return RedirectResponse(
         url=f"/customers/{customer_id}/edit?saved=config",
         status_code=status.HTTP_302_FOUND,
     )
+
+
+@router.post("/{customer_id}/analyze-template", name="customers_analyze_template")
+async def customers_analyze_template(
+    customer_id:  str,
+    current_user: User = Depends(require_admin),
+    db:           Session = Depends(get_db),
+):
+    """
+    Yüklü Excel template'ini Claude API ile analiz eder.
+    Oluşan cell_map'i customer.excel_config_json'a kaydeder.
+    Sonucu JSON olarak döndürür (UI önizleme için).
+    """
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
+
+    template_path = customer.excel_template_path or ""
+    if not template_path or not os.path.exists(template_path):
+        return JSONResponse({"error": "Template dosyası yüklenmemiş"}, status_code=400)
+
+    try:
+        from excel_export import analyze_template
+        result = await analyze_template(template_path=template_path)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    if result.get("error"):
+        return JSONResponse(result, status_code=422)
+
+    # Başarılıysa config'e kaydet
+    existing = customer.excel_config
+    existing["cell_map"] = result["cell_map"]
+    if "vat_mode" in result["cell_map"]:
+        existing["vat_mode"] = result["cell_map"].pop("vat_mode")
+    customer.excel_config_json = json.dumps(existing, ensure_ascii=False)
+    db.commit()
+
+    return JSONResponse({
+        "cell_map":     result["cell_map"],
+        "vat_mode":     existing.get("vat_mode", "exclusive"),
+        "raw_response": result.get("raw_response", ""),
+        "error":        None,
+    })
 
 
 @router.post("/{customer_id}/upload-doc", name="customers_upload_doc")

@@ -23,14 +23,16 @@
   .subtotals-row td { font-weight: 600; background: #f1f5f9; }
   .grand-total-row td { font-weight: 800; font-size: 14px; background: #eff6ff; color: #1d4ed8; border-top: 2px solid #93c5fd; }
   .service-fee-row td { background: #fefce8; font-weight: 600; }
+  .currency-badge { font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 4px; background: #dbeafe; color: #1d4ed8; letter-spacing: .3px; }
+  .try-hint { font-size: 10px; color: #94a3b8; margin-top: 2px; }
 </style>
 {% endblock %}
 
 {% block content %}
 
 <div class="mb-3">
-  <a href="/budgets" class="text-muted text-decoration-none" style="font-size:13px;">
-    <i class="bi bi-arrow-left me-1"></i> Bütçe Listesine Dön
+  <a href="{{ back_url }}" class="text-muted text-decoration-none" style="font-size:13px;">
+    <i class="bi bi-arrow-left me-1"></i> {{ back_label }}
   </a>
 </div>
 
@@ -70,9 +72,25 @@
         {% endif %}
         {% endif %}
         {% if budget.budget_status == 'approved' and current_user.role in ('admin', 'project_manager') %}
-        <a href="/budgets/{{ budget.id }}/export" class="btn btn-success btn-sm">
-          <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
-        </a>
+        <div class="btn-group btn-group-sm">
+          <a href="/budgets/{{ budget.id }}/export?vat=exclusive" class="btn btn-success btn-sm">
+            <i class="bi bi-file-earmark-excel me-1"></i>Excel (KDV Hariç)
+          </a>
+          <button type="button" class="btn btn-success btn-sm dropdown-toggle dropdown-toggle-split"
+                  data-bs-toggle="dropdown"></button>
+          <ul class="dropdown-menu">
+            <li>
+              <a class="dropdown-item" href="/budgets/{{ budget.id }}/export?vat=exclusive">
+                <i class="bi bi-file-earmark-excel me-2 text-success"></i>KDV Hariç (fiyatlar + KDV dökümü)
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="/budgets/{{ budget.id }}/export?vat=inclusive">
+                <i class="bi bi-file-earmark-excel me-2 text-success"></i>KDV Dahil (nihai fiyatlar)
+              </a>
+            </li>
+          </ul>
+        </div>
         {% endif %}
       </div>
     </div>
@@ -137,6 +155,9 @@
 
 {% set show_cost = true %}
 
+{% set CURRENCY_SYMBOLS = {'TRY': '₺', 'EUR': '€', 'USD': '$'} %}
+{# offer_currency ve exchange_rates router'dan geliyor #}
+
 <div class="card mb-4">
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -147,6 +168,7 @@
             <th>Birim</th>
             <th>Miktar</th>
             <th>Gece</th>
+            <th style="width:70px;">Para Bir.</th>
             {% if show_cost %}
             <th>Birim Maliyet</th>
             {% endif %}
@@ -160,7 +182,7 @@
           {% set sec_rows = rows_by_section.get(sec, []) %}
           {% if sec_rows %}
 
-          {% set colspan_val = 6 if show_cost else 5 %}
+          {% set colspan_val = 7 if show_cost else 6 %}
           <tr class="section-header-row">
             <td class="ps-3" colspan="{{ colspan_val }}">{{ SECTION_LABELS.get(sec, sec) }}</td>
           </tr>
@@ -168,17 +190,22 @@
           {% set sec_ns = namespace(cost_ex=0, sale_ex=0) %}
 
           {% for row in sec_rows %}
-          {% set qty      = row.qty|float if row.qty else 1 %}
-          {% set nights   = row.nights|float if row.nights else 1 %}
-          {% set cost     = row.cost_price|float if row.cost_price else 0 %}
-          {% set sale     = row.sale_price|float if row.sale_price else 0 %}
-          {% set vat      = row.vat_rate|float if row.vat_rate else 0 %}
-          {% set cost_sub = cost * qty * nights %}
-          {% set sale_sub = sale * qty * nights %}
-          {% set sec_ns.cost_ex  = sec_ns.cost_ex  + cost_sub %}
-          {% set sec_ns.sale_ex  = sec_ns.sale_ex  + sale_sub %}
-          {% set ns.grand_cost_ex = ns.grand_cost_ex + cost_sub %}
-          {% set ns.grand_sale_ex = ns.grand_sale_ex + sale_sub %}
+          {% set qty       = row.qty|float if row.qty else 1 %}
+          {% set nights    = row.nights|float if row.nights else 1 %}
+          {% set cost      = row.cost_price|float if row.cost_price else 0 %}
+          {% set sale      = row.sale_price|float if row.sale_price else 0 %}
+          {% set vat       = row.vat_rate|float if row.vat_rate else 0 %}
+          {% set row_cur   = row.get('currency', 'TRY') or 'TRY' %}
+          {% set row_rate  = exchange_rates.get(row_cur, 1.0)|float if row_cur != 'TRY' else 1.0 %}
+          {% set cost_sub  = cost * qty * nights %}
+          {% set sale_sub  = sale * qty * nights %}
+          {% set cost_try  = cost_sub * row_rate %}
+          {% set sale_try  = sale_sub * row_rate %}
+          {% set sec_ns.cost_ex   = sec_ns.cost_ex  + cost_try %}
+          {% set sec_ns.sale_ex   = sec_ns.sale_ex  + sale_try %}
+          {% set ns.grand_cost_ex = ns.grand_cost_ex + cost_try %}
+          {% set ns.grand_sale_ex = ns.grand_sale_ex + sale_try %}
+          {% set row_sym = CURRENCY_SYMBOLS.get(row_cur, row_cur) %}
           <tr>
             <td class="ps-3 fw-semibold">
               {{ row.service_name or '—' }}
@@ -191,14 +218,24 @@
             <td style="color:#64748b;">{{ row.unit or 'Adet' }}</td>
             <td>{{ row.qty or 1 }}</td>
             <td>{% if sec == 'accommodation' %}{{ row.nights or 1 }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>
+              {% if row_cur != 'TRY' %}
+              <span class="currency-badge">{{ row_cur }}</span>
+              {% else %}
+              <span class="text-muted" style="font-size:11px;">₺</span>
+              {% endif %}
+            </td>
             {% if show_cost %}
             <td>
               {% if cost %}
-                {{ cost | money }}
+                {{ row_sym }}{{ cost_sub | money | replace('₺','') }}
                 {% if (qty > 1 or nights > 1) %}
                 <div class="text-muted" style="font-size:10px; margin-top:1px;">
-                  × {{ qty|int }}{% if nights > 1 %} × {{ nights|int }}g{% endif %} = {{ cost_sub | money }}
+                  × {{ qty|int }}{% if nights > 1 %} × {{ nights|int }}g{% endif %} = {{ row_sym }}{{ (cost_sub) | money | replace('₺','') }}
                 </div>
+                {% endif %}
+                {% if row_cur != 'TRY' %}
+                <div class="try-hint">= {{ cost_try | money }}</div>
                 {% endif %}
               {% else %}
                 <span class="text-muted">—</span>
@@ -206,7 +243,10 @@
             </td>
             {% endif %}
             <td class="fw-semibold">
-              {{ sale_sub | money }}
+              {{ row_sym }}{{ sale_sub | money | replace('₺','') }}
+              {% if row_cur != 'TRY' %}
+              <div class="try-hint">= {{ sale_try | money }}</div>
+              {% endif %}
               {% if vat %}
               <span class="badge bg-secondary bg-opacity-10 text-secondary ms-1" style="font-size:10px;">%{{ vat|int }} KDV</span>
               {% endif %}
@@ -215,7 +255,7 @@
           {% endfor %}
 
           <tr class="subtotals-row">
-            <td class="ps-3" colspan="4" style="font-size:12px; color:#64748b;">Alt Toplam (KDV hariç)</td>
+            <td class="ps-3" colspan="5" style="font-size:12px; color:#64748b;">Alt Toplam (KDV hariç)</td>
             {% if show_cost %}
             <td>{{ sec_ns.cost_ex | money }}</td>
             {% endif %}
@@ -230,14 +270,23 @@
           {% if row.get('is_service_fee') %}
           {% set sf_sale = row.sale_price|float if row.sale_price else 0 %}
           {% set sf_vat  = row.vat_rate|float if row.vat_rate else 0 %}
-          {% set ns.grand_sale_ex = ns.grand_sale_ex + sf_sale %}
+          {% set sf_cur  = row.get('currency', 'TRY') or 'TRY' %}
+          {% set sf_rate = exchange_rates.get(sf_cur, 1.0)|float if sf_cur != 'TRY' else 1.0 %}
+          {% set sf_try  = sf_sale * sf_rate %}
+          {% set ns.grand_sale_ex = ns.grand_sale_ex + sf_try %}
+          {% set sf_sym  = CURRENCY_SYMBOLS.get(sf_cur, sf_cur) %}
           <tr class="service-fee-row">
-            <td class="ps-3" colspan="4">
+            <td class="ps-3" colspan="5">
               💼 Hizmet Bedeli
               {% if sf_vat %}<span class="badge bg-secondary bg-opacity-10 text-secondary ms-1" style="font-size:10px;">%{{ sf_vat|int }} KDV</span>{% endif %}
             </td>
             {% if show_cost %}<td>—</td>{% endif %}
-            <td class="fw-semibold">{{ sf_sale | money }}</td>
+            <td class="fw-semibold">
+              {{ sf_sym }}{{ sf_sale | money | replace('₺','') }}
+              {% if sf_cur != 'TRY' %}
+              <div class="try-hint">= {{ sf_try | money }}</div>
+              {% endif %}
+            </td>
           </tr>
           {% endif %}
           {% endfor %}
@@ -245,7 +294,7 @@
         </tbody>
         <tfoot>
           <tr class="grand-total-row">
-            <td class="ps-3" colspan="4">TOPLAM (KDV hariç)</td>
+            <td class="ps-3" colspan="5">TOPLAM (KDV hariç) — ₺</td>
             {% if show_cost %}
             <td>{{ ns.grand_cost_ex | money }}</td>
             {% endif %}
@@ -258,6 +307,8 @@
 </div>
 
 {# ─── ÖZET ─── #}
+{% set offer_rate = exchange_rates.get(offer_currency, 1.0)|float if offer_currency != 'TRY' else 1.0 %}
+{% set offer_sym  = CURRENCY_SYMBOLS.get(offer_currency, offer_currency) %}
 <div class="card">
   <div class="card-body">
     <div class="row g-3">
@@ -271,7 +322,7 @@
       {% endif %}
       <div class="col-md-{{ '5' if show_cost else '7' }}">
         <div class="border rounded p-3">
-          <div class="text-muted mb-2" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">KDV Hesabı</div>
+          <div class="text-muted mb-2" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">KDV Hesabı (TL)</div>
           <div class="d-flex justify-content-between border-bottom pb-2 mb-1">
             <span style="font-size:13px;">Satış Toplamı (KDV hariç)</span>
             <span class="fw-bold text-primary">{{ ns.grand_sale_ex | money }}</span>
@@ -291,6 +342,15 @@
         <div class="border rounded p-3 text-center bg-success bg-opacity-10 h-100 d-flex flex-column justify-content-center">
           <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">TOPLAM SATIŞ (KDV dahil)</div>
           <div class="fw-bold text-success" style="font-size:24px;">{{ budget.grand_sale | money }}</div>
+          {% if offer_currency != 'TRY' and offer_rate %}
+          <hr class="my-2">
+          <div class="text-muted" style="font-size:10px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Teklif Para Birimi ({{ offer_currency }})</div>
+          {% set grand_sale_offer = budget.grand_sale / offer_rate %}
+          <div class="fw-bold" style="font-size:20px; color:#0369a1;">
+            {{ offer_sym }}{{ grand_sale_offer | money | replace('₺','') }}
+          </div>
+          <div class="text-muted" style="font-size:10px;">1 {{ offer_currency }} = {{ offer_rate | money | replace('₺','') }} ₺</div>
+          {% endif %}
         </div>
       </div>
     </div>

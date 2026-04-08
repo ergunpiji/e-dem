@@ -36,6 +36,44 @@
   </a>
 </div>
 
+{# ─── BÜTÇE SEKMELERİ (sadece edit modunda) ─── #}
+{% if budget and all_request_budgets and all_request_budgets | length > 0 %}
+<div id="budgetTabBar" class="d-flex align-items-center gap-0 mb-3 flex-wrap"
+     style="border-bottom: 2px solid #e2e8f0; padding-bottom: 0;">
+  {% for b in all_request_budgets %}
+  {% set is_active = b.id == budget.id %}
+  {% set sc = status_colors.get(b.budget_status, 'secondary') %}
+  <a href="javascript:void(0)"
+     onclick="switchBudget('{{ b.id }}')"
+     id="tab-{{ b.id }}"
+     class="text-decoration-none budget-tab {{ 'budget-tab-active' if is_active else '' }}"
+     style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px 9px;
+            font-size:13px;font-weight:{{ '700' if is_active else '500' }};
+            color:{{ '#1e293b' if is_active else '#64748b' }};
+            background:{{ '#ffffff' if is_active else '#f8fafc' }};
+            border:1px solid {{ '#e2e8f0' if is_active else 'transparent' }};
+            border-bottom:{{ '2px solid #ffffff' if is_active else '1px solid transparent' }};
+            border-radius:6px 6px 0 0;margin-bottom:-2px;white-space:nowrap;cursor:pointer;">
+    <span class="badge bg-{{ sc }} bg-opacity-{{ '25' if is_active else '15' }} tab-status-badge"
+          style="font-size:9px;padding:2px 5px;color:inherit;">
+      {{ status_labels.get(b.budget_status, b.budget_status) }}
+    </span>
+    <span class="tab-venue-name">{{ b.venue_name or 'Yeni Bütçe' }}</span>
+  </a>
+  {% endfor %}
+  <button type="button" onclick="copyAndOpen()"
+          title="Kopyala ve yeni sekme aç"
+          style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px 9px;
+                 font-size:13px;font-weight:500;color:#64748b;
+                 background:#f1f5f9;border:1px dashed #cbd5e1;
+                 border-bottom:1px solid transparent;
+                 border-radius:6px 6px 0 0;cursor:pointer;
+                 white-space:nowrap;margin-left:4px;">
+    <i class="bi bi-plus-lg"></i> Kopyala
+  </button>
+</div>
+{% endif %}
+
 {% if budget and budget.revision_notes %}
 <div class="alert alert-danger mb-3">
   <i class="bi bi-arrow-counterclockwise me-2"></i>
@@ -88,24 +126,65 @@
   </div>
   {% endif %}
 
+  {# ─── PARA BİRİMİ PANELI ─── #}
+  <div class="card mb-3" style="border-color:#e0f2fe;">
+    <div class="card-body py-3">
+      <div class="d-flex flex-wrap gap-4 align-items-end">
+        <div>
+          <label class="form-label fw-semibold mb-1" style="font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#0369a1;">
+            <i class="bi bi-currency-exchange me-1"></i>Teklif Para Birimi
+          </label>
+          <select name="offer_currency" id="offerCurrencySelect" class="form-select form-select-sm" style="width:140px;"
+                  onchange="onOfferCurrencyChange()">
+            <option value="TRY" {% if offer_currency == 'TRY' %}selected{% endif %}>₺ Türk Lirası</option>
+            <option value="EUR" {% if offer_currency == 'EUR' %}selected{% endif %}>€ Euro</option>
+            <option value="USD" {% if offer_currency == 'USD' %}selected{% endif %}>$ US Dolar</option>
+          </select>
+        </div>
+        <div id="eurRateBlock" style="display:none;">
+          <label class="form-label fw-semibold mb-1" style="font-size:12px; color:#64748b;">1 EUR =</label>
+          <div class="input-group input-group-sm" style="width:150px;">
+            <input type="number" id="eurRate" class="form-control" min="0" step="0.01" placeholder="0,00"
+                   oninput="onRateChange()">
+            <span class="input-group-text">₺</span>
+          </div>
+        </div>
+        <div id="usdRateBlock" style="display:none;">
+          <label class="form-label fw-semibold mb-1" style="font-size:12px; color:#64748b;">1 USD =</label>
+          <div class="input-group input-group-sm" style="width:150px;">
+            <input type="number" id="usdRate" class="form-control" min="0" step="0.01" placeholder="0,00"
+                   oninput="onRateChange()">
+            <span class="input-group-text">₺</span>
+          </div>
+        </div>
+        <div class="text-muted" style="font-size:11px; max-width:260px; line-height:1.4;">
+          Kur bilgileri maliyet ve satış toplamlarını TL'ye çevirmek için kullanılır.
+          TL dışında para birimi kullanacaksanız kur girişi gereklidir.
+        </div>
+      </div>
+    </div>
+  </div>
+  <input type="hidden" name="exchange_rates_json" id="exchangeRatesJson" value="{{ exchange_rates | tojson }}">
+
   <div class="card mb-4">
     <div class="card-body">
       <div class="col-12">
         <label class="form-label fw-semibold" style="font-size:13px;">Mekan / Tedarikçi Adı</label>
-        {% if not budget and preferred_venues %}
-        <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+        {% if preferred_venues %}
+        <select class="form-select mb-2" id="venueNameSelect" onchange="onVenueSelectEdem(this.value)">
+          <option value="">— Talep edilen mekanlardan seçin —</option>
           {% for v in preferred_venues %}
-          <button type="button" class="btn btn-sm btn-outline-primary"
-                  onclick="document.getElementById('venueNameInput').value='{{ v.name | e }}'">
-            <i class="bi bi-building me-1"></i>{{ v.name }}
-          </button>
+          <option value="{{ v.name | e }}" {% if budget and budget.venue_name == v.name %}selected{% endif %}>
+            {{ v.name }}
+          </option>
           {% endfor %}
-          <span class="text-muted" style="font-size:11px;">← Tercih edilen mekanlardan seçin veya aşağıya yazın</span>
-        </div>
+          <option value="__manual__">✏️ Manuel gir...</option>
+        </select>
         {% endif %}
         <input type="text" name="venue_name" id="venueNameInput" class="form-control"
                value="{{ budget.venue_name if budget else '' }}"
-               placeholder="Teklif hazırlanan mekan / tedarikçi adı...">
+               placeholder="Teklif hazırlanan mekan / tedarikçi adı..."
+               {% if preferred_venues and (not budget or budget.venue_name in preferred_venues | map(attribute='name') | list) %}style="display:none"{% endif %}>
       </div>
     </div>
   </div>
@@ -121,6 +200,7 @@
               <th style="width:70px;">Birim</th>
               <th style="width:60px;">Miktar</th>
               <th style="width:70px;">Gün/Gece</th>
+              <th style="width:72px;">Para Birimi</th>
               <th style="width:130px;">Maliyet (KDV hariç)</th>
               <th style="width:70px;">KDV %</th>
               <th style="width:110px;">Maliyet (KDV dahil)</th>
@@ -138,16 +218,22 @@
   <div class="card mb-4">
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-md-6">
+        <div class="col-md-4">
           <div class="border rounded p-3 text-center">
             <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Maliyet (KDV hariç)</div>
             <div class="fw-bold text-secondary" style="font-size:18px;" id="totalCostExVat">₺0,00</div>
           </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
           <div class="border rounded p-3 text-center bg-primary bg-opacity-10">
-            <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">TOPLAM MALİYET (KDV dahil)</div>
+            <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">TOPLAM MALİYET (KDV dahil) — TL</div>
             <div class="fw-bold text-primary" style="font-size:22px;" id="totalCostIncVat">₺0,00</div>
+          </div>
+        </div>
+        <div class="col-md-4" id="totalOfferBlock" style="display:none;">
+          <div class="border rounded p-3 text-center bg-success bg-opacity-10">
+            <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;" id="totalOfferLabel">TOPLAM MALİYET — OFFER</div>
+            <div class="fw-bold text-success" style="font-size:22px;" id="totalCostOffer">—</div>
           </div>
         </div>
       </div>
@@ -156,18 +242,17 @@
 
   <input type="hidden" name="rows_json" id="rowsJson"
          value="{{ budget.rows_json if budget else initial_rows_json | default('[]') }}">
+  <input type="hidden" name="next_action" id="nextActionInput" value="">
 
   <div class="d-flex gap-2 align-items-center flex-wrap">
-    <button type="submit" name="action" value="save" class="btn btn-outline-secondary">
+    <button type="submit" class="btn btn-outline-secondary">
       <i class="bi bi-save me-1"></i> Taslak Kaydet
     </button>
     {% if budget and budget.budget_status in ('draft_edem', 'revision_requested') %}
-    <form method="post" action="/budgets/{{ budget.id }}/send-to-manager" class="d-inline ms-2">
-      <button type="submit" class="btn btn-primary"
-              onclick="return confirm('Bütçeyi manager onayına göndermek istediğinizden emin misiniz?')">
-        <i class="bi bi-send me-1"></i> Manager\'a Gönder
-      </button>
-    </form>
+    <button type="button" class="btn btn-primary ms-2"
+            onclick="sendToManager()">
+      <i class="bi bi-send me-1"></i> Manager'a Gönder
+    </button>
     {% endif %}
     <a href="{{ '/budgets/' + budget.id if budget else '/budgets' }}" class="btn btn-link text-muted ms-1">İptal</a>
   </div>
@@ -207,6 +292,59 @@ function defaultVat(section) {
 const groupedServices = {{ grouped_services | safe }};
 const BUDGET_STATUS = '{{ budget.budget_status if budget else "draft_edem" }}';
 
+// ─── Para Birimi ───
+const CURRENCIES = {
+  TRY: { symbol: '₺', name: 'Türk Lirası' },
+  EUR: { symbol: '€', name: 'Euro' },
+  USD: { symbol: '$', name: 'US Dolar' },
+};
+let offerCurrency   = '{{ offer_currency | default("TRY") }}';
+let exchangeRates   = {{ exchange_rates | tojson }};
+
+function rateToTry(currency) {
+  if (!currency || currency === 'TRY') return 1.0;
+  const r = parseFloat(exchangeRates[currency]);
+  return (r && r > 0) ? r : 1;
+}
+function amountToTry(amount, currency) { return amount * rateToTry(currency); }
+function amountToOffer(amountTry) {
+  if (!offerCurrency || offerCurrency === 'TRY') return amountTry;
+  const r = rateToTry(offerCurrency);
+  return r ? amountTry / r : amountTry;
+}
+function currSymbol(c) { return (CURRENCIES[c] || {symbol: c}).symbol; }
+function fmtCurrency(n, currency) {
+  const sym = currSymbol(currency || 'TRY');
+  const num = (n || 0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  return sym + num;
+}
+
+function onOfferCurrencyChange() {
+  offerCurrency = document.getElementById('offerCurrencySelect').value;
+  updateRateBlockVisibility();
+  updateTotals();
+  saveRates();
+}
+function onRateChange() {
+  const eurEl = document.getElementById('eurRate');
+  const usdEl = document.getElementById('usdRate');
+  if (eurEl && eurEl.value) exchangeRates['EUR'] = parseFloat(eurEl.value) || 0;
+  if (usdEl && usdEl.value) exchangeRates['USD'] = parseFloat(usdEl.value) || 0;
+  updateTotals();
+  saveRates();
+}
+function saveRates() {
+  document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
+}
+function updateRateBlockVisibility() {
+  const eur = document.getElementById('eurRateBlock');
+  const usd = document.getElementById('usdRateBlock');
+  const hasEur = offerCurrency === 'EUR' || rows.some(r => r.currency === 'EUR');
+  const hasUsd = offerCurrency === 'USD' || rows.some(r => r.currency === 'USD');
+  if (eur) eur.style.display = (hasEur || offerCurrency === 'EUR') ? '' : 'none';
+  if (usd) usd.style.display = (hasUsd || offerCurrency === 'USD') ? '' : 'none';
+}
+
 // Talepten gelen default tarihler
 const REQ_ACCOM_IN  = '{{ req.accom_check_in  or req.check_in  or "" if req else "" }}';
 const REQ_ACCOM_OUT = '{{ req.accom_check_out or req.check_out or "" if req else "" }}';
@@ -218,6 +356,22 @@ let rows = [];
 try { rows = JSON.parse(document.getElementById('rowsJson').value || '[]'); } catch(e) {}
 // Service fee satırlarını filtrele — E-dem editöründe hizmet bedeli yok
 rows = rows.filter(r => !r.is_service_fee);
+
+// Init rate inputs from stored data (rows'tan sonra çalışmalı)
+(function initRates() {
+  const eurEl = document.getElementById('eurRate');
+  const usdEl = document.getElementById('usdRate');
+  // exchangeRates'ten input'lara
+  if (eurEl && exchangeRates['EUR']) eurEl.value = exchangeRates['EUR'];
+  if (usdEl && exchangeRates['USD']) usdEl.value = exchangeRates['USD'];
+  // Input'lardan exchangeRates'e (eski kayıtlarda exchangeRates boş olabilir)
+  const eurVal = parseFloat(eurEl?.value);
+  const usdVal = parseFloat(usdEl?.value);
+  if (eurVal > 0 && !(exchangeRates['EUR'] > 0)) exchangeRates['EUR'] = eurVal;
+  if (usdVal > 0 && !(exchangeRates['USD'] > 0)) exchangeRates['USD'] = usdVal;
+  document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
+  updateRateBlockVisibility();
+})();
 
 // Section bazında tarih bilgisi (rows'tan veya req'den)
 function getSectionDates(sec) {
@@ -389,6 +543,12 @@ function renderTable() {
           ? `<span class="quote-badge">${escHtml(selQ.supplier||'?')}</span>`
           : '';
 
+        const rowCur = row.currency || 'TRY';
+        const totalTry = amountToTry(total, rowCur);
+        const currSelect = `<select class="form-select form-select-sm" style="min-width:60px;"
+          onchange="rows[${i}].currency=this.value;updateRateBlockVisibility();updateTotals();saveRows()">
+          ${Object.keys(CURRENCIES).map(c => `<option value="${c}" ${c===rowCur?'selected':''}>${c}</option>`).join('')}
+        </select>`;
         html += `<tr class="${isRevFlagged ? 'revision-flagged-row' : ''}">
           <td class="ps-3">
             <div class="d-flex align-items-center gap-1 flex-wrap">
@@ -418,13 +578,21 @@ function renderTable() {
                    value="${nights}"
                    oninput="rows[${i}].nights=parseFloat(this.value)||1;updateTotals();saveRows()">
           </td>
+          <td>${currSelect}</td>
           <td>
-            <input type="number" class="form-control form-control-sm" min="0" step="0.01"
-                   value="${cost||''}" placeholder="0,00" id="costInput-${i}"
-                   oninput="rows[${i}].cost_price=parseFloat(this.value)||0;updateTotals();saveRows()">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text" style="font-size:11px;padding:2px 5px;">${currSymbol(rowCur)}</span>
+              <input type="number" class="form-control" min="0" step="0.01"
+                     value="${cost||''}" placeholder="0,00" id="costInput-${i}"
+                     oninput="rows[${i}].cost_price=parseFloat(this.value)||0;updateTotals();saveRows()">
+            </div>
+            ${rowCur !== 'TRY' && cost > 0 ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">≈ ${fmtMoney(amountToTry(total,rowCur))}</div>` : ''}
           </td>
           <td>${vatCell}</td>
-          <td class="text-end fw-semibold" style="font-size:12px; white-space:nowrap;" id="total-${i}">${fmtMoney(total)}</td>
+          <td class="text-end fw-semibold" style="font-size:12px; white-space:nowrap;" id="total-${i}">
+            ${fmtCurrency(total, rowCur)}
+            ${rowCur !== 'TRY' ? `<div style="font-size:10px;color:#94a3b8;">${fmtMoney(totalTry)}</div>` : ''}
+          </td>
           <td>
             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
                     onclick="removeRow(${i})"><i class="bi bi-trash" style="font-size:11px;"></i></button>
@@ -468,7 +636,7 @@ function renderTable() {
 function addRow(section) {
   const vat = defaultVat(section);
   rows.push({section, service_name:'', unit:'Adet', qty:1, nights:1,
-             cost_price:0, sale_price:0, vat_rate: vat});
+             cost_price:0, sale_price:0, vat_rate: vat, currency: 'TRY'});
   renderTable();
   updateTotals();
   saveRows();
@@ -484,7 +652,7 @@ function removeRow(i) {
 function addFromCatalog(id, name, unit, section) {
   const vat = defaultVat(section);
   rows.push({section, service_name: name, unit, qty:1, nights:1,
-             cost_price:0, sale_price:0, vat_rate: vat, service_id: id});
+             cost_price:0, sale_price:0, vat_rate: vat, service_id: id, currency: 'TRY'});
   renderTable();
   updateTotals();
   saveRows();
@@ -492,20 +660,33 @@ function addFromCatalog(id, name, unit, section) {
 
 // ─── Toplamlar (sadece maliyet) ───
 function updateTotals() {
-  let costEx = 0, costInc = 0;
+  let costExTry = 0, costIncTry = 0;
   rows.forEach(row => {
     if (row.is_service_fee) return;
-    const qty    = parseFloat(row.qty)    || 1;
-    const nights = parseFloat(row.nights) || 1;
+    const qty    = parseFloat(row.qty)        || 1;
+    const nights = parseFloat(row.nights)     || 1;
     const cost   = parseFloat(row.cost_price) || 0;
     const vat    = parseFloat(row.vat_rate)   || 0;
-    const costTotal = cost * qty * nights;
-    const vatAmt    = costTotal * (vat / 100);
-    costEx  += costTotal;
-    costInc += costTotal + vatAmt;
+    const cur    = row.currency || 'TRY';
+    const costSub   = cost * qty * nights;
+    const costSubTry = amountToTry(costSub, cur);
+    const vatAmt    = costSubTry * (vat / 100);
+    costExTry  += costSubTry;
+    costIncTry += costSubTry + vatAmt;
   });
-  document.getElementById('totalCostExVat').textContent  = fmtMoney(costEx);
-  document.getElementById('totalCostIncVat').textContent = fmtMoney(costInc);
+  document.getElementById('totalCostExVat').textContent  = fmtMoney(costExTry);
+  document.getElementById('totalCostIncVat').textContent = fmtMoney(costIncTry);
+
+  // Teklif para birimi toplamı
+  const offerBlock = document.getElementById('totalOfferBlock');
+  if (offerCurrency && offerCurrency !== 'TRY') {
+    const costOffer = amountToOffer(costIncTry);
+    document.getElementById('totalCostOffer').textContent = fmtCurrency(costOffer, offerCurrency);
+    document.getElementById('totalOfferLabel').textContent = `TOPLAM MALİYET — ${offerCurrency} (KDV dahil)`;
+    if (offerBlock) offerBlock.style.display = '';
+  } else {
+    if (offerBlock) offerBlock.style.display = 'none';
+  }
 }
 
 function saveRows() {
@@ -608,7 +789,7 @@ function removeQuote(rowIdx, quoteIdx) {
 }
 
 function fmtMoney(n) {
-  return '₺' + (n || 0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  return fmtCurrency(n, 'TRY');
 }
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -617,5 +798,129 @@ function escHtml(s) {
 document.getElementById('budgetForm').addEventListener('submit', function() {
   saveRows();
 });
+
+function sendToManager() {
+  if (!confirm('Bütçeyi manager onayına göndermek istediğinizden emin misiniz?')) return;
+  saveRows();
+  document.getElementById('nextActionInput').value = 'send_to_manager';
+  document.getElementById('budgetForm').submit();
+}
+
+// ─── AJAX Sekme Sistemi (E-dem) ───
+{% if budget %}
+let _currentBudgetId = '{{ budget.id }}';
+
+function _setActiveTab(budgetId) {
+  document.querySelectorAll('.budget-tab').forEach(t => {
+    const isActive = t.id === 'tab-' + budgetId;
+    t.classList.toggle('budget-tab-active', isActive);
+    t.style.fontWeight   = isActive ? '700' : '500';
+    t.style.color        = isActive ? '#1e293b' : '#64748b';
+    t.style.background   = isActive ? '#ffffff' : '#f8fafc';
+    t.style.border       = isActive ? '1px solid #e2e8f0' : '1px solid transparent';
+    t.style.borderBottom = isActive ? '2px solid #ffffff' : '1px solid transparent';
+  });
+}
+
+async function _saveCurrentEdem(showMsg = false) {
+  saveRows();
+  const rowsJson  = document.getElementById('rowsJson')?.value || '[]';
+  const venueName = document.getElementById('venueNameInput')?.value || '';
+  const fd = new FormData();
+  fd.append('rows_json',           rowsJson);
+  fd.append('venue_name',          venueName);
+  fd.append('offer_currency',      offerCurrency);
+  fd.append('exchange_rates_json', JSON.stringify(exchangeRates));
+  await fetch(`/budgets/${_currentBudgetId}/edit`, { method: 'POST', body: fd });
+  // Sekme adı güncelle
+  const tab = document.getElementById('tab-' + _currentBudgetId);
+  if (tab && venueName) { const sp = tab.querySelector('.tab-venue-name'); if (sp) sp.textContent = venueName; }
+  if (showMsg) { /* toast opsiyonel */ }
+}
+
+function onVenueSelectEdem(val) {
+  const inp = document.getElementById('venueNameInput');
+  if (val === '__manual__') {
+    inp.style.display = '';
+    inp.value = '';
+    inp.focus();
+  } else {
+    inp.style.display = val ? 'none' : '';
+    inp.value = val;
+  }
+}
+
+async function switchBudget(budgetId) {
+  if (budgetId === _currentBudgetId) return;
+  await _saveCurrentEdem(false);
+
+  const res = await fetch(`/budgets/${budgetId}/json`);
+  if (!res.ok) { alert('Bütçe yüklenemedi.'); return; }
+  const data = await res.json();
+
+  rows = data.rows || [];
+  _currentBudgetId = budgetId;
+  offerCurrency  = data.offer_currency || 'TRY';
+  exchangeRates  = data.exchange_rates || {};
+
+  document.getElementById('budgetForm').action = `/budgets/${budgetId}/edit`;
+  const ocSel = document.getElementById('offerCurrencySelect');
+  if (ocSel) ocSel.value = offerCurrency;
+  const eurEl = document.getElementById('eurRate');
+  const usdEl = document.getElementById('usdRate');
+  if (eurEl) eurEl.value = exchangeRates['EUR'] || '';
+  if (usdEl) usdEl.value = exchangeRates['USD'] || '';
+  document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
+  updateRateBlockVisibility();
+
+  const venueName = data.venue_name || '';
+  const vnInput = document.getElementById('venueNameInput');
+  const vnSelect = document.getElementById('venueNameSelect');
+  if (vnSelect) {
+    // Try to match against options
+    const opt = [...vnSelect.options].find(o => o.value === venueName && o.value !== '__manual__');
+    vnSelect.value = opt ? venueName : (venueName ? '__manual__' : '');
+    if (vnSelect.value === '__manual__') {
+      vnInput.style.display = '';
+      vnInput.value = venueName;
+    } else {
+      vnInput.style.display = venueName ? 'none' : '';
+      vnInput.value = venueName;
+    }
+  } else if (vnInput) {
+    vnInput.value = venueName;
+  }
+
+  renderTable();
+  _setActiveTab(budgetId);
+}
+
+async function copyAndOpen() {
+  await _saveCurrentEdem(false);
+  const rowsJson = document.getElementById('rowsJson')?.value || '[]';
+  const fd = new FormData();
+  fd.append('rows_json', rowsJson);
+  const res = await fetch(`/budgets/${_currentBudgetId}/copy-edem`, { method: 'POST', body: fd });
+  const newUrl = res.url;
+  const match  = newUrl.match(/\/budgets\/([^/]+)\/edit/);
+  if (!match) { location.reload(); return; }
+  const newId = match[1];
+
+  const tabBar = document.getElementById('budgetTabBar');
+  if (tabBar) {
+    const plusBtn = tabBar.querySelector('button[onclick="copyAndOpen()"]');
+    const a = document.createElement('a');
+    a.href = 'javascript:void(0)';
+    a.onclick = () => switchBudget(newId);
+    a.id = 'tab-' + newId;
+    a.className = 'text-decoration-none budget-tab';
+    a.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:7px 16px 9px;font-size:13px;font-weight:500;color:#64748b;background:#f8fafc;border:1px solid transparent;border-bottom:1px solid transparent;border-radius:6px 6px 0 0;margin-bottom:-2px;white-space:nowrap;cursor:pointer;';
+    const curName = document.getElementById('venueNameInput')?.value || 'Bütçe';
+    a.innerHTML = `<span class="badge bg-secondary bg-opacity-15 tab-status-badge" style="font-size:9px;padding:2px 5px;">Taslak</span><span class="tab-venue-name">${curName} (Kopya)</span>`;
+    tabBar.insertBefore(a, plusBtn);
+  }
+  await switchBudget(newId);
+}
+{% endif %}
 </script>
 {% endblock %}

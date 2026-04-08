@@ -38,6 +38,48 @@
   </a>
 </div>
 
+{# ─── BÜTÇE SEKMELERİ ─── #}
+{% if all_request_budgets and all_request_budgets | length > 0 %}
+<div id="budgetTabBar" class="d-flex align-items-center gap-0 mb-3 flex-wrap"
+     style="border-bottom: 2px solid #e2e8f0; padding-bottom: 0;">
+  {% for b in all_request_budgets %}
+  {% set is_active = b.id == budget.id %}
+  {% set sc = status_colors.get(b.budget_status, 'secondary') %}
+  <a href="javascript:void(0)"
+     onclick="switchBudget('{{ b.id }}')"
+     id="tab-{{ b.id }}"
+     class="text-decoration-none budget-tab {{ 'budget-tab-active' if is_active else '' }}"
+     style="display:inline-flex; align-items:center; gap:6px; padding:7px 16px 9px;
+            font-size:13px; font-weight:{{ '700' if is_active else '500' }};
+            color:{{ '#1e293b' if is_active else '#64748b' }};
+            background:{{ '#ffffff' if is_active else '#f8fafc' }};
+            border:1px solid {{ '#e2e8f0' if is_active else 'transparent' }};
+            border-bottom:{{ '2px solid #ffffff' if is_active else '1px solid transparent' }};
+            border-radius:6px 6px 0 0;
+            margin-bottom:-2px;
+            white-space:nowrap; cursor:pointer;">
+    <span class="badge bg-{{ sc }} bg-opacity-{{ '25' if is_active else '15' }} tab-status-badge"
+          style="font-size:9px; padding:2px 5px; color:inherit;">
+      {{ status_labels.get(b.budget_status, b.budget_status) }}
+    </span>
+    <span class="tab-venue-name">{{ b.venue_name or 'Yeni Bütçe' }}</span>
+  </a>
+  {% endfor %}
+  {# Kopya Oluştur butonu #}
+  <button type="button"
+          onclick="copyAndOpen()"
+          title="Kopyala ve yeni sekme aç"
+          style="display:inline-flex; align-items:center; gap:5px; padding:7px 14px 9px;
+                 font-size:13px; font-weight:500; color:#64748b;
+                 background:#f1f5f9; border:1px dashed #cbd5e1;
+                 border-bottom:1px solid transparent;
+                 border-radius:6px 6px 0 0; cursor:pointer;
+                 white-space:nowrap; margin-left:4px;">
+    <i class="bi bi-plus-lg"></i> Kopyala
+  </button>
+</div>
+{% endif %}
+
 {# ─── DURUM BANDİ ─── #}
 <div class="alert alert-{{ status_color }} d-flex align-items-center gap-2 mb-3 py-2">
   <i class="bi bi-info-circle-fill"></i>
@@ -84,11 +126,30 @@
       </div>
       <div class="flex-grow-1" style="min-width:200px;">
         <span class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Mekan / Tedarikçi</span>
+        {% if preferred_venues %}
+        <select class="form-select form-select-sm mt-1"
+                style="font-size:13px; max-width:280px;"
+                onchange="onVenueSelect(this.value)">
+          <option value="">— Seçiniz —</option>
+          {% for v in preferred_venues %}
+          <option value="{{ v.name }}"
+                  {% if v.name == budget.venue_name or budget.venue_name and budget.venue_name.startswith(v.name) %}selected{% endif %}>
+            {{ v.name }}{% if v.city %} · {{ v.city }}{% endif %}
+          </option>
+          {% endfor %}
+          <option value="__manual__">✏️ Manuel gir...</option>
+        </select>
+        <input type="text" id="venueNameManual" class="form-control form-control-sm mt-1"
+               placeholder="Mekan adı yazın..."
+               style="font-size:13px; max-width:280px; display:none;"
+               oninput="document.getElementById('venueNameHidden').value=this.value; updateActiveTab(this.value)">
+        {% else %}
         <input type="text" class="form-control form-control-sm mt-1"
                value="{{ budget.venue_name or '' }}"
                placeholder="Mekan / tedarikçi adı..."
                style="font-size:13px; max-width:280px;"
-               oninput="document.getElementById('venueNameHidden').value=this.value">
+               oninput="document.getElementById('venueNameHidden').value=this.value; updateActiveTab(this.value)">
+        {% endif %}
       </div>
     </div>
   </div>
@@ -97,6 +158,49 @@
 
 <form method="post" action="/budgets/{{ budget.id }}/price" id="managerForm">
   <input type="hidden" name="venue_name" id="venueNameHidden" value="{{ budget.venue_name or '' }}">
+  <input type="hidden" name="exchange_rates_json" id="exchangeRatesJson" value="{{ exchange_rates | tojson }}">
+
+  {# ─── KUR BİLGİLERİ PANELİ ─── #}
+  <div class="card mb-3" style="border-color:#fde68a; background:#fffbeb;">
+    <div class="card-body py-3">
+      <div class="d-flex flex-wrap gap-4 align-items-end">
+        <div>
+          <label class="fw-semibold mb-1" style="font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#92400e;">
+            <i class="bi bi-currency-exchange me-1"></i>Teklif Para Birimi
+          </label>
+          <select id="offerCurrencySelect" class="form-select fw-bold" style="font-size:13px; color:#1a3a5c; min-width:160px; background:#fff;"
+                  onchange="onOfferCurrencyChange(this.value)">
+            <option value="TRY" {% if offer_currency == 'TRY' %}selected{% endif %}>₺ Türk Lirası</option>
+            <option value="EUR" {% if offer_currency == 'EUR' %}selected{% endif %}>€ Euro</option>
+            <option value="USD" {% if offer_currency == 'USD' %}selected{% endif %}>$ US Dolar</option>
+          </select>
+          <input type="hidden" name="offer_currency" id="offerCurrencyHidden" value="{{ offer_currency }}">
+        </div>
+        <div>
+          <label class="fw-semibold mb-1" style="font-size:12px; color:#64748b;">1 EUR =</label>
+          <div class="input-group input-group-sm" style="width:160px;">
+            <input type="number" id="eurRate" class="form-control" min="0" step="0.01" placeholder="0,00"
+                   value="{{ (exchange_rates | fromjson).get('EUR', '') if exchange_rates else '' }}"
+                   oninput="onRateChange()">
+            <span class="input-group-text">₺</span>
+          </div>
+        </div>
+        <div>
+          <label class="fw-semibold mb-1" style="font-size:12px; color:#64748b;">1 USD =</label>
+          <div class="input-group input-group-sm" style="width:160px;">
+            <input type="number" id="usdRate" class="form-control" min="0" step="0.01" placeholder="0,00"
+                   value="{{ (exchange_rates | fromjson).get('USD', '') if exchange_rates else '' }}"
+                   oninput="onRateChange()">
+            <span class="input-group-text">₺</span>
+          </div>
+        </div>
+        <div class="text-muted" style="font-size:11px; max-width:260px; line-height:1.4;">
+          Kur bilgilerini girerek maliyet ve satış toplamlarının TL karşılığını hesaplayın.
+          Edem farklı para birimleriyle fiyat girmiş olabilir.
+        </div>
+      </div>
+    </div>
+  </div>
 
   {# ─── BÜTÇE TABLOSU ─── #}
   <div class="card mb-4">
@@ -111,10 +215,10 @@
               <th style="width:110px;">Başlangıç</th>
               <th style="width:110px;">Bitiş</th>
               <th style="width:45px;">Gece</th>
-              <th style="width:100px; color:#94a3b8; white-space:normal; line-height:1.3;">Birim<br>Maliyet</th>
-              <th style="width:100px; color:#94a3b8; white-space:normal; line-height:1.3;">Maliyet<br>Toplam</th>
+              <th style="width:140px; color:#94a3b8; white-space:normal; line-height:1.3;">Birim<br>Maliyet</th>
+              <th style="width:110px; color:#94a3b8; white-space:normal; line-height:1.3;">Maliyet<br>Toplam</th>
               <th style="width:145px; white-space:normal; line-height:1.3;">Birim Satış<br>(KDV hariç)</th>
-              <th style="width:100px; white-space:normal; line-height:1.3;">Satış<br>Toplam</th>
+              <th style="width:110px; white-space:normal; line-height:1.3;">Satış<br>Toplam</th>
               <th style="width:36px;" title="Revizyon Bayrağı"></th>
             </tr>
           </thead>
@@ -206,8 +310,12 @@
         <div class="col-md-4">
           <div class="border rounded p-3 bg-success bg-opacity-10 h-100 d-flex flex-column justify-content-center gap-3">
             <div class="text-center">
-              <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">GENEL TOPLAM (KDV dahil)</div>
+              <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">GENEL TOPLAM (KDV dahil) — TL</div>
               <div class="fw-bold text-success" style="font-size:24px;" id="totalSaleIncVat">₺0,00</div>
+            </div>
+            <div class="text-center" id="totalOfferBlock" style="display:none;">
+              <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;" id="totalOfferLabel">TOPLAM — OFFER</div>
+              <div class="fw-bold text-primary" style="font-size:20px;" id="totalSaleOffer">—</div>
             </div>
             <hr class="my-1">
             <div class="d-flex justify-content-between align-items-center px-1">
@@ -331,6 +439,16 @@
   </div>
 </div>
 
+{# Toast #}
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+  <div id="editorToast" class="toast align-items-center text-bg-success border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body fw-semibold"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -346,6 +464,58 @@ const SECTION_LABELS = {
   other:         '📦 Diğer',
 };
 const SECTIONS = ['accommodation', 'meeting', 'fb', 'teknik', 'dekor', 'transfer', 'tasarim', 'other'];
+
+// ─── Para Birimi ───
+const CURRENCIES = { TRY:{symbol:'₺',name:'Türk Lirası'}, EUR:{symbol:'€',name:'Euro'}, USD:{symbol:'$',name:'US Dolar'} };
+let offerCurrency = '{{ offer_currency | default("TRY") }}';
+
+function onOfferCurrencyChange(val) {
+  offerCurrency = val;
+  document.getElementById('offerCurrencyHidden').value = val;
+  updateTotals();
+}
+let exchangeRates = {{ exchange_rates | tojson }};
+
+function rateToTry(currency) {
+  if (!currency || currency === 'TRY') return 1.0;
+  const r = parseFloat(exchangeRates[currency]);
+  return (r && r > 0) ? r : 1;
+}
+function amountToTry(amount, currency) { return amount * rateToTry(currency); }
+function amountToOffer(amountTry) {
+  if (!offerCurrency || offerCurrency === 'TRY') return amountTry;
+  const r = rateToTry(offerCurrency);
+  return r ? amountTry / r : amountTry;
+}
+function currSymbol(c) { return (CURRENCIES[c] || {symbol:c}).symbol; }
+function fmtCurrency(n, currency) {
+  const sym = currSymbol(currency || 'TRY');
+  return sym + (n||0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+let _rateChangeTimer = null;
+function onRateChange() {
+  const eurEl = document.getElementById('eurRate');
+  const usdEl = document.getElementById('usdRate');
+  if (eurEl && eurEl.value) exchangeRates['EUR'] = parseFloat(eurEl.value) || 0;
+  if (usdEl && usdEl.value) exchangeRates['USD'] = parseFloat(usdEl.value) || 0;
+  document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
+  clearTimeout(_rateChangeTimer);
+  _rateChangeTimer = setTimeout(() => { renderTable(); calcServiceFee(); }, 400);
+}
+
+// Sayfa yüklenince input değerlerinden exchangeRates'i senkronize et
+// (eski kayıtlarda exchange_rates_json boş olabilir ama input'lar dolu olabilir)
+(function syncRatesFromInputs() {
+  const eurEl = document.getElementById('eurRate');
+  const usdEl = document.getElementById('usdRate');
+  const eurVal = parseFloat(eurEl?.value);
+  const usdVal = parseFloat(usdEl?.value);
+  let changed = false;
+  if (eurVal > 0 && !(exchangeRates['EUR'] > 0)) { exchangeRates['EUR'] = eurVal; changed = true; }
+  if (usdVal > 0 && !(exchangeRates['USD'] > 0)) { exchangeRates['USD'] = usdVal; changed = true; }
+  if (changed) document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
+})();
 
 // Talepten gelen default tarihler
 const REQ_ACCOM_IN  = '{{ req.accom_check_in  or req.check_in  or "" }}';
@@ -405,9 +575,7 @@ function updateSectionDates(sec, dateFrom, dateTo) {
 }
 
 renderTable();
-updateTotals();
-const initPct = parseFloat(document.getElementById('serviceFeePercent').value) || 0;
-if (initPct > 0) calcServiceFee();
+calcServiceFee();   // updateTotals() + saveRows() zincirini de başlatır
 
 // ─── Konaklama Vergisi yardımcıları ───
 function isAccomTaxEnabled() {
@@ -426,8 +594,7 @@ function toggleAccomTax(checked) {
     if (idx >= 0) rows.splice(idx, 1);
   }
   renderTable();
-  updateTotals();
-  saveRows();
+  calcServiceFee();
 }
 
 function addRow(section) {
@@ -437,19 +604,19 @@ function addRow(section) {
   rows.push({ section, service_name: '', unit: 'Adet', qty: 1, nights,
     date_from: hasDates ? (sd.date_from||'') : '',
     date_to:   hasDates ? (sd.date_to||'')   : '',
-    cost_price: 0, sale_price: 0, vat_rate: defaultVat(section) });
-  renderTable(); updateTotals(); saveRows();
+    cost_price: 0, sale_price: 0, vat_rate: defaultVat(section), _manager_row: true });
+  renderTable(); calcServiceFee();
 }
 
-function addFromCatalog(section, svc) {
+function addFromCatalog(section, svcName, svcUnit) {
   const sd = getSectionDates(section);
   const hasDates = (section === 'accommodation' || section === 'meeting');
   const nights = (hasDates && sd.date_from && sd.date_to) ? Math.max(1, calcNights(sd.date_from, sd.date_to)) : 1;
-  rows.push({ section, service_name: svc.name, unit: svc.unit || 'Adet', qty: 1, nights,
+  rows.push({ section, service_name: svcName || '', unit: svcUnit || 'Adet', qty: 1, nights,
     date_from: hasDates ? (sd.date_from||'') : '',
     date_to:   hasDates ? (sd.date_to||'')   : '',
-    cost_price: 0, sale_price: 0, vat_rate: defaultVat(section) });
-  renderTable(); updateTotals(); saveRows();
+    cost_price: 0, sale_price: 0, vat_rate: defaultVat(section), _manager_row: true });
+  renderTable(); calcServiceFee();
 }
 
 function updateRowDates(rowIdx, field, val) {
@@ -483,7 +650,6 @@ function renderTable() {
   SECTIONS.forEach(sec => {
     const secRows  = bySec[sec] || [];
     const hasAccomTax = sec === 'accommodation' && accomTaxEnabled;
-    if (secRows.length === 0 && !hasAccomTax) return;
 
     const hasDates = (sec === 'accommodation' || sec === 'meeting');
     const dates    = getSectionDates(sec);
@@ -499,7 +665,7 @@ function renderTable() {
     const secSvcs = GROUPED_SERVICES[sec] || [];
     const dropdownItems = secSvcs.length
       ? secSvcs.map(s => `<li><a class="dropdown-item" style="font-size:12px;" href="#"
-           onclick="addFromCatalog('${sec}',${JSON.stringify(s).replace(/'/g,"&#39;")});return false;">${escHtml(s.name)} <span class="text-muted">(${escHtml(s.unit||'Adet')})</span></a></li>`).join('')
+           onclick="addFromCatalog('${sec}','${escHtml(s.name)}','${escHtml(s.unit||'Adet')}');return false;">${escHtml(s.name)} <span class="text-muted">(${escHtml(s.unit||'Adet')})</span></a></li>`).join('')
       : '<li><span class="dropdown-item text-muted" style="font-size:12px;">Katalogda kalem yok</span></li>';
     html += `<tr class="section-header-row">
       <td colspan="11">
@@ -524,6 +690,12 @@ function renderTable() {
       </td>
     </tr>`;
 
+    // Boş section placeholder
+    if (secRows.length === 0 && !hasAccomTax) {
+      html += `<tr><td colspan="11" class="text-center text-muted py-2" style="font-size:12px; background:#fafafa;">
+        <em>Boş — katalogdan veya boş satır ekleyin</em></td></tr>`;
+    }
+
     // Satırlar (tarihler artık her satırda ayrı sütun)
     let secCostEx = 0, secSaleEx = 0;
     secRows.forEach(row => {
@@ -544,10 +716,13 @@ function renderTable() {
       const cost     = parseFloat(rows[i].cost_price) || 0;
       const sale     = parseFloat(rows[i].sale_price) || 0;
       const vat      = parseFloat(rows[i].vat_rate)   || defaultVat(sec);
-      const costSub  = cost * qty * nights;
-      const saleSub  = sale * qty * nights;
-      secCostEx += costSub;
-      secSaleEx += saleSub;
+      const rowCur   = rows[i].currency || 'TRY';
+      const costSub    = cost * qty * nights;
+      const costSubTry = amountToTry(costSub, rowCur);   // TRY cinsinden
+      const saleSub    = sale * qty * nights;
+      const saleSubTry = amountToTry(saleSub, rowCur);   // TRY cinsinden
+      secCostEx += costSubTry;
+      secSaleEx += saleSubTry;
 
       const dateCells = hasDates
         ? `<td style="padding:3px 4px;">
@@ -561,25 +736,49 @@ function renderTable() {
         : `<td class="text-center text-muted" style="font-size:11px;">—</td>
            <td class="text-center text-muted" style="font-size:11px;">—</td>`;
 
-      const isFlagged = !!rows[i].revision_flag;
-      const noteVal   = escHtml(rows[i].revision_note || '');
+      const isFlagged    = !!rows[i].revision_flag;
+      const isManagerRow = !!rows[i]._manager_row;
+      const noteVal      = escHtml(rows[i].revision_note || '');
+      const nameCellHtml = isManagerRow
+        ? `<input type="text" class="form-control form-control-sm" value="${escHtml(rows[i].service_name||'')}" placeholder="Hizmet adı" style="min-width:120px;" oninput="rows[${i}].service_name=this.value;saveRows()">`
+        : escHtml(rows[i].service_name || '—');
+      const unitCellHtml = isManagerRow
+        ? `<input type="text" class="form-control form-control-sm" value="${escHtml(rows[i].unit||'Adet')}" style="width:65px;" oninput="rows[${i}].unit=this.value;saveRows()">`
+        : escHtml(rows[i].unit || 'Adet');
+      const qtyCellHtml = isManagerRow
+        ? `<input type="number" class="form-control form-control-sm text-center" style="width:55px;" min="1" value="${qty}" oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">`
+        : qty;
       html += `<tr style="${isFlagged ? 'background:#fff7ed;' : ''}">
-        <td class="ps-3 fw-semibold" style="font-size:13px;">${escHtml(rows[i].service_name || '—')}</td>
-        <td style="color:#64748b; font-size:12px;">${escHtml(rows[i].unit || 'Adet')}</td>
-        <td class="text-center" style="font-size:12px;">${qty}</td>
+        <td class="ps-3 ${isManagerRow ? '' : 'fw-semibold'}" style="font-size:13px;">${nameCellHtml}</td>
+        <td style="color:#64748b; font-size:12px;">${unitCellHtml}</td>
+        <td class="text-center" style="font-size:12px;">${qtyCellHtml}</td>
         ${dateCells}
         <td style="padding:3px 4px;">
           <input type="number" class="form-control form-control-sm text-center" style="font-size:11px; width:50px;"
                  min="1" value="${nights}"
-                 oninput="rows[${i}].nights=parseInt(this.value)||1;updateTotals();saveRows();updateRowSaleSub(${i})">
+                 oninput="rows[${i}].nights=parseInt(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">
         </td>
-        <td class="cost-cell">
-          <input type="number" class="form-control form-control-sm" min="0" step="0.01"
-                 value="${cost || ''}" placeholder="0,00" style="background:#f8fafc;"
-                 oninput="rows[${i}].cost_price=parseFloat(this.value)||0;updateTotals();saveRows();updateRowSaleSub(${i})">
+        <td class="${isManagerRow ? '' : 'cost-cell'}">
+          <div class="input-group input-group-sm">
+            ${isManagerRow
+              ? `<select class="input-group-text p-0" style="font-size:10px;font-weight:700;color:#1d4ed8;background:#dbeafe;border:none;cursor:pointer;width:46px;"
+                         onchange="rows[${i}].currency=this.value;renderTable();calcServiceFee();">
+                   <option value="TRY" ${rowCur==='TRY'?'selected':''}>₺TRY</option>
+                   <option value="EUR" ${rowCur==='EUR'?'selected':''}>€EUR</option>
+                   <option value="USD" ${rowCur==='USD'?'selected':''}>$USD</option>
+                 </select>`
+              : (rowCur !== 'TRY' ? `<span class="input-group-text" style="font-size:10px;padding:2px 5px;background:#dbeafe;color:#1d4ed8;font-weight:700;">${rowCur}</span>` : '')}
+            <input type="number" class="form-control form-control-sm" min="0" step="0.01"
+                   value="${cost || ''}" placeholder="0,00" style="${isManagerRow ? '' : 'background:#f8fafc;'}"
+                   oninput="rows[${i}].cost_price=parseFloat(this.value)||0;calcServiceFee();updateRowSaleSub(${i})">
+          </div>
         </td>
-        <td class="cost-cell" style="font-size:12px; font-weight:600; white-space:nowrap;" id="costSub-${i}">
-          ${cost > 0 ? fmtMoney(costSub) : '<span class="text-muted">—</span>'}
+        <td class="${isManagerRow ? '' : 'cost-cell'}" style="font-size:12px; font-weight:600; white-space:nowrap;" id="costSub-${i}">
+          ${cost > 0
+            ? (rowCur !== 'TRY'
+                ? `<div>${fmtCurrency(costSub, rowCur)}</div><div style="font-size:10px;color:#94a3b8;">${fmtMoney(costSubTry)}</div>`
+                : fmtMoney(costSub))
+            : '<span class="text-muted">—</span>'}
         </td>
         <td>
           <div class="d-flex align-items-center gap-1">
@@ -590,7 +789,7 @@ function renderTable() {
           </div>
         </td>
         <td style="font-size:12px; font-weight:600; white-space:nowrap;" id="saleSub-${i}">
-          ${saleSub > 0 ? fmtMoney(saleSub) : '<span class="text-muted">—</span>'}
+          ${saleSubTry > 0 ? fmtMoney(saleSubTry) : '<span class="text-muted">—</span>'}
         </td>
         <td>
           <button type="button" class="flag-btn ${isFlagged ? 'active' : ''}"
@@ -638,8 +837,8 @@ function renderTable() {
     // Bölüm alt toplamı (konaklama vergisi dahil)
     const secCostTotal = secCostEx + accomTaxAmt;
     const secSaleTotal = secSaleEx + accomTaxAmt;
-    grandCostEx += secCostTotal;
-    grandSaleEx += secSaleTotal;
+    grandCostEx += secCostEx + accomTaxAmt;
+    grandSaleEx += secSaleEx + accomTaxAmt;
 
     if (secRows.length > 0 || hasAccomTax) {
       html += `<tr style="background:#f1f5f9; font-size:12px; color:#475569;">
@@ -678,9 +877,8 @@ function updateNightsFromDates(sec) {
       rows[i].nights = n > 0 ? n : 1;
     }
   });
-  updateTotals();
-  saveRows();
   renderTable();
+  calcServiceFee();
 }
 
 function calcNights(from, to) {
@@ -697,12 +895,23 @@ function updateRowSaleSub(rowIdx) {
   const nights = parseFloat(row.nights)     || 1;
   const cost   = parseFloat(row.cost_price) || 0;
   const sale   = parseFloat(row.sale_price) || 0;
-  const costSub = cost * qty * nights;
-  const saleSub = sale * qty * nights;
+  const rowCur     = row.currency || 'TRY';
+  const costSub    = cost * qty * nights;
+  const costSubTry = amountToTry(costSub, rowCur);
+  const saleSub    = sale * qty * nights;
+  const saleSubTry = amountToTry(saleSub, rowCur);
   const costEl = document.getElementById(`costSub-${rowIdx}`);
-  if (costEl) costEl.innerHTML = cost > 0 ? fmtMoney(costSub) : '<span class="text-muted">—</span>';
+  if (costEl) {
+    if (cost > 0) {
+      costEl.innerHTML = rowCur !== 'TRY'
+        ? `<div>${fmtCurrency(costSub, rowCur)}</div><div style="font-size:10px;color:#94a3b8;">${fmtMoney(costSubTry)}</div>`
+        : fmtMoney(costSub);
+    } else {
+      costEl.innerHTML = '<span class="text-muted">—</span>';
+    }
+  }
   const saleEl = document.getElementById(`saleSub-${rowIdx}`);
-  if (saleEl) saleEl.innerHTML = saleSub > 0 ? fmtMoney(saleSub) : '<span class="text-muted">—</span>';
+  if (saleEl) saleEl.innerHTML = saleSubTry > 0 ? fmtMoney(saleSubTry) : '<span class="text-muted">—</span>';
 }
 
 function blockBelowCost(input, rowIdx) {
@@ -713,8 +922,7 @@ function blockBelowCost(input, rowIdx) {
   input.classList.toggle('border-danger', isBelowMin);
   if (isBelowMin) return;
   rows[rowIdx].sale_price = entered;
-  updateTotals();
-  saveRows();
+  calcServiceFee();   // servis bedeli + updateTotals() + saveRows() zinciri
   updateRowSaleSub(rowIdx);
 }
 
@@ -725,7 +933,8 @@ function calcServiceFee() {
   let saleEx = 0;
   rows.forEach(row => {
     if (!row.is_service_fee && !row.is_accommodation_tax) {
-      saleEx += (parseFloat(row.sale_price)||0) * (parseFloat(row.qty)||1) * (parseFloat(row.nights)||1);
+      const cur = row.currency || 'TRY';
+      saleEx += amountToTry((parseFloat(row.sale_price)||0) * (parseFloat(row.qty)||1) * (parseFloat(row.nights)||1), cur);
     }
   });
   const sfAmount = Math.round(saleEx * (pct / 100) * 100) / 100;
@@ -749,7 +958,7 @@ function calcServiceFee() {
 
 // ─── Toplamlar ───
 function updateTotals() {
-  // Geçiş 1: Konaklama satış toplamını hesapla → konaklama vergisi
+  // Geçiş 1: Konaklama satış toplamını hesapla → konaklama vergisi (TRY bazlı)
   let accomSaleEx = 0;
   const hasAccomTax = rows.some(r => r.is_accommodation_tax);
   rows.forEach(row => {
@@ -757,7 +966,8 @@ function updateTotals() {
       const qty  = parseFloat(row.qty)    || 1;
       const n    = parseFloat(row.nights) || 1;
       const sale = parseFloat(row.sale_price) || 0;
-      accomSaleEx += sale * qty * n;
+      const cur  = row.currency || 'TRY';
+      accomSaleEx += amountToTry(sale * qty * n, cur);
     }
   });
   const accomTaxAmt = hasAccomTax ? Math.round(accomSaleEx * 0.02 * 100) / 100 : 0;
@@ -766,7 +976,7 @@ function updateTotals() {
     if (taxIdx >= 0) { rows[taxIdx].sale_price = accomTaxAmt; rows[taxIdx].cost_price = accomTaxAmt; }
   }
 
-  // Geçiş 2: Tüm toplamlar
+  // Geçiş 2: Tüm toplamlar (TRY bazlı)
   let costEx = 0, saleEx = 0, sfSale = 0, sfVatAmt = 0;
   const vatByRate = {};
   const secTotals = {};
@@ -778,20 +988,21 @@ function updateTotals() {
     const cost = parseFloat(row.cost_price) || 0;
     const sale = parseFloat(row.sale_price) || 0;
     const vat  = parseFloat(row.vat_rate)   || 0;
+    const cur  = row.currency || 'TRY';
     if (row.is_accommodation_tax) {
-      costEx += sale;
+      costEx += sale;  // already in TRY
       saleEx += sale;
       secTotals['accommodation'].cost += sale;
       secTotals['accommodation'].sale += sale;
     } else if (row.is_service_fee) {
-      sfSale   = sale;
-      sfVatAmt = sale * (vat / 100);
+      sfSale   = amountToTry(sale, cur);
+      sfVatAmt = sfSale * (vat / 100);
       if (vat > 0 && sfVatAmt > 0) vatByRate[vat] = (vatByRate[vat] || 0) + sfVatAmt;
     } else {
-      const sec     = row.section || 'other';
-      const costSub = cost * qty * n;
-      const saleSub = sale * qty * n;
-      const vatAmt  = saleSub * (vat / 100);
+      const sec      = row.section || 'other';
+      const costSub  = amountToTry(cost * qty * n, cur);
+      const saleSub  = amountToTry(sale * qty * n, cur);
+      const vatAmt   = saleSub * (vat / 100);
       costEx += costSub;
       saleEx += saleSub;
       if (sec in secTotals) { secTotals[sec].cost += costSub; secTotals[sec].sale += saleSub; }
@@ -855,6 +1066,19 @@ function updateTotals() {
   document.getElementById('totalSaleIncVat').textContent  = fmtMoney(saleInc);
   const dupIncEl = document.getElementById('totalSaleIncVatDup');
   if (dupIncEl) dupIncEl.textContent = fmtMoney(saleInc);
+
+  // Teklif para birimi toplamı
+  const offerBlock = document.getElementById('totalOfferBlock');
+  if (offerCurrency && offerCurrency !== 'TRY' && rateToTry(offerCurrency) > 0) {
+    const saleOffer = amountToOffer(saleInc);
+    const offerEl = document.getElementById('totalSaleOffer');
+    const offerLbl = document.getElementById('totalOfferLabel');
+    if (offerEl) offerEl.textContent = fmtCurrency(saleOffer, offerCurrency);
+    if (offerLbl) offerLbl.textContent = `GENEL TOPLAM (KDV dahil) — ${offerCurrency}`;
+    if (offerBlock) offerBlock.style.display = '';
+  } else {
+    if (offerBlock) offerBlock.style.display = 'none';
+  }
 }
 
 function saveRows() {
@@ -870,10 +1094,11 @@ function openPreview() {
     if (!r.is_service_fee && !r.is_accommodation_tax) bySec[r.section || 'other'].push(r);
   });
 
-  // Önce konaklama vergisini hesapla
+  // Önce konaklama vergisini hesapla (TRY bazlı)
   let accomSaleEx = 0;
   (bySec['accommodation'] || []).forEach(r => {
-    accomSaleEx += (parseFloat(r.sale_price)||0) * (parseFloat(r.qty)||1) * (parseFloat(r.nights)||1);
+    const cur = r.currency || 'TRY';
+    accomSaleEx += amountToTry((parseFloat(r.sale_price)||0) * (parseFloat(r.qty)||1) * (parseFloat(r.nights)||1), cur);
   });
   const hasAccomTax = rows.some(r => r.is_accommodation_tax);
   const accomTaxAmt = hasAccomTax ? Math.round(accomSaleEx * 0.02 * 100) / 100 : 0;
@@ -920,20 +1145,36 @@ function openPreview() {
     let secCostEx = 0, secSaleEx = 0;
     secRows.forEach(row => {
       const hasDates = (sec === 'accommodation' || sec === 'meeting');
-      const qty    = parseFloat(row.qty)        || 1;
-      const nights = parseFloat(row.nights)     || 1;
-      const cost   = parseFloat(row.cost_price) || 0;
-      const sale   = parseFloat(row.sale_price) || 0;
-      const vat    = parseFloat(row.vat_rate)   || defaultVat(sec);
-      const costSub = cost * qty * nights;
-      const saleSub = sale * qty * nights;
-      const vatAmt  = saleSub * (vat / 100);
-      secCostEx += costSub; secSaleEx += saleSub;
-      grandCostEx += costSub; grandSaleEx += saleSub;
+      const qty      = parseFloat(row.qty)        || 1;
+      const nights   = parseFloat(row.nights)     || 1;
+      const cost     = parseFloat(row.cost_price) || 0;
+      const sale     = parseFloat(row.sale_price) || 0;
+      const vat      = parseFloat(row.vat_rate)   || defaultVat(sec);
+      const rowCur   = row.currency || 'TRY';
+      const costSub    = cost * qty * nights;
+      const costSubTry = amountToTry(costSub, rowCur);
+      const saleSub    = sale * qty * nights;
+      const saleSubTry = amountToTry(saleSub, rowCur);
+      const vatAmt     = saleSubTry * (vat / 100);
+      secCostEx   += costSubTry; secSaleEx   += saleSubTry;
+      grandCostEx += costSubTry; grandSaleEx += saleSubTry;
       if (vat > 0 && vatAmt > 0) vatByRate[vat] = (vatByRate[vat]||0) + vatAmt;
       grandVatTotal += vatAmt;
       const df = row.date_from || '';
       const dt = row.date_to   || '';
+      // Para birimi rozeti + TL karşılığı
+      const costCellVal = cost > 0
+        ? (rowCur !== 'TRY'
+            ? `<div style="font-size:11px;">${fmtCurrency(cost, rowCur)}</div>`
+            : fmtMoney(cost))
+        : '<span class="text-muted">—</span>';
+      const costSubCellVal = costSub > 0
+        ? (rowCur !== 'TRY'
+            ? `<div style="font-size:11px;">${fmtCurrency(costSub, rowCur)}</div><div style="font-size:10px;color:#94a3b8;">${fmtMoney(costSubTry)}</div>`
+            : fmtMoney(costSub))
+        : '<span class="text-muted">—</span>';
+      const saleCellVal = sale > 0 ? fmtMoney(sale) : '<span class="text-muted">—</span>';
+      const saleSubCellVal = saleSub > 0 ? fmtMoney(saleSubTry) : '<span class="text-muted">—</span>';
       html += `<tr>
         <td class="ps-3 fw-semibold" style="font-size:13px;">${escHtml(row.service_name||'—')}</td>
         <td style="color:#64748b; font-size:12px;">${escHtml(row.unit||'Adet')}</td>
@@ -941,10 +1182,10 @@ function openPreview() {
         <td style="font-size:11px; color:#475569;">${hasDates && df ? df : '<span class="text-muted">—</span>'}</td>
         <td style="font-size:11px; color:#475569;">${hasDates && dt ? dt : '<span class="text-muted">—</span>'}</td>
         <td class="text-center" style="font-size:12px;">${nights}</td>
-        <td class="cost-cell" style="font-size:12px;">${cost > 0 ? fmtMoney(cost) : '<span class="text-muted">—</span>'}</td>
-        <td class="cost-cell" style="font-size:12px; font-weight:600;">${costSub > 0 ? fmtMoney(costSub) : '<span class="text-muted">—</span>'}</td>
-        <td style="font-size:12px;">${fmtMoney(sale)}</td>
-        <td style="font-size:12px; font-weight:600;">${saleSub > 0 ? fmtMoney(saleSub) : '<span class="text-muted">—</span>'}</td>
+        <td class="cost-cell" style="font-size:12px;">${costCellVal}</td>
+        <td class="cost-cell" style="font-size:12px; font-weight:600;">${costSubCellVal}</td>
+        <td style="font-size:12px;">${saleCellVal}</td>
+        <td style="font-size:12px; font-weight:600;">${saleSubCellVal}</td>
         <td><span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size:10px;">%${vat}</span></td>
       </tr>`;
     });
@@ -1073,11 +1314,180 @@ document.getElementById('managerForm').addEventListener('submit', function() {
     parseFloat(document.getElementById('serviceFeePercent').value) || 0;
 });
 
-function fmtMoney(n) {
-  return '₺' + (n||0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+function showToast(msg) {
+  const el = document.getElementById('editorToast');
+  if (el) { el.querySelector('.toast-body').textContent = msg; bootstrap.Toast.getOrCreateInstance(el).show(); }
 }
+
+function fmtMoney(n) { return fmtCurrency(n, 'TRY'); }
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ─── Aktif bütçe ID'si ───
+let _currentBudgetId = '{{ budget.id }}';
+
+// Mekan seçimi
+function onVenueSelect(val) {
+  const manual = document.getElementById('venueNameManual');
+  if (val === '__manual__') {
+    manual.style.display = '';
+    manual.focus();
+  } else {
+    if (manual) manual.style.display = 'none';
+    document.getElementById('venueNameHidden').value = val;
+    updateActiveTab(val);
+  }
+}
+
+// Aktif sekme adını güncelle
+function updateActiveTab(name) {
+  const activeTab = document.querySelector('.budget-tab-active');
+  if (activeTab) {
+    const nameSpan = activeTab.querySelector('.tab-venue-name');
+    if (nameSpan) nameSpan.textContent = name || 'Yeni Bütçe';
+  }
+}
+
+// Sekme görselini güncelle
+function _setActiveTab(budgetId) {
+  document.querySelectorAll('.budget-tab').forEach(t => {
+    const isActive = t.id === 'tab-' + budgetId;
+    t.classList.toggle('budget-tab-active', isActive);
+    t.style.fontWeight   = isActive ? '700' : '500';
+    t.style.color        = isActive ? '#1e293b' : '#64748b';
+    t.style.background   = isActive ? '#ffffff' : '#f8fafc';
+    t.style.border       = isActive ? '1px solid #e2e8f0' : '1px solid transparent';
+    t.style.borderBottom = isActive ? '2px solid #ffffff' : '1px solid transparent';
+    t.style.marginBottom = '-2px';
+  });
+}
+
+// AJAX sekme geçişi — sayfa yenilenmez
+async function switchBudget(budgetId) {
+  if (budgetId === _currentBudgetId) return;
+
+  // Önce mevcut veriyi kaydet (arka planda)
+  await _saveCurrent(false);
+
+  // Yeni bütçe verisini çek
+  const res = await fetch(`/budgets/${budgetId}/json`);
+  if (!res.ok) { alert('Bütçe yüklenemedi.'); return; }
+  const data = await res.json();
+
+  // Editörü güncelle
+  rows = data.rows || [];
+  _currentBudgetId = budgetId;
+
+  // Form action güncelle
+  document.getElementById('managerForm').action = `/budgets/${budgetId}/price`;
+
+  // Mekan adı güncelle
+  const vnHidden = document.getElementById('venueNameHidden');
+  if (vnHidden) vnHidden.value = data.venue_name || '';
+  const vnSelect = document.querySelector('select[onchange^="onVenueSelect"]');
+  if (vnSelect) {
+    // Listede varsa seç
+    let found = false;
+    for (const opt of vnSelect.options) {
+      if (opt.value === data.venue_name) { vnSelect.value = opt.value; found = true; break; }
+    }
+    if (!found) {
+      vnSelect.value = '__manual__';
+      const manual = document.getElementById('venueNameManual');
+      if (manual) { manual.style.display = ''; manual.value = data.venue_name || ''; }
+    }
+  }
+
+  // Hizmet bedeli % güncelle
+  const sfPctEl = document.getElementById('serviceFeePercent');
+  if (sfPctEl) sfPctEl.value = data.service_fee_pct || '';
+
+  // Kur bilgileri
+  exchangeRates = data.exchange_rates || {};
+  document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
+  const eurEl = document.getElementById('eurRate');
+  const usdEl = document.getElementById('usdRate');
+  if (eurEl) eurEl.value = exchangeRates['EUR'] || '';
+  if (usdEl) usdEl.value = exchangeRates['USD'] || '';
+
+  // Manager notu
+  const mnInput = document.getElementById('managerNotesInput');
+  if (mnInput) mnInput.value = data.manager_notes || '';
+
+  // Tabloyu ve toplamları yeniden çiz
+  renderTable();
+  calcServiceFee();   // updateTotals + saveRows zinciri
+
+  // Sekme vurgusunu güncelle
+  _setActiveTab(budgetId);
+}
+
+// Arka planda kaydet (navigate etmeden)
+async function _saveCurrent(showAlert = true) {
+  saveRows();
+  const rowsJson = document.getElementById('rowsJson').value;
+  const sfPct    = document.getElementById('serviceFeePercent')?.value || '0';
+  const mgrNotes = document.getElementById('managerNotesInput')?.value || '';
+  const venName  = document.getElementById('venueNameHidden')?.value || '';
+
+  const fd = new FormData();
+  fd.append('rows_json',           rowsJson);
+  fd.append('service_fee_pct',     sfPct);
+  fd.append('manager_notes',       mgrNotes);
+  fd.append('venue_name',          venName);
+  fd.append('exchange_rates_json', JSON.stringify(exchangeRates));
+  fd.append('offer_currency',      offerCurrency);
+
+  try {
+    await fetch(`/budgets/${_currentBudgetId}/price`, { method: 'POST', body: fd });
+    // Sekme adını güncelle
+    const tab = document.getElementById('tab-' + _currentBudgetId);
+    if (tab) {
+      const sp = tab.querySelector('.tab-venue-name');
+      if (sp && venName) sp.textContent = venName;
+    }
+    if (showAlert) showToast('Kaydedildi.');
+  } catch(e) {
+    if (showAlert) alert('Kayıt hatası: ' + e);
+  }
+}
+
+// Kopya oluştur (AJAX — sayfa yenilenmez)
+async function copyAndOpen() {
+  // Önce mevcut veriyi kaydet
+  await _saveCurrent(false);
+
+  const venName = document.getElementById('venueNameHidden')?.value || 'Bütçe';
+  const rowsJson = collectRows();
+
+  // Kopya oluştur
+  const fd = new FormData();
+  fd.append('rows_json', rowsJson);
+  const res = await fetch(`/budgets/${_currentBudgetId}/copy`, { method: 'POST', body: fd });
+
+  // copy endpoint redirect yapıyor; yeni URL'den budget_id al
+  const newUrl = res.url; // redirect sonrası URL
+  const match  = newUrl.match(/\/budgets\/([^/]+)\/price/);
+  if (!match) { location.reload(); return; }
+  const newId = match[1];
+
+  // Yeni sekme ekle
+  const tabBar = document.getElementById('budgetTabBar');
+  if (tabBar) {
+    const plusBtn = tabBar.querySelector('button[onclick="copyAndOpen()"]');
+    const a = document.createElement('a');
+    a.href = 'javascript:void(0)';
+    a.onclick = () => switchBudget(newId);
+    a.id = 'tab-' + newId;
+    a.className = 'text-decoration-none budget-tab';
+    a.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:7px 16px 9px;font-size:13px;font-weight:500;color:#64748b;background:#f8fafc;border:1px solid transparent;border-bottom:1px solid transparent;border-radius:6px 6px 0 0;margin-bottom:-2px;white-space:nowrap;cursor:pointer;';
+    a.innerHTML = `<span class="badge bg-info bg-opacity-15 tab-status-badge" style="font-size:9px;padding:2px 5px;">Manager Onayında</span><span class="tab-venue-name">${venName} (Kopya)</span>`;
+    tabBar.insertBefore(a, plusBtn);
+  }
+
+  // Yeni sekmeye geç
+  await switchBudget(newId);
 }
 </script>
 {% endblock %}

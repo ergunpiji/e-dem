@@ -5,17 +5,20 @@ Admin: Tüm referanslar
 E-dem: Gelen referanslar, durum güncelle
 """
 
+import io
 import json
+import unicodedata
+import urllib.parse
 from datetime import date
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from auth import get_current_user
 from database import generate_ref_no, get_db
 from models import (
-    Customer, EventType, REQUEST_STATUSES, REQUEST_TABS, TR_CITIES,
+    Budget, Customer, CustomCategory, EventType, REQUEST_STATUSES, REQUEST_TABS, TR_CITIES,
     SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, User, Venue, _uuid, _now,
 )
 
@@ -43,6 +46,7 @@ async def requests_list(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     status_filter: str = "",
+    search: str = "",
 ):
     """Rol bazlı talep listesi"""
     query = db.query(ReqModel)
@@ -61,6 +65,14 @@ async def requests_list(
     if status_filter:
         query = query.filter(ReqModel.status == status_filter)
 
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            ReqModel.request_no.ilike(term) |
+            ReqModel.event_name.ilike(term) |
+            ReqModel.client_name.ilike(term)
+        )
+
     requests_all = query.order_by(ReqModel.created_at.desc()).all()
 
     return templates.TemplateResponse(
@@ -72,6 +84,7 @@ async def requests_list(
             "page_title":       page_title,
             "statuses":         REQUEST_STATUSES,
             "status_filter":    status_filter,
+            "search":           search,
         },
     )
 
@@ -252,14 +265,84 @@ async def requests_detail(
                           "supplier_type": v.supplier_type,
                           "contacts": v.contacts} for v in venues}
 
-    # Her bütçe için rows_by_section hesapla (tab karşılaştırması için)
+    # Her bütçe için rows_by_section + totals hesapla
+    _CURR_SYMS = {"TRY": "₺", "EUR": "€", "USD": "$"}
+
+    def _budget_totals(b):
+        SECTION_ORDER = ["accommodation", "meeting", "fb", "teknik", "dekor", "transfer", "tasarim", "other"]
+        offer_curr  = b.offer_currency or "TRY"
+        ex_rates    = b.exchange_rates  # {'EUR': 38.5, 'USD': 32.1}
+        offer_rate  = float(ex_rates.get(offer_curr, 1.0) or 1.0) if offer_curr != "TRY" else 1.0
+        offer_sym   = _CURR_SYMS.get(offer_curr, offer_curr)
+
+        sec_totals = {}
+        cost_ex = sale_ex = vat_total = 0.0
+        for row in b.rows:
+            if row.get("is_service_fee") or row.get("is_accommodation_tax"):
+                continue
+            sec      = row.get("section", "other")
+            qty      = float(row.get("qty", 1)  or 1)
+            nts      = float(row.get("nights", 1) or 1)
+            cost     = float(row.get("cost_price", 0) or 0)
+            sale     = float(row.get("sale_price", 0) or 0)
+            vat      = float(row.get("vat_rate", 0) or 0)
+            row_curr = row.get("currency", "TRY") or "TRY"
+            row_rate = float(ex_rates.get(row_curr, 1.0) or 1.0) if row_curr != "TRY" else 1.0
+            # Her satırı offer_currency'ye çevir: TRY'ye çevir, sonra offer_currency'ye
+            # row_curr → TRY: × row_rate; TRY → offer_curr: ÷ offer_rate
+            conv = (row_rate / offer_rate) if offer_rate else 1.0
+            cost_sub = cost * qty * nts * conv
+            sale_sub = sale * qty * nts * conv
+            cost_ex  += cost_sub
+            sale_ex  += sale_sub
+            vat_total += sale_sub * (vat / 100)
+            if sec not in sec_totals:
+                sec_totals[sec] = {"cost": 0.0, "sale": 0.0}
+            sec_totals[sec]["cost"] += cost_sub
+            sec_totals[sec]["sale"] += sale_sub
+        sf_pct    = float(b.service_fee_pct or 0)
+        sf_amount = round(sale_ex * sf_pct / 100, 2)
+        sf_vat    = round(sf_amount * 0.20, 2)
+        grand     = round(sale_ex + vat_total + sf_amount + sf_vat, 2)  # offer_currency cinsinden
+        grand_try = round(grand * offer_rate, 2)                         # TRY cinsinden
+        base      = sale_ex + sf_amount
+        margin    = round((sale_ex - cost_ex + sf_amount) / base * 100, 1) if base > 0 else 0.0
+        # sections listesi: SECTION_ORDER sırasına göre sadece veri olanlar
+        ordered_secs = [(s, sec_totals[s]) for s in SECTION_ORDER if s in sec_totals]
+        return {
+            "cost_ex":        cost_ex,
+            "sale_ex":        sale_ex,
+            "vat":            vat_total,
+            "sf_pct":         sf_pct,
+            "sf_amount":      sf_amount,
+            "sf_vat":         sf_vat,
+            "grand":          grand,       # offer_currency cinsinden
+            "grand_try":      grand_try,   # TRY cinsinden (karşılaştırma + alt satır için)
+            "margin":         margin,
+            "sections":       ordered_secs,
+            "offer_currency": offer_curr,
+            "offer_sym":      offer_sym,
+            "offer_rate":     offer_rate,
+        }
+
     budgets_data = []
     for b in req.budgets:
         rbs = {}
         for row in b.rows:
+            if row.get("is_service_fee") or row.get("is_accommodation_tax"):
+                continue
             sec = row.get("section", "other")
             rbs.setdefault(sec, []).append(row)
-        budgets_data.append({"budget": b, "rows_by_section": rbs})
+        budgets_data.append({"budget": b, "rows_by_section": rbs, "totals": _budget_totals(b)})
+
+    # Özet sekmesi için tüm benzersiz sectionlar (en az bir bütçede var olanlar)
+    all_sections_set = []
+    seen = set()
+    for bd in budgets_data:
+        for sec, _ in bd["totals"]["sections"]:
+            if sec not in seen:
+                seen.add(sec)
+                all_sections_set.append(sec)
 
     return templates.TemplateResponse(
         "requests/detail.html",
@@ -278,6 +361,7 @@ async def requests_detail(
             "can_direct_manage": can_direct_manage,
             "request_tabs":     REQUEST_TABS,
             "budgets_data":     budgets_data,
+            "all_sections":     all_sections_set,
         },
     )
 
@@ -425,6 +509,76 @@ async def requests_update_status(
     req.updated_at = _now()
     db.commit()
     return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Çoklu bütçe → tek Excel (özet sayfasından export)
+# ---------------------------------------------------------------------------
+
+@router.get("/{req_id}/export", name="requests_export")
+async def requests_export(
+    req_id:  str,
+    vat:     str = "exclusive",   # ?vat=exclusive | inclusive
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Talebe bağlı tüm onaylı bütçeleri tek Excel'de birleştirir.
+    Her bütçe (mekan) ayrı bir sheet olarak eklenir.
+    """
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        raise HTTPException(404)
+
+    budgets = (
+        db.query(Budget)
+          .filter(Budget.request_id == req_id,
+                  Budget.budget_status == "approved")
+          .all()
+    )
+    if not budgets:
+        raise HTTPException(404, "Bu talep için onaylı bütçe bulunamadı")
+
+    customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
+                if req.customer_id else None)
+
+    vat_mode = vat if vat in ("exclusive", "inclusive") else "exclusive"
+    custom_cats = [{"id": cc.id, "name": cc.name}
+                   for cc in db.query(CustomCategory).all()]
+
+    entries = []
+    for b in budgets:
+        creator = db.query(User).filter(User.id == b.created_by).first()
+        entries.append({
+            "budget":   b,
+            "request":  req,
+            "customer": customer,
+            "creator":  creator,
+        })
+
+    try:
+        from excel_export import build_multi_sheet
+        output = build_multi_sheet(entries, vat_mode=vat_mode,
+                                   custom_sections=custom_cats)
+    except Exception as exc:
+        raise HTTPException(500, f"Excel oluşturma hatası: {exc}")
+
+    # Dosya adı
+    raw_name = (req.event_name or req.request_no or "teklif")[:30]
+    ascii_name = unicodedata.normalize("NFKD", raw_name)
+    ascii_name = "".join(c for c in ascii_name if ord(c) < 128)
+    ascii_name = ascii_name.replace(" ", "_").replace("/", "-").strip("_") or "teklif"
+    filename_utf8 = urllib.parse.quote(f"{raw_name}_teklif.xlsx")
+    content_disposition = (
+        f'attachment; filename="{ascii_name}_teklif.xlsx"; '
+        f"filename*=UTF-8''{filename_utf8}"
+    )
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": content_disposition},
+    )
 
 
 # ---------------------------------------------------------------------------

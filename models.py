@@ -565,17 +565,19 @@ class Budget(Base):
     """Bütçe modeli"""
     __tablename__ = "budgets"
 
-    id               = Column(String(36), primary_key=True, default=_uuid)
-    request_id       = Column(String(36), ForeignKey("requests.id"), nullable=False)
-    venue_name       = Column(String(255), default="")
-    rows_json        = Column(Text, default="[]")     # list[BudgetRow] JSON
-    created_by       = Column(String(36), ForeignKey("users.id"), nullable=False)
-    created_at       = Column(DateTime, default=_now, nullable=False)
-    updated_at       = Column(DateTime, default=_now, onupdate=_now, nullable=False)
-    budget_status    = Column(String(32), default="draft_edem", nullable=False)
-    revision_notes   = Column(Text, default="")   # manager → E-dem notları
-    manager_notes    = Column(Text, default="")   # manager iç notları
-    service_fee_pct  = Column(Float, default=0.0) # manager girer
+    id                   = Column(String(36), primary_key=True, default=_uuid)
+    request_id           = Column(String(36), ForeignKey("requests.id"), nullable=False)
+    venue_name           = Column(String(255), default="")
+    rows_json            = Column(Text, default="[]")     # list[BudgetRow] JSON
+    created_by           = Column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at           = Column(DateTime, default=_now, nullable=False)
+    updated_at           = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    budget_status        = Column(String(32), default="draft_edem", nullable=False)
+    revision_notes       = Column(Text, default="")   # manager → E-dem notları
+    manager_notes        = Column(Text, default="")   # manager iç notları
+    service_fee_pct      = Column(Float, default=0.0) # manager girer
+    offer_currency       = Column(String(3), default="TRY")   # teklif para birimi
+    exchange_rates_json  = Column(Text, default="{}")          # {"EUR":40.5,"USD":35.0}
 
     # İlişkiler
     request = relationship("Request", back_populates="budgets")
@@ -593,8 +595,24 @@ class Budget(Base):
         self.rows_json = json.dumps(value or [], ensure_ascii=False)
 
     @property
+    def exchange_rates(self) -> dict:
+        try:
+            return json.loads(self.exchange_rates_json or "{}")
+        except Exception:
+            return {}
+
+    def rate_to_try(self, currency: str) -> float:
+        """Verilen para biriminin TRY karşılığı (1 birim = X TRY)"""
+        if not currency or currency == "TRY":
+            return 1.0
+        return float(self.exchange_rates.get(currency, 1.0) or 1.0)
+
+    def amount_to_try(self, amount: float, currency: str) -> float:
+        return amount * self.rate_to_try(currency)
+
+    @property
     def grand_cost(self) -> float:
-        """KDV dahil toplam maliyet"""
+        """KDV dahil toplam maliyet — TRY cinsinden"""
         total = 0.0
         for row in self.rows:
             if row.get("is_service_fee") or row.get("is_accommodation_tax"):
@@ -603,34 +621,48 @@ class Budget(Base):
             nights = float(row.get("nights", 1) or 1)
             cost   = float(row.get("cost_price", 0) or 0)
             vat    = float(row.get("vat_rate", 0) or 0)
-            subtotal = cost * qty * nights
+            cur    = row.get("currency", "TRY") or "TRY"
+            subtotal = self.amount_to_try(cost * qty * nights, cur)
             total += subtotal * (1 + vat / 100)
         return round(total, 2)
 
     @property
     def grand_sale(self) -> float:
-        """KDV dahil toplam satış"""
+        """KDV dahil toplam satış — TRY cinsinden"""
         total = 0.0
         for row in self.rows:
             qty    = float(row.get("qty", 1) or 1)
             nights = float(row.get("nights", 1) or 1)
             sale   = float(row.get("sale_price", 0) or 0)
             vat    = float(row.get("vat_rate", 0) or 0)
-            subtotal = sale * qty * nights
+            cur    = row.get("currency", "TRY") or "TRY"
+            subtotal = self.amount_to_try(sale * qty * nights, cur)
             total += subtotal * (1 + vat / 100)
         return round(total, 2)
 
+    @property
+    def grand_sale_offer(self) -> float:
+        """KDV dahil toplam satış — offer_currency cinsinden"""
+        oc = self.offer_currency or "TRY"
+        if oc == "TRY":
+            return self.grand_sale
+        offer_rate = self.rate_to_try(oc)
+        return round(self.grand_sale / offer_rate, 2) if offer_rate else self.grand_sale
+
     def to_dict(self) -> dict:
         return {
-            "id":         self.id,
-            "request_id": self.request_id,
-            "venue_name": self.venue_name,
-            "rows":       self.rows,
-            "grand_cost": self.grand_cost,
-            "grand_sale": self.grand_sale,
-            "created_by": self.created_by,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "id":                  self.id,
+            "request_id":          self.request_id,
+            "venue_name":          self.venue_name,
+            "rows":                self.rows,
+            "grand_cost":          self.grand_cost,
+            "grand_sale":          self.grand_sale,
+            "grand_sale_offer":    self.grand_sale_offer,
+            "offer_currency":      self.offer_currency or "TRY",
+            "exchange_rates":      self.exchange_rates,
+            "created_by":          self.created_by,
+            "created_at":          self.created_at.isoformat() if self.created_at else None,
+            "updated_at":          self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

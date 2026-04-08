@@ -3,6 +3,7 @@ Merkezi Jinja2Templates örneği — tüm router'lar bu modülden import eder.
 Böylece app.py'de tanımlanan özel filter'lar her yerde çalışır.
 """
 
+import json
 from datetime import datetime
 from typing import Any, Union
 from fastapi.templating import Jinja2Templates
@@ -46,6 +47,17 @@ def role_label(role: str) -> str:
     return labels.get(role, role)
 
 
-templates.env.filters["date_tr"] = format_date_tr
-templates.env.filters["money"] = format_money
+def fromjson_filter(value: Any) -> Any:
+    """JSON string → Python object (Jinja2 filter)"""
+    try:
+        if isinstance(value, str):
+            return json.loads(value)
+        return value or {}
+    except Exception:
+        return {}
+
+
+templates.env.filters["date_tr"]   = format_date_tr
+templates.env.filters["money"]     = format_money
 templates.env.filters["role_label"] = role_label
+templates.env.filters["fromjson"]  = fromjson_filter

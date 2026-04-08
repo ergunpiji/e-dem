@@ -17,13 +17,23 @@ from models import (
 # Engine & Session
 # ---------------------------------------------------------------------------
 
-DATABASE_URL = "sqlite:///./edem.db"
+import os
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=False,
-)
+_raw_url = os.environ.get("DATABASE_URL", "sqlite:///./edem.db")
+
+# Railway / Render PostgreSQL URL'i "postgres://" ile başlar,
+# SQLAlchemy "postgresql://" ister.
+if _raw_url.startswith("postgres://"):
+    _raw_url = _raw_url.replace("postgres://", "postgresql://", 1)
+
+DATABASE_URL = _raw_url
+_is_sqlite   = DATABASE_URL.startswith("sqlite")
+
+_engine_kwargs: dict = {"echo": False}
+if _is_sqlite:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -445,39 +455,47 @@ def generate_ref_no(db, event_type_code: str, customer_code: str, check_in_str: 
 # Veritabanı migrasyon (mevcut tablolara yeni sütun ekler)
 # ---------------------------------------------------------------------------
 
-def migrate_db():
-    """Mevcut tablolara eksik sütunları ekler"""
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE customers ADD COLUMN contacts_json TEXT DEFAULT '[]'"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE requests ADD COLUMN contact_person_json TEXT DEFAULT '{}'"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
-        try:
-            conn.execute(text("ALTER TABLE users ADD COLUMN org_title_id TEXT REFERENCES org_titles(id)"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
+def _col_exists(conn, table: str, column: str) -> bool:
+    """Sütunun tabloda var olup olmadığını kontrol eder (SQLite + PostgreSQL)."""
+    if _is_sqlite:
+        rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        return any(r[1] == column for r in rows)
+    else:
+        row = conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name=:t AND column_name=:c"
+        ), {"t": table, "c": column}).fetchone()
+        return row is not None
 
-        for col_def in [
-            "ALTER TABLE budgets ADD COLUMN budget_status TEXT DEFAULT 'draft_edem'",
-            "ALTER TABLE budgets ADD COLUMN revision_notes TEXT DEFAULT ''",
-            "ALTER TABLE budgets ADD COLUMN manager_notes TEXT DEFAULT ''",
-            "ALTER TABLE budgets ADD COLUMN service_fee_pct REAL DEFAULT 0",
-            "ALTER TABLE customers ADD COLUMN excel_template_path TEXT DEFAULT ''",
-            "ALTER TABLE customers ADD COLUMN excel_config_json TEXT DEFAULT '{}'",
-            "ALTER TABLE customers ADD COLUMN docs_json TEXT DEFAULT '[]'",
-        ]:
-            try:
-                conn.execute(text(col_def))
-                conn.commit()
-            except Exception:
-                pass
+
+def _safe_add_column(conn, table: str, column: str, col_type: str, default: str | None = None) -> None:
+    """Sütun yoksa ekler, varsa sessizce geçer."""
+    if _col_exists(conn, table, column):
+        return
+    default_sql = f" DEFAULT {default}" if default is not None else ""
+    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}{default_sql}"))
+    conn.commit()
+
+
+def migrate_db():
+    """Mevcut tablolara eksik sütunları ekler (SQLite + PostgreSQL uyumlu)."""
+    with engine.connect() as conn:
+        _safe_add_column(conn, "customers", "contacts_json",       "TEXT", "'{}'")
+        _safe_add_column(conn, "requests",  "contact_person_json", "TEXT", "'{}'")
+        _safe_add_column(conn, "users",     "org_title_id",        "TEXT")
+
+        # Budgets
+        _safe_add_column(conn, "budgets", "budget_status",       "TEXT",  "'draft_edem'")
+        _safe_add_column(conn, "budgets", "revision_notes",      "TEXT",  "''")
+        _safe_add_column(conn, "budgets", "manager_notes",       "TEXT",  "''")
+        _safe_add_column(conn, "budgets", "service_fee_pct",     "REAL",  "0")
+        _safe_add_column(conn, "budgets", "offer_currency",      "TEXT",  "'TRY'")
+        _safe_add_column(conn, "budgets", "exchange_rates_json", "TEXT",  "'{}'")
+
+        # Customers
+        _safe_add_column(conn, "customers", "excel_template_path", "TEXT", "''")
+        _safe_add_column(conn, "customers", "excel_config_json",   "TEXT", "'{}'")
+        _safe_add_column(conn, "customers", "docs_json",           "TEXT", "'[]'")
 
     # Müşterilere kontak kişi ekle (yoksa)
     db_c = SessionLocal()
