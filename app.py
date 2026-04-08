@@ -33,6 +33,9 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # Statik dosyalar
 # ---------------------------------------------------------------------------
+import os as _os
+_os.makedirs("static/css", exist_ok=True)
+_os.makedirs("static/js",  exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ---------------------------------------------------------------------------
