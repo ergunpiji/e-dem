@@ -509,29 +509,39 @@ def migrate_db():
         _safe_add_column(conn, "customers", "excel_config_json",   "TEXT", "'{}'")
         _safe_add_column(conn, "customers", "docs_json",           "TEXT", "'[]'")
 
-    # Müşterilere kontak kişi ekle (yoksa)
+    # Müşterilere kontak kişi ekle — kontak yoksa HER ZAMAN güncelle
+    SEED_CONTACTS = {
+        "abc": [
+            {"name": "Ayşe Kara",    "title": "Etkinlik Koordinatörü",  "email": "a.kara@abcteknoloji.com",  "phone": "+90 532 111 2233"},
+            {"name": "Mert Doğan",   "title": "Genel Müdür Yardımcısı", "email": "m.dogan@abcteknoloji.com", "phone": "+90 532 111 4455"},
+        ],
+        "xyz": [
+            {"name": "Selin Yıldız", "title": "Kurumsal İletişim Müdürü", "email": "s.yildiz@xyzholding.com", "phone": "+90 541 222 3344"},
+            {"name": "Burak Çelik",  "title": "İdari İşler Uzmanı",       "email": "b.celik@xyzholding.com",  "phone": "+90 541 222 5566"},
+        ],
+        "def": [
+            {"name": "Hande Arslan", "title": "Proje Müdürü", "email": "h.arslan@definsaat.com",  "phone": "+90 553 333 7788"},
+            {"name": "Tolga Yılmaz", "title": "Genel Müdür",  "email": "t.yilmaz@definsaat.com",  "phone": "+90 553 333 9900"},
+        ],
+    }
     db_c = SessionLocal()
     try:
-        for cust_code, contacts in [
-            ("abc", [
-                {"name": "Ayşe Kara",    "title": "Etkinlik Koordinatörü", "email": "a.kara@abcteknoloji.com",    "phone": "+90 532 111 2233"},
-                {"name": "Mert Doğan",   "title": "Genel Müdür Yardımcısı","email": "m.dogan@abcteknoloji.com",  "phone": "+90 532 111 4455"},
-            ]),
-            ("xyz", [
-                {"name": "Selin Yıldız", "title": "Kurumsal İletişim Müdürü","email": "s.yildiz@xyzholding.com", "phone": "+90 541 222 3344"},
-                {"name": "Burak Çelik",  "title": "İdari İşler Uzmanı",     "email": "b.celik@xyzholding.com",  "phone": "+90 541 222 5566"},
-            ]),
-            ("def", [
-                {"name": "Hande Arslan", "title": "Proje Müdürü",           "email": "h.arslan@definsaat.com",   "phone": "+90 553 333 7788"},
-                {"name": "Tolga Yılmaz", "title": "Genel Müdür",            "email": "t.yilmaz@definsaat.com",  "phone": "+90 553 333 9900"},
-            ]),
-        ]:
+        for cust_code, contacts in SEED_CONTACTS.items():
             c = db_c.query(Customer).filter(Customer.code == cust_code).first()
-            if c and (not c.contacts_json or c.contacts_json in ("[]", "{}", "")):
+            if not c:
+                continue
+            # Mevcut kontak sayısını kontrol et — boşsa güncelle
+            try:
+                existing = json.loads(c.contacts_json or "[]")
+            except Exception:
+                existing = []
+            if not existing:
                 c.contacts_json = json.dumps(contacts, ensure_ascii=False)
+                print(f"  [migrate] {cust_code} kontakları eklendi.")
         db_c.commit()
-    except Exception:
+    except Exception as e:
         db_c.rollback()
+        print(f"  [migrate] Kontak ekleme hatası: {e}")
     finally:
         db_c.close()
 
