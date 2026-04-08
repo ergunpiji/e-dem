@@ -349,41 +349,34 @@
 
   {# ─── BUTONLAR ─── #}
   <div class="d-flex gap-2 flex-wrap align-items-center mb-5">
-    <button type="submit" class="btn btn-outline-secondary">
-      <i class="bi bi-save me-1"></i> Taslak Kaydet
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-save me-1"></i> Kaydet
+    </button>
+
+    <button type="button" class="btn btn-success"
+            onclick="submitSaveAndApprove()">
+      <i class="bi bi-check-circle me-1"></i> Kaydet & Onayla
     </button>
 
     <button type="button" class="btn btn-outline-primary" onclick="openPreview()">
       <i class="bi bi-eye me-1"></i> Önizleme
     </button>
 
-    <button type="button" class="btn btn-success"
-            onclick="submitApprove()"
-            {% if budget.budget_status not in ('pending_manager', 'draft_manager') %}disabled{% endif %}>
-      <i class="bi bi-check-circle me-1"></i> Onayla
-    </button>
-
     <button type="button" class="btn btn-warning"
             data-bs-toggle="modal" data-bs-target="#revisionModal"
-            {% if budget.budget_status not in ('pending_manager', 'draft_manager') %}disabled{% endif %}>
+            {% if budget.budget_status not in ('pending_manager', 'draft_manager', 'approved') %}disabled{% endif %}>
       <i class="bi bi-arrow-counterclockwise me-1"></i> Revizyon İste
     </button>
 
     <button type="button" class="btn btn-outline-danger"
             onclick="submitCancel()"
-            {% if budget.budget_status in ('approved', 'cancelled') %}disabled{% endif %}>
+            {% if budget.budget_status == 'cancelled' %}disabled{% endif %}>
       <i class="bi bi-x-circle me-1"></i> İptal Et
     </button>
 
-    {% if budget.budget_status == 'approved' %}
-    <a href="/budgets/{{ budget.id }}/export" class="btn btn-success">
+    <a href="/budgets/{{ budget.id }}/export" class="btn btn-outline-success">
       <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
     </a>
-    {% else %}
-    <button type="button" class="btn btn-outline-success" disabled title="Önce onaylayın">
-      <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
-    </button>
-    {% endif %}
 
     <button type="button" class="btn btn-outline-secondary" onclick="submitCopy()">
       <i class="bi bi-copy me-1"></i> Kopyala & Yeni Bütçe Oluştur
@@ -1290,10 +1283,29 @@ function toggleFlag(i) {
 
 // ─── Workflow ───
 function submitApprove() {
-  if (confirm('Bütçeyi onaylamak istediğinizden emin misiniz? Talep "Tamamlandı" olarak işaretlenecek.')) {
+  if (confirm('Bütçeyi onaylamak istediğinizden emin misiniz?')) {
     saveRows();
     document.getElementById('approveForm').submit();
   }
+}
+
+async function submitSaveAndApprove() {
+  if (!confirm('Önce kaydedilecek, ardından onaylanacak. Devam edilsin mi?')) return;
+  // 1) Önce kaydet (AJAX)
+  saveRows();
+  document.getElementById('serviceFeePctInput').value =
+    parseFloat(document.getElementById('serviceFeePercent').value) || 0;
+  document.getElementById('offerCurrencyHidden').value = offerCurrency;
+  document.getElementById('exchangeRatesJson').value   = JSON.stringify(exchangeRates);
+
+  const fd = new FormData(document.getElementById('managerForm'));
+  try {
+    await fetch(`/budgets/{{ budget.id }}/price`, { method: 'POST', body: fd });
+  } catch(e) {
+    alert('Kayıt hatası: ' + e); return;
+  }
+  // 2) Onayla
+  document.getElementById('approveForm').submit();
 }
 function submitCancel() {
   if (confirm('Bütçeyi ve ilgili talebi iptal etmek istediğinizden emin misiniz?')) {
@@ -1311,6 +1323,9 @@ document.getElementById('managerForm').addEventListener('submit', function() {
   saveRows();
   document.getElementById('serviceFeePctInput').value =
     parseFloat(document.getElementById('serviceFeePercent').value) || 0;
+  // Kur ve para birimi bilgilerini forma yaz
+  document.getElementById('offerCurrencyHidden').value = offerCurrency;
+  document.getElementById('exchangeRatesJson').value   = JSON.stringify(exchangeRates);
 });
 
 function showToast(msg) {
