@@ -63,7 +63,7 @@ def _can_edem_edit(budget: Budget) -> bool:
 
 
 def _can_manager_price(budget: Budget) -> bool:
-    return budget.budget_status not in ("approved", "cancelled")
+    return budget.budget_status != "cancelled"
 
 
 @router.get("", response_class=HTMLResponse, name="budgets_list")
@@ -538,7 +538,9 @@ async def budgets_price_save(
     budget.exchange_rates_json = exchange_rates_json or "{}"
     if venue_name.strip():
         budget.venue_name      = venue_name.strip()
-    budget.budget_status       = "draft_manager"
+    # Onaylanmış bütçe düzenlenince onay durumunu koru
+    if budget.budget_status != "approved":
+        budget.budget_status   = "draft_manager"
     budget.updated_at          = _now()
     db.commit()
 

@@ -10,7 +10,8 @@
 {% endif %}
 {% if can_manager_price %}
 <a href="/budgets/{{ budget.id }}/price" class="btn btn-warning btn-sm">
-  <i class="bi bi-tag me-1"></i> Fiyat Gir
+  <i class="bi bi-pencil me-1"></i>
+  {% if budget.budget_status == 'approved' %}Düzenle{% else %}Fiyat Gir{% endif %}
 </a>
 {% endif %}
 {% endblock %}
