@@ -220,13 +220,13 @@
       <div class="row g-3">
         <div class="col-md-4">
           <div class="border rounded p-3 text-center">
-            <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">Maliyet (KDV hariç)</div>
+            <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;" id="labelCostEx">Maliyet (KDV hariç)</div>
             <div class="fw-bold text-secondary" style="font-size:18px;" id="totalCostExVat">₺0,00</div>
           </div>
         </div>
         <div class="col-md-4">
           <div class="border rounded p-3 text-center bg-primary bg-opacity-10">
-            <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;">TOPLAM MALİYET (KDV dahil) — TL</div>
+            <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;" id="labelCostInc">TOPLAM MALİYET (KDV dahil) — TL</div>
             <div class="fw-bold text-primary" style="font-size:22px;" id="totalCostIncVat">₺0,00</div>
           </div>
         </div>
@@ -636,7 +636,7 @@ function renderTable() {
 function addRow(section) {
   const vat = defaultVat(section);
   rows.push({section, service_name:'', unit:'Adet', qty:1, nights:1,
-             cost_price:0, sale_price:0, vat_rate: vat, currency: 'TRY'});
+             cost_price:0, sale_price:0, vat_rate: vat, currency: offerCurrency || 'TRY'});
   renderTable();
   updateTotals();
   saveRows();
@@ -652,7 +652,7 @@ function removeRow(i) {
 function addFromCatalog(id, name, unit, section) {
   const vat = defaultVat(section);
   rows.push({section, service_name: name, unit, qty:1, nights:1,
-             cost_price:0, sale_price:0, vat_rate: vat, service_id: id, currency: 'TRY'});
+             cost_price:0, sale_price:0, vat_rate: vat, service_id: id, currency: offerCurrency || 'TRY'});
   renderTable();
   updateTotals();
   saveRows();
@@ -668,23 +668,37 @@ function updateTotals() {
     const cost   = parseFloat(row.cost_price) || 0;
     const vat    = parseFloat(row.vat_rate)   || 0;
     const cur    = row.currency || 'TRY';
-    const costSub   = cost * qty * nights;
+    const costSub    = cost * qty * nights;
     const costSubTry = amountToTry(costSub, cur);
-    const vatAmt    = costSubTry * (vat / 100);
+    const vatAmt     = costSubTry * (vat / 100);
     costExTry  += costSubTry;
     costIncTry += costSubTry + vatAmt;
   });
-  document.getElementById('totalCostExVat').textContent  = fmtMoney(costExTry);
-  document.getElementById('totalCostIncVat').textContent = fmtMoney(costIncTry);
 
-  // Teklif para birimi toplamı
+  const oc = offerCurrency || 'TRY';
   const offerBlock = document.getElementById('totalOfferBlock');
-  if (offerCurrency && offerCurrency !== 'TRY') {
-    const costOffer = amountToOffer(costIncTry);
-    document.getElementById('totalCostOffer').textContent = fmtCurrency(costOffer, offerCurrency);
-    document.getElementById('totalOfferLabel').textContent = `TOPLAM MALİYET — ${offerCurrency} (KDV dahil)`;
+
+  if (oc !== 'TRY') {
+    // Ana totaller teklif para biriminde göster
+    const costExOffer  = amountToOffer(costExTry);
+    const costIncOffer = amountToOffer(costIncTry);
+    document.getElementById('totalCostExVat').textContent  = fmtCurrency(costExOffer,  oc);
+    document.getElementById('totalCostIncVat').textContent = fmtCurrency(costIncOffer, oc);
+    const labelEx  = document.getElementById('labelCostEx');
+    const labelInc = document.getElementById('labelCostInc');
+    if (labelEx)  labelEx.textContent  = `MALİYET (KDV hariç) — ${oc}`;
+    if (labelInc) labelInc.textContent = `TOPLAM MALİYET (KDV dahil) — ${oc}`;
+    // TL karşılığı üçüncü blokta
+    document.getElementById('totalCostOffer').textContent = fmtMoney(costIncTry);
+    document.getElementById('totalOfferLabel').textContent = `TOPLAM MALİYET — TL (KDV dahil)`;
     if (offerBlock) offerBlock.style.display = '';
   } else {
+    document.getElementById('totalCostExVat').textContent  = fmtMoney(costExTry);
+    document.getElementById('totalCostIncVat').textContent = fmtMoney(costIncTry);
+    const labelEx  = document.getElementById('labelCostEx');
+    const labelInc = document.getElementById('labelCostInc');
+    if (labelEx)  labelEx.textContent  = 'MALİYET (KDV hariç)';
+    if (labelInc) labelInc.textContent = 'TOPLAM MALİYET (KDV dahil) — TL';
     if (offerBlock) offerBlock.style.display = 'none';
   }
 }
