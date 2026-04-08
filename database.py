@@ -136,6 +136,10 @@ def seed_data() -> None:
                     email="info@abcteknoloji.com",
                     phone="+90 212 555 0100",
                     notes="VIP müşteri",
+                    contacts_json=json.dumps([
+                        {"name": "Ayşe Kara",  "title": "Etkinlik Koordinatörü",  "email": "a.kara@abcteknoloji.com",  "phone": "+90 532 111 2233"},
+                        {"name": "Mert Doğan", "title": "Genel Müdür Yardımcısı", "email": "m.dogan@abcteknoloji.com", "phone": "+90 532 111 4455"},
+                    ], ensure_ascii=False),
                     created_at=_now(),
                 ),
                 Customer(
@@ -149,6 +153,10 @@ def seed_data() -> None:
                     email="etkinlik@xyzholding.com",
                     phone="+90 212 444 0200",
                     notes="",
+                    contacts_json=json.dumps([
+                        {"name": "Selin Yıldız", "title": "Kurumsal İletişim Müdürü", "email": "s.yildiz@xyzholding.com", "phone": "+90 541 222 3344"},
+                        {"name": "Burak Çelik",  "title": "İdari İşler Uzmanı",       "email": "b.celik@xyzholding.com",  "phone": "+90 541 222 5566"},
+                    ], ensure_ascii=False),
                     created_at=_now(),
                 ),
                 Customer(
@@ -162,6 +170,10 @@ def seed_data() -> None:
                     email="iletisim@definsaat.com",
                     phone="+90 216 333 0300",
                     notes="Aylık toplantı organizasyonu",
+                    contacts_json=json.dumps([
+                        {"name": "Hande Arslan", "title": "Proje Müdürü", "email": "h.arslan@definsaat.com",  "phone": "+90 553 333 7788"},
+                        {"name": "Tolga Yılmaz", "title": "Genel Müdür",  "email": "t.yilmaz@definsaat.com", "phone": "+90 553 333 9900"},
+                    ], ensure_ascii=False),
                     created_at=_now(),
                 ),
             ]
@@ -515,7 +527,7 @@ def migrate_db():
             ]),
         ]:
             c = db_c.query(Customer).filter(Customer.code == cust_code).first()
-            if c and (not c.contacts_json or c.contacts_json == "[]"):
+            if c and (not c.contacts_json or c.contacts_json in ("[]", "{}", "")):
                 c.contacts_json = json.dumps(contacts, ensure_ascii=False)
         db_c.commit()
     except Exception:

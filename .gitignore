@@ -31,5 +31,8 @@ env/
 
 # Upload / Excel templates (müşteriye özel dosyalar)
 uploads/
-*.xlsx
-*.pdf
+
+# Referans / arşiv dosyaları
+"Otel Teklif Talebi ve Bütçeleme/"
+Otel*/
+*.zip
