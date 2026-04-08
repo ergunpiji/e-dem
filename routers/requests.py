@@ -56,7 +56,8 @@ async def requests_list(
         page_title = "Referanslarım"
     elif current_user.role == "e_dem":
         query = query.filter(
-            ReqModel.status.in_(["pending", "in_progress", "venues_contacted", "budget_ready"])
+            ReqModel.status.in_(["pending", "in_progress", "venues_contacted", "budget_ready",
+                                  "offer_sent", "revision"])
         )
         page_title = "Gelen Referanslar"
     else:
@@ -512,6 +513,127 @@ async def requests_update_status(
 
 
 # ---------------------------------------------------------------------------
+# Post-Offer Workflow: Teklif Gönderildi / Onay / İptal / Revizyon / Tamamla
+# ---------------------------------------------------------------------------
+
+@router.post("/{req_id}/offer-sent", name="requests_offer_sent")
+async def requests_offer_sent(
+    req_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Teklif müşteriye gönderildi → status: offer_sent"""
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
+    if req.status not in ("budget_ready", "in_progress", "venues_contacted"):
+        return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
+    req.status     = "offer_sent"
+    req.updated_at = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{req_id}/confirm", name="requests_confirm")
+async def requests_confirm(
+    req_id: str,
+    budget_id: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşteri onayladı → seçilen budget 'confirmed', diğerleri değişmez, request 'confirmed'"""
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
+
+    if budget_id:
+        bgt = db.query(Budget).filter(Budget.id == budget_id, Budget.request_id == req_id).first()
+        if bgt:
+            bgt.budget_status = "confirmed"
+        req.confirmed_budget_id = budget_id
+    req.status       = "confirmed"
+    req.confirmed_at = _now()
+    req.updated_at   = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{req_id}/cancel-job", name="requests_cancel_job")
+async def requests_cancel_job(
+    req_id: str,
+    reason: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """İşi iptal et → request 'cancelled', onaylı/confirmed bütçeler de cancelled"""
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req or req.status == "cancelled":
+        return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
+
+    req.status              = "cancelled"
+    req.cancellation_reason = reason.strip()
+    req.updated_at          = _now()
+
+    for b in req.budgets:
+        if b.budget_status in ("approved", "confirmed", "pending_manager", "draft_manager"):
+            b.budget_status = "cancelled"
+    db.commit()
+    return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{req_id}/revision", name="requests_revision")
+async def requests_revision(
+    req_id: str,
+    new_check_in:       str = Form(""),
+    new_check_out:      str = Form(""),
+    new_accom_check_in:  str = Form(""),
+    new_accom_check_out: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tarih değişikliği → request 'revision', onaylı/confirmed bütçeler draft_edem'e döner"""
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
+
+    if new_check_in:
+        req.check_in  = new_check_in
+        req.city      = req.city  # unchanged
+    if new_check_out:
+        req.check_out = new_check_out
+    if new_accom_check_in:
+        req.accom_check_in  = new_accom_check_in
+    if new_accom_check_out:
+        req.accom_check_out = new_accom_check_out
+
+    req.status         = "revision"
+    req.revision_count = (req.revision_count or 0) + 1
+    req.updated_at     = _now()
+
+    for b in req.budgets:
+        if b.budget_status in ("approved", "confirmed"):
+            b.budget_status = "draft_edem"
+    db.commit()
+    return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{req_id}/complete", name="requests_complete")
+async def requests_complete(
+    req_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Etkinlik tamamlandı → request 'completed'"""
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req or req.status not in ("confirmed",):
+        return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
+    req.status     = "completed"
+    req.updated_at = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
 # Çoklu bütçe → tek Excel (özet sayfasından export)
 # ---------------------------------------------------------------------------
 
@@ -533,7 +655,7 @@ async def requests_export(
     budgets = (
         db.query(Budget)
           .filter(Budget.request_id == req_id,
-                  Budget.budget_status == "approved")
+                  Budget.budget_status.in_(["approved", "confirmed"]))
           .all()
     )
     if not budgets:

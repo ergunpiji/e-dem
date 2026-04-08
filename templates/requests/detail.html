@@ -57,6 +57,21 @@
           </span>
           {% if req.cities_display %}<i class="bi bi-geo-alt me-1"></i>{{ req.cities_display }}{% endif %}
         </div>
+        {% if req.status == 'cancelled' and req.cancellation_reason %}
+        <div class="mt-1 text-danger" style="font-size:12px;">
+          <i class="bi bi-x-circle me-1"></i><strong>İptal Nedeni:</strong> {{ req.cancellation_reason }}
+        </div>
+        {% endif %}
+        {% if req.status == 'revision' and req.revision_count %}
+        <div class="mt-1" style="font-size:12px; color:#92400e;">
+          <i class="bi bi-arrow-repeat me-1"></i>Revizyon {{ req.revision_count }} — Yeni tarih: {{ req.check_in | date_tr if req.check_in else '?' }} → {{ req.check_out | date_tr if req.check_out else '?' }}
+        </div>
+        {% endif %}
+        {% if req.status == 'confirmed' and req.confirmed_at %}
+        <div class="mt-1 text-success" style="font-size:12px;">
+          <i class="bi bi-check-circle me-1"></i>{{ req.confirmed_at.strftime('%d.%m.%Y') }} tarihinde onaylandı
+        </div>
+        {% endif %}
       </div>
 
       <div class="d-flex flex-column gap-2 align-items-end">
@@ -71,16 +86,26 @@
           </form>
           {% endif %}
           {# E-dem/Admin bütçe oluşturabilir #}
-          {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
+          {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready', 'revision') %}
           <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">
             <i class="bi bi-calculator me-1"></i>
             {% if req.budgets %}Yeni Bütçe{% else %}Bütçe Oluştur{% endif %}
           </a>
           {% endif %}
+          {# Teklif gönder butonu #}
+          {% if req.status in ('budget_ready', 'in_progress', 'venues_contacted') %}
+          <form method="post" action="/requests/{{ req.id }}/offer-sent">
+            <button type="submit" class="btn btn-outline-teal btn-sm"
+                    onclick="return confirm('Teklif müşteriye gönderildi olarak işaretlensin mi?')"
+                    style="color:#0d9488; border-color:#0d9488;">
+              <i class="bi bi-send me-1"></i> Teklif Gönderildi
+            </button>
+          </form>
+          {% endif %}
         {% endif %}
         {# Manager direkt yönetim #}
         {% if can_direct_manage %}
-          {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
+          {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready', 'revision') %}
           <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">
             <i class="bi bi-calculator me-1"></i>
             {% if req.budgets %}Yeni Bütçe{% else %}Bütçe Oluştur{% endif %}
@@ -93,6 +118,48 @@
           <a href="/budgets/{{ b.id }}" class="btn btn-outline-info btn-sm">
             <i class="bi bi-file-earmark-spreadsheet me-1"></i> Bütçeyi Görüntüle
           </a>
+        {% endif %}
+
+        {# Müşteri Onayı — budget_ready / offer_sent / revision aşamasında #}
+        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status in ('budget_ready', 'offer_sent', 'revision') %}
+        {% set ns_any_approved = namespace(found=false) %}
+        {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_any_approved.found = true %}{% endif %}{% endfor %}
+        {% if ns_any_approved.found %}
+        <button type="button" class="btn btn-success btn-sm"
+                data-bs-toggle="modal" data-bs-target="#confirmModal">
+          <i class="bi bi-check-circle me-1"></i> Müşteri Onayladı
+        </button>
+        {% endif %}
+        {% endif %}
+
+        {# Etkinliği Tamamla — confirmed #}
+        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status == 'confirmed' %}
+        <form method="post" action="/requests/{{ req.id }}/complete"
+              onsubmit="return confirm('Etkinlik tamamlandı olarak işaretlensin mi?')">
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-trophy me-1"></i> Etkinliği Tamamla
+          </button>
+        </form>
+        <button type="button" class="btn btn-outline-warning btn-sm"
+                data-bs-toggle="modal" data-bs-target="#revisionModal">
+          <i class="bi bi-calendar-event me-1"></i> Tarih Değişikliği
+        </button>
+        {% endif %}
+
+        {# Tarih değişikliği — offer_sent / budget_ready #}
+        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status in ('offer_sent', 'budget_ready') %}
+        <button type="button" class="btn btn-outline-warning btn-sm"
+                data-bs-toggle="modal" data-bs-target="#revisionModal">
+          <i class="bi bi-calendar-event me-1"></i> Tarih Değişikliği
+        </button>
+        {% endif %}
+
+        {# İşi İptal Et — tamamlanmış/iptal dışı herkes #}
+        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status not in ('cancelled', 'completed') %}
+        <button type="button" class="btn btn-outline-danger btn-sm"
+                data-bs-toggle="modal" data-bs-target="#cancelJobModal">
+          <i class="bi bi-x-circle me-1"></i> İşi İptal Et
+        </button>
         {% endif %}
 
         {% if can_edit_req and (req.status == 'draft' or current_user.role == 'admin') %}
@@ -151,14 +218,14 @@
       {% for bd in budgets_data %}
       {% set b = bd.budget %}
       {% set bs = b.budget_status %}
-      {% set scolor = {'draft_edem':'secondary','pending_manager':'warning','draft_manager':'info','approved':'success','revision_requested':'danger','cancelled':'dark'}.get(bs, 'secondary') %}
+      {% set scolor = {'draft_edem':'secondary','pending_manager':'warning','draft_manager':'info','approved':'success','confirmed':'success','revision_requested':'danger','cancelled':'dark'}.get(bs, 'secondary') %}
       <li class="nav-item flex-shrink-0" role="presentation">
         <button class="nav-link"
                 data-bs-toggle="tab"
                 data-bs-target="#btpane-{{ b.id }}"
                 type="button" style="white-space:nowrap;">
           <i class="bi bi-building me-1"></i>{{ b.venue_name or ('Bütçe #' + loop.index|string) }}
-          <span class="badge bg-{{ scolor }} ms-1" style="font-size:10px;">{{ {'draft_edem':'Taslak','pending_manager':'Onayda','draft_manager':'Düzenleniyor','approved':'Onaylandı','revision_requested':'Revizyon','cancelled':'İptal'}.get(bs, bs) }}</span>
+          <span class="badge bg-{{ scolor }} ms-1" style="font-size:10px;">{{ {'draft_edem':'Taslak','pending_manager':'Onayda','draft_manager':'Düzenleniyor','approved':'Onaylandı','confirmed':'Müşteri Seçti ✓','revision_requested':'Revizyon','cancelled':'İptal'}.get(bs, bs) }}</span>
         </button>
       </li>
       {% endfor %}
@@ -196,8 +263,8 @@
                 <th class="text-end pe-3" style="min-width:170px;">
                   <div style="font-size:12px; font-weight:700;">{{ b.venue_name or ('Bütçe #' + loop.index|string) }}</div>
                   <div style="margin-top:3px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
-                    <span class="badge bg-{{ {'draft_edem':'secondary','pending_manager':'warning','draft_manager':'info','approved':'success','revision_requested':'danger','cancelled':'dark'}.get(bs,'secondary') }}" style="font-size:9px;">
-                      {{ {'draft_edem':'Taslak','pending_manager':'Onayda','draft_manager':'Düzenleniyor','approved':'Onaylandı','revision_requested':'Revizyon','cancelled':'İptal'}.get(bs, bs) }}
+                    <span class="badge bg-{{ {'draft_edem':'secondary','pending_manager':'warning','draft_manager':'info','approved':'success','confirmed':'success','revision_requested':'danger','cancelled':'dark'}.get(bs,'secondary') }}" style="font-size:9px;">
+                      {{ {'draft_edem':'Taslak','pending_manager':'Onayda','draft_manager':'Düzenleniyor','approved':'Onaylandı','confirmed':'Müşteri Seçti ✓','revision_requested':'Revizyon','cancelled':'İptal'}.get(bs, bs) }}
                     </span>
                     {% if is_best %}<span class="badge bg-success" style="font-size:9px;">⭐ En İyi</span>{% endif %}
                   </div>
@@ -1801,4 +1868,123 @@ function applyVenuePickerSelection(section, emailFilterSection) {
     </div>
   </div>
 </div>
+
+{# ══════════════════════════════
+   MODAL: Müşteri Onayı
+   ══════════════════════════════ #}
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#166534; color:white;">
+        <h5 class="modal-title"><i class="bi bi-check-circle me-2"></i>Müşteri Onayladı</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/requests/{{ req.id }}/confirm">
+        <div class="modal-body">
+          <p class="text-muted" style="font-size:13px;">Müşterinin onayladığı mekanı/bütçeyi seçin. Bu işlem talep durumunu <strong>Müşteri Onayladı</strong> olarak güncelleyecek.</p>
+          <label class="form-label fw-semibold">Onaylanan Bütçe / Mekan</label>
+          <select name="budget_id" class="form-select">
+            <option value="">— Seçiniz —</option>
+            {% for b in req.budgets %}
+            {% if b.budget_status in ('approved', 'confirmed') %}
+            <option value="{{ b.id }}" {% if b.id == req.confirmed_budget_id %}selected{% endif %}>
+              {{ b.venue_name or ('Bütçe #' + loop.index|string) }}
+            </option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-check-lg me-1"></i>Onayı Kaydet
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════════════
+   MODAL: İşi İptal Et
+   ══════════════════════════════ #}
+<div class="modal fade" id="cancelJobModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#991b1b; color:white;">
+        <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>İşi İptal Et</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/requests/{{ req.id }}/cancel-job">
+        <div class="modal-body">
+          <p class="text-muted" style="font-size:13px;">Bu işlem talebi ve tüm onaylı bütçeleri <strong>İptal Edildi</strong> olarak işaretleyecek.</p>
+          <label class="form-label fw-semibold">İptal Nedeni <span class="text-muted fw-normal">(isteğe bağlı)</span></label>
+          <textarea name="reason" class="form-control" rows="3"
+                    placeholder="İptal nedeni, müşteriden gelen mesaj…">{% if req.cancellation_reason %}{{ req.cancellation_reason }}{% endif %}</textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+          <button type="submit" class="btn btn-danger btn-sm"
+                  onclick="return confirm('Talep iptal edilecek. Bu işlem geri alınamaz. Emin misiniz?')">
+            <i class="bi bi-x-lg me-1"></i>İptal Et
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════════════
+   MODAL: Tarih Değişikliği
+   ══════════════════════════════ #}
+<div class="modal fade" id="revisionModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#92400e; color:white;">
+        <h5 class="modal-title"><i class="bi bi-calendar-event me-2"></i>Tarih Değişikliği</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/requests/{{ req.id }}/revision">
+        <div class="modal-body">
+          <p class="text-muted" style="font-size:13px;">Yeni tarihleri girin. Onaylı bütçeler <strong>E-dem taslağına</strong> döner ve yeniden fiyatlandırılır. Referans no değişmez.</p>
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:12px;">Etkinlik Başlangıç</label>
+              <input type="date" name="new_check_in" class="form-control form-control-sm"
+                     value="{{ req.check_in or '' }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:12px;">Etkinlik Bitiş</label>
+              <input type="date" name="new_check_out" class="form-control form-control-sm"
+                     value="{{ req.check_out or '' }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:12px;">Konaklama Giriş <span class="text-muted fw-normal">(varsa)</span></label>
+              <input type="date" name="new_accom_check_in" class="form-control form-control-sm"
+                     value="{{ req.accom_check_in or '' }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:12px;">Konaklama Çıkış <span class="text-muted fw-normal">(varsa)</span></label>
+              <input type="date" name="new_accom_check_out" class="form-control form-control-sm"
+                     value="{{ req.accom_check_out or '' }}">
+            </div>
+          </div>
+          {% if req.revision_count and req.revision_count > 0 %}
+          <div class="mt-2 text-muted" style="font-size:12px;">
+            <i class="bi bi-arrow-repeat me-1"></i>Bu talep daha önce {{ req.revision_count }} kez revize edildi.
+          </div>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+          <button type="submit" class="btn btn-warning btn-sm"
+                  onclick="return confirm('Tarihler güncellenecek ve onaylı bütçeler yeniden fiyatlandırma için E-dem taslağına dönecek. Emin misiniz?')">
+            <i class="bi bi-calendar-check me-1"></i>Tarihleri Güncelle
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

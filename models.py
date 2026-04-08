@@ -53,6 +53,9 @@ REQUEST_STATUSES = [
     {"value": "in_progress",       "label": "İşlemde",                   "color": "primary"},
     {"value": "venues_contacted",  "label": "Mekanlarla İletişime Geçildi", "color": "info"},
     {"value": "budget_ready",      "label": "Bütçe Hazır",               "color": "success"},
+    {"value": "offer_sent",        "label": "Teklif Gönderildi",         "color": "teal"},
+    {"value": "confirmed",         "label": "Müşteri Onayladı",          "color": "success"},
+    {"value": "revision",          "label": "Revizyon",                  "color": "warning"},
     {"value": "completed",         "label": "Tamamlandı",                "color": "success"},
     {"value": "cancelled",         "label": "İptal Edildi",              "color": "danger"},
 ]
@@ -449,6 +452,10 @@ class Request(Base):
     preferred_venues_json = Column(Text, default="[]")      # list[venue_id]
     selected_venues_json  = Column(Text, default="[]")      # list[venue_id]
     contact_person_json   = Column(Text, default="{}")      # selected contact info snapshot
+    confirmed_at          = Column(DateTime, nullable=True)
+    confirmed_budget_id   = Column(String(36), nullable=True)  # onaylanan bütçe id
+    cancellation_reason   = Column(Text, default="")
+    revision_count        = Column(Integer, default=0)
     created_by       = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at       = Column(DateTime, default=_now, nullable=False)
     updated_at       = Column(DateTime, default=_now, onupdate=_now, nullable=False)

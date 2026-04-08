@@ -504,6 +504,12 @@ def migrate_db():
         _safe_add_column(conn, "budgets", "offer_currency",      "TEXT",  "'TRY'")
         _safe_add_column(conn, "budgets", "exchange_rates_json", "TEXT",  "'{}'")
 
+        # Requests — post-offer workflow
+        _safe_add_column(conn, "requests", "confirmed_at",        "TIMESTAMP")
+        _safe_add_column(conn, "requests", "confirmed_budget_id", "TEXT")
+        _safe_add_column(conn, "requests", "cancellation_reason", "TEXT",    "''")
+        _safe_add_column(conn, "requests", "revision_count",      "INTEGER", "0")
+
         # Customers
         _safe_add_column(conn, "customers", "excel_template_path", "TEXT", "''")
         _safe_add_column(conn, "customers", "excel_config_json",   "TEXT", "'{}'")

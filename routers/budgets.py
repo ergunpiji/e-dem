@@ -45,6 +45,7 @@ BUDGET_STATUS_LABELS = {
     "pending_manager":    "Manager Onayında",
     "draft_manager":      "Manager Düzenliyor",
     "approved":           "Onaylandı",
+    "confirmed":          "Müşteri Seçti",
     "revision_requested": "Revizyon Bekleniyor",
     "cancelled":          "İptal Edildi",
 }
@@ -53,6 +54,7 @@ BUDGET_STATUS_COLORS = {
     "pending_manager":    "warning",
     "draft_manager":      "info",
     "approved":           "success",
+    "confirmed":          "success",
     "revision_requested": "danger",
     "cancelled":          "dark",
 }
