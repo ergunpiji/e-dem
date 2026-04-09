@@ -2,186 +2,211 @@
 {% block page_title %}Dashboard{% endblock %}
 {% block page_title_block %}Dashboard{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>
+  .fin-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    transition: box-shadow .15s;
+  }
+  .fin-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.10); }
+  .fin-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; font-weight: 700; margin-bottom: 6px; }
+  .fin-value { font-size: 26px; font-weight: 800; line-height: 1.1; }
+  .fin-sub   { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+  .chart-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .chart-title { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 16px; }
+</style>
+{% endblock %}
+
 {% block content %}
 
-{# ─── HOŞ GELDİN BAŞLIĞI ─── #}
-<div class="mb-4">
-  <h4 class="fw-bold mb-1">
-    {% if current_user.role == 'admin' %}
-      👋 Merhaba, {{ current_user.name }}!
-    {% elif current_user.role == 'project_manager' %}
-      👋 Merhaba, {{ current_user.name }}!
-    {% else %}
-      👋 Merhaba, {{ current_user.name }}!
-    {% endif %}
-  </h4>
-  <p class="text-muted mb-0" style="font-size:14px;">
-    {% if current_user.role == 'admin' %}
-      Sistem yöneticisi paneline hoş geldiniz. Tüm veriler ve istatistikler aşağıda özetlenmiştir.
-    {% elif current_user.role == 'project_manager' %}
-      Proje yöneticisi paneline hoş geldiniz. Aktif taleplerinizi takip edin.
-    {% else %}
-      E-dem satın alma paneline hoş geldiniz. Bekleyen talepleri işleme alın.
-    {% endif %}
-  </p>
-</div>
-
-{# ─── İSTATİSTİK KARTLARI ─── #}
-{% if current_user.role == 'admin' %}
+{# ══════════════════ FİNANSAL ÖZET KARTLARI ══════════════════ #}
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">🏨</div>
-      <div class="stat-value text-primary">{{ stats.total_venues }}</div>
-      <div class="stat-label">Aktif Tedarikçi</div>
+    <div class="fin-card">
+      <div class="fin-label">💰 Toplam Ciro</div>
+      <div class="fin-value text-primary">
+        {% if financial.total_sale %}
+          ₺{{ '{:,.0f}'.format(financial.total_sale).replace(',', '.') }}
+        {% else %}—{% endif %}
+      </div>
+      <div class="fin-sub">KDV dahil, TRY cinsinden</div>
     </div>
   </div>
   <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">📋</div>
-      <div class="stat-value text-warning">{{ stats.total_requests }}</div>
-      <div class="stat-label">Toplam Talep</div>
+    <div class="fin-card">
+      <div class="fin-label">📈 Toplam Kar</div>
+      <div class="fin-value {% if financial.total_kar and financial.total_kar > 0 %}text-success{% else %}text-danger{% endif %}">
+        {% if financial.total_kar is defined %}
+          ₺{{ '{:,.0f}'.format(financial.total_kar).replace(',', '.') }}
+        {% else %}—{% endif %}
+      </div>
+      <div class="fin-sub">Satış − Maliyet</div>
     </div>
   </div>
   <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">👥</div>
-      <div class="stat-value text-success">{{ stats.total_users }}</div>
-      <div class="stat-label">Aktif Kullanıcı</div>
+    <div class="fin-card">
+      <div class="fin-label">🎯 Karlılık</div>
+      <div class="fin-value {% if financial.karlilik and financial.karlilik >= 15 %}text-success{% elif financial.karlilik %}text-warning{% else %}text-muted{% endif %}">
+        {% if financial.karlilik is defined and financial.karlilik %}{{ financial.karlilik }}%{% else %}—{% endif %}
+      </div>
+      <div class="fin-sub">Kar / Ciro oranı</div>
     </div>
   </div>
   <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">💰</div>
-      <div class="stat-value text-info">{{ stats.total_budgets }}</div>
-      <div class="stat-label">Hazırlanan Bütçe</div>
-    </div>
-  </div>
-</div>
-<div class="row g-3 mb-4">
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">🏢</div>
-      <div class="stat-value" style="color:#7c3aed;">{{ stats.total_customers }}</div>
-      <div class="stat-label">Müşteri</div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">🗂</div>
-      <div class="stat-value" style="color:#d97706;">{{ stats.total_services }}</div>
-      <div class="stat-label">Aktif Hizmet</div>
+    <div class="fin-card">
+      <div class="fin-label">📋 Açık İşler</div>
+      <div class="fin-value text-warning">{{ stats.open_requests or 0 }}</div>
+      <div class="fin-sub">Aktif referans sayısı</div>
     </div>
   </div>
 </div>
 
-{% elif current_user.role == 'project_manager' %}
-<div class="row g-3 mb-4">
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">📋</div>
-      <div class="stat-value text-primary">{{ stats.my_total }}</div>
-      <div class="stat-label">Toplam Taleplerim</div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">📝</div>
-      <div class="stat-value text-secondary">{{ stats.my_draft }}</div>
-      <div class="stat-label">Taslak</div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">⏳</div>
-      <div class="stat-value text-warning">{{ stats.my_pending }}</div>
-      <div class="stat-label">Beklemede</div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">✅</div>
-      <div class="stat-value text-success">{{ stats.budget_ready }}</div>
-      <div class="stat-label">Bütçe Hazır</div>
-    </div>
-  </div>
-</div>
-
-{% else %}{# e_dem #}
-<div class="row g-3 mb-4">
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">📥</div>
-      <div class="stat-value text-warning">{{ stats.pending }}</div>
-      <div class="stat-label">Bekleyen Talep</div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">⚙️</div>
-      <div class="stat-value text-primary">{{ stats.in_progress }}</div>
-      <div class="stat-label">İşlemdeki Talep</div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">📧</div>
-      <div class="stat-value text-info">{{ stats.venues_contacted }}</div>
-      <div class="stat-label">Mekan İletişimi</div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-icon">💰</div>
-      <div class="stat-value text-success">{{ stats.my_budgets }}</div>
-      <div class="stat-label">Hazırladığım Bütçe</div>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{# ─── HIZLI ERİŞİM ─── #}
-<div class="row g-3 mb-4">
+{# ══════════════════ HIZLI ERİŞİM ══════════════════ #}
+<div class="mb-4 d-flex flex-wrap gap-2">
   {% if current_user.role == 'project_manager' %}
-  <div class="col-12">
-    <a href="/requests/new" class="btn btn-primary">
-      <i class="bi bi-plus-circle me-1"></i> Yeni Talep Oluştur
-    </a>
-    <a href="/requests" class="btn btn-outline-secondary ms-2">
-      <i class="bi bi-list-ul me-1"></i> Tüm Taleplerim
-    </a>
-  </div>
+  <a href="/requests/new" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i> Yeni Talep
+  </a>
+  <a href="/requests" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list-ul me-1"></i> Referanslarım
+  </a>
+  <a href="/requests?view=ongoing" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-activity me-1"></i> Devam Eden İşler
+  </a>
   {% elif current_user.role == 'e_dem' %}
-  <div class="col-12">
-    <a href="/requests" class="btn btn-primary">
-      <i class="bi bi-inbox me-1"></i> Gelen Referanslar
-    </a>
-    <a href="/budgets/new" class="btn btn-outline-secondary ms-2">
-      <i class="bi bi-plus-circle me-1"></i> Yeni Bütçe
-    </a>
-  </div>
+  <a href="/requests" class="btn btn-primary btn-sm">
+    <i class="bi bi-inbox me-1"></i> Gelen Referanslar
+  </a>
+  <a href="/budgets/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i> Yeni Bütçe
+  </a>
+  <a href="/requests?view=ongoing" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-activity me-1"></i> Devam Eden İşler
+  </a>
   {% elif current_user.role == 'admin' %}
-  <div class="col-12">
-    <a href="/users/new" class="btn btn-primary">
-      <i class="bi bi-person-plus me-1"></i> Yeni Kullanıcı
-    </a>
-    <a href="/venues/new" class="btn btn-outline-secondary ms-2">
-      <i class="bi bi-building-add me-1"></i> Yeni Tedarikçi
-    </a>
-    <a href="/customers/new" class="btn btn-outline-secondary ms-2">
-      <i class="bi bi-building me-1"></i> Yeni Müşteri
-    </a>
-  </div>
+  <a href="/requests" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list-ul me-1"></i> Tüm Referanslar
+  </a>
+  <a href="/users/new" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-person-plus me-1"></i> Yeni Kullanıcı
+  </a>
+  <a href="/venues/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-building-add me-1"></i> Yeni Tedarikçi
+  </a>
   {% endif %}
 </div>
 
-{# ─── SON AKTİVİTE ─── #}
+{# ══════════════════ GRAFİK + SON TALEPLER ══════════════════ #}
+<div class="row g-4 mb-4">
+
+  {# CİRO / KAR GRAFİĞİ #}
+  <div class="col-lg-7">
+    <div class="chart-card h-100">
+      <div class="chart-title">
+        <i class="bi bi-bar-chart-line text-primary me-2"></i>CİRO / KAR — Aylık
+        <span class="text-muted fw-normal ms-2" style="font-size:11px;">Son 12 ay</span>
+      </div>
+      <canvas id="ciroKarChart" style="max-height:260px;"></canvas>
+    </div>
+  </div>
+
+  {# DURUM ÖZET KARTLARI #}
+  <div class="col-lg-5">
+    <div class="chart-card h-100">
+      <div class="chart-title">
+        <i class="bi bi-speedometer2 text-warning me-2"></i>İş Durumu
+      </div>
+
+      {% if current_user.role == 'admin' %}
+      <div class="d-flex flex-column gap-2">
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#eff6ff;">
+          <span style="font-size:13px;"><i class="bi bi-building me-2 text-primary"></i>Aktif Tedarikçi</span>
+          <span class="fw-bold text-primary">{{ stats.total_venues }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f0fdf4;">
+          <span style="font-size:13px;"><i class="bi bi-people me-2 text-success"></i>Aktif Kullanıcı</span>
+          <span class="fw-bold text-success">{{ stats.total_users }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#fefce8;">
+          <span style="font-size:13px;"><i class="bi bi-building-check me-2 text-warning"></i>Müşteri</span>
+          <span class="fw-bold text-warning">{{ stats.total_customers }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f5f3ff;">
+          <span style="font-size:13px;"><i class="bi bi-files me-2" style="color:#7c3aed;"></i>Toplam Talep</span>
+          <span class="fw-bold" style="color:#7c3aed;">{{ stats.total_requests }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#fff1f2;">
+          <span style="font-size:13px;"><i class="bi bi-calculator me-2 text-danger"></i>Hazırlanan Bütçe</span>
+          <span class="fw-bold text-danger">{{ stats.total_budgets }}</span>
+        </div>
+      </div>
+
+      {% elif current_user.role == 'project_manager' %}
+      <div class="d-flex flex-column gap-2">
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#eff6ff;">
+          <span style="font-size:13px;"><i class="bi bi-files me-2 text-primary"></i>Toplam Taleplerim</span>
+          <span class="fw-bold text-primary">{{ stats.my_total }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f8fafc;">
+          <span style="font-size:13px;"><i class="bi bi-pencil me-2 text-secondary"></i>Taslak</span>
+          <span class="fw-bold text-secondary">{{ stats.my_draft }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#fefce8;">
+          <span style="font-size:13px;"><i class="bi bi-hourglass me-2 text-warning"></i>Beklemede</span>
+          <span class="fw-bold text-warning">{{ stats.my_pending }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f0fdf4;">
+          <span style="font-size:13px;"><i class="bi bi-check-circle me-2 text-success"></i>Bütçe Hazır</span>
+          <span class="fw-bold text-success">{{ stats.budget_ready }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#bbf7d0;">
+          <span style="font-size:13px;"><i class="bi bi-trophy me-2 text-success"></i>Konfirme</span>
+          <span class="fw-bold text-success">{{ stats.my_confirmed }}</span>
+        </div>
+      </div>
+
+      {% else %}{# e_dem #}
+      <div class="d-flex flex-column gap-2">
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#fefce8;">
+          <span style="font-size:13px;"><i class="bi bi-inbox me-2 text-warning"></i>Bekleyen Talep</span>
+          <span class="fw-bold text-warning">{{ stats.pending }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#eff6ff;">
+          <span style="font-size:13px;"><i class="bi bi-gear me-2 text-primary"></i>İşlemdeki</span>
+          <span class="fw-bold text-primary">{{ stats.in_progress }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#e0f2fe;">
+          <span style="font-size:13px;"><i class="bi bi-envelope me-2 text-info"></i>Mekan İletişimi</span>
+          <span class="fw-bold text-info">{{ stats.venues_contacted }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f0fdf4;">
+          <span style="font-size:13px;"><i class="bi bi-check-circle me-2 text-success"></i>Bütçe Hazır</span>
+          <span class="fw-bold text-success">{{ stats.budget_ready }}</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f5f3ff;">
+          <span style="font-size:13px;"><i class="bi bi-calculator me-2" style="color:#7c3aed;"></i>Hazırladığım Bütçe</span>
+          <span class="fw-bold" style="color:#7c3aed;">{{ stats.my_budgets }}</span>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+{# ══════════════════ SON AKTİVİTE TABLOSU ══════════════════ #}
 <div class="card">
   <div class="card-body">
     <div class="d-flex align-items-center justify-content-between mb-3">
       <h6 class="fw-bold mb-0">
         <i class="bi bi-clock-history text-primary me-2"></i>
-        {% if current_user.role == 'e_dem' %}Son Bekleyen Talepler{% else %}Son Talepler{% endif %}
+        {% if current_user.role == 'e_dem' %}Son Bekleyen Talepler
+        {% else %}Son Talepler{% endif %}
       </h6>
       <a href="/requests" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
     </div>
@@ -244,4 +269,63 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+  const raw = {{ chart_data | safe }};
+  if (!raw.labels || !raw.labels.length) return;
+
+  const ctx = document.getElementById('ciroKarChart');
+  if (!ctx) return;
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: raw.labels,
+      datasets: [
+        {
+          label: 'Ciro',
+          data: raw.sale,
+          backgroundColor: 'rgba(37,99,235,0.7)',
+          borderRadius: 4,
+          order: 2,
+        },
+        {
+          label: 'Kar',
+          data: raw.cost.map((c, i) => raw.sale[i] - c),
+          backgroundColor: 'rgba(5,150,105,0.7)',
+          borderRadius: 4,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              return ` ${ctx.dataset.label}: ₺${new Intl.NumberFormat('tr-TR').format(Math.round(v))}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 } }, grid: { display: false } },
+        y: {
+          ticks: {
+            font: { size: 10 },
+            callback: v => '₺' + new Intl.NumberFormat('tr-TR', {notation:'compact'}).format(v)
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
 {% endblock %}
