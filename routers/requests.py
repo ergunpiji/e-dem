@@ -635,6 +635,39 @@ async def requests_complete(
 
 
 # ---------------------------------------------------------------------------
+# Tüm draft_edem bütçeleri manager'a gönder
+# ---------------------------------------------------------------------------
+
+@router.post("/{req_id}/send-all-to-manager", name="requests_send_all_to_manager")
+async def requests_send_all_to_manager(
+    req_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _check_edem_or_admin(current_user)
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        raise HTTPException(404)
+
+    from models import Budget as BudgetModel
+    drafts = db.query(BudgetModel).filter(
+        BudgetModel.request_id == req_id,
+        BudgetModel.budget_status == "draft_edem",
+    ).all()
+
+    for b in drafts:
+        b.budget_status = "pending_manager"
+
+    if drafts:
+        db.commit()
+
+    return RedirectResponse(
+        url=f"/requests/{req_id}",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Çoklu bütçe → tek Excel (özet sayfasından export)
 # ---------------------------------------------------------------------------
 

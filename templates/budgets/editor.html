@@ -248,7 +248,7 @@
     <button type="submit" class="btn btn-outline-secondary">
       <i class="bi bi-save me-1"></i> Taslak Kaydet
     </button>
-    {% if budget and budget.budget_status in ('draft_edem', 'revision_requested') %}
+    {% if not budget or budget.budget_status in ('draft_edem', 'revision_requested') %}
     <button type="button" class="btn btn-primary ms-2"
             onclick="sendToManager()">
       <i class="bi bi-send me-1"></i> Manager'a Gönder

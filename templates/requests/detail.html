@@ -102,6 +102,17 @@
             </button>
           </form>
           {% endif %}
+          {# Müşteriye Teklif Gönder — Excel indir + mail aç #}
+          {% if req.status in ('budget_ready', 'offer_sent', 'confirmed') %}
+          {% set ns_approved = namespace(found=false) %}
+          {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_approved.found = true %}{% endif %}{% endfor %}
+          {% if ns_approved.found %}
+          <button type="button" class="btn btn-success btn-sm"
+                  onclick="sendOfferEmail('{{ req.id }}', '{{ (customer.email if customer else '') | e }}', '{{ req.event_name | e }}', '{{ req.request_no | e }}')">
+            <i class="bi bi-envelope-arrow-up me-1"></i> Müşteriye Teklif Gönder
+          </button>
+          {% endif %}
+          {% endif %}
         {% endif %}
         {# Manager direkt yönetim #}
         {% if can_direct_manage %}
@@ -110,6 +121,18 @@
             <i class="bi bi-calculator me-1"></i>
             {% if req.budgets %}Yeni Bütçe{% else %}Bütçe Oluştur{% endif %}
           </a>
+          {% endif %}
+          {# Tüm taslak bütçeleri toplu manager'a gönder #}
+          {% set ns_draft = namespace(count=0) %}
+          {% for b in req.budgets %}{% if b.budget_status == 'draft_edem' %}{% set ns_draft.count = ns_draft.count + 1 %}{% endif %}{% endfor %}
+          {% if ns_draft.count > 0 %}
+          <form method="post" action="/requests/{{ req.id }}/send-all-to-manager" style="margin:0;">
+            <button type="submit" class="btn btn-primary btn-sm"
+                    onclick="return confirm('{{ ns_draft.count }} taslak bütçe manager onayına gönderilsin mi?')">
+              <i class="bi bi-send me-1"></i> Manager'a Gönder
+              {% if ns_draft.count > 1 %}<span class="badge bg-white text-primary ms-1">{{ ns_draft.count }}</span>{% endif %}
+            </button>
+          </form>
           {% endif %}
         {% endif %}
         {# Tüm roller: bütçe listesi — birden fazlaysa görüntüle butonu #}
@@ -1204,7 +1227,7 @@ function buildEmailHtml(venue, contactNames, filterSection) {
         svc: r.description,
         checkin:  acIn  ? fmtDate(acIn)  : '',
         checkout: acOut ? fmtDate(acOut) : '',
-        qty: `${r.qty||1} ${r.unit||''}`.trim(), notes: r.notes||''
+        qty: `${r.qty||1} Oda`, notes: r.notes||''
       })));
     }
   }
@@ -1303,7 +1326,7 @@ function buildEmailText(venue, contactNames, filterSection) {
       }
       rows.forEach(r => {
         const qty = parseInt(r.qty) || 1;
-        let line = qty > 1 ? `${qty} ${r.description}` : r.description;
+        let line = qty > 1 ? `${qty} oda – ${r.description}` : r.description;
         if (r.notes) line += ` (${r.notes})`;
         txt += `${line}\n`;
       });
@@ -1382,6 +1405,34 @@ function showToast(msg) {
   const el = document.getElementById('rfqToast');
   if (el) { el.querySelector('.toast-body').textContent = msg; bootstrap.Toast.getOrCreateInstance(el).show(); }
   else { alert(msg); }
+}
+
+function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
+  // 1) Excel'i indir
+  const exportUrl = `/requests/${reqId}/export?vat=exclusive`;
+  const a = document.createElement('a');
+  a.href = exportUrl;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // 2) Mail istemcisini aç (müşteri adresi varsa)
+  if (customerEmail) {
+    const subject = encodeURIComponent(`Etkinlik Teklifi: ${eventName} — ${refNo}`);
+    const body    = encodeURIComponent(
+      `Sayın Yetkili,\n\n` +
+      `${eventName} etkinliğiniz için hazırlanan teklif dosyasını ekte sunmaktayız.\n\n` +
+      `Referans No: ${refNo}\n\n` +
+      `Teklifi inceleyip dönüş yapmanızı rica ederiz.\n\nSaygılarımızla`
+    );
+    setTimeout(() => {
+      window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank');
+    }, 800);
+    showToast('Excel indiriliyor, mail uygulamanız açılıyor. Dosyayı maille ekleyin.');
+  } else {
+    showToast('Excel indiriliyor. Müşteri email adresi tanımlı değil.');
+  }
 }
 
 // ─── Aktif sekme takibi ───
