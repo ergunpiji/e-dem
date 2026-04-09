@@ -346,6 +346,9 @@ async def requests_detail(
                 seen.add(sec)
                 all_sections_set.append(sec)
 
+    customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
+                if req.customer_id else None)
+
     return templates.TemplateResponse(
         "requests/detail.html",
         {
@@ -364,6 +367,7 @@ async def requests_detail(
             "request_tabs":     REQUEST_TABS,
             "budgets_data":     budgets_data,
             "all_sections":     all_sections_set,
+            "customer":         customer,
         },
     )
 

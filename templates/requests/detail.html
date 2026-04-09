@@ -102,17 +102,17 @@
             </button>
           </form>
           {% endif %}
-          {# Müşteriye Teklif Gönder — Excel indir + mail aç #}
-          {% if req.status in ('budget_ready', 'offer_sent', 'confirmed') %}
-          {% set ns_approved = namespace(found=false) %}
-          {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_approved.found = true %}{% endif %}{% endfor %}
-          {% if ns_approved.found %}
-          <button type="button" class="btn btn-success btn-sm"
-                  onclick="sendOfferEmail('{{ req.id }}', '{{ (customer.email if customer else '') | e }}', '{{ req.event_name | e }}', '{{ req.request_no | e }}')">
-            <i class="bi bi-envelope-arrow-up me-1"></i> Müşteriye Teklif Gönder
-          </button>
-          {% endif %}
-          {% endif %}
+        {% endif %}
+        {# Müşteriye Teklif Gönder — tüm roller, onaylı bütçe varsa #}
+        {% if req.status in ('budget_ready', 'offer_sent', 'confirmed', 'in_progress', 'venues_contacted') %}
+        {% set ns_approv2 = namespace(found=false) %}
+        {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_approv2.found = true %}{% endif %}{% endfor %}
+        {% if ns_approv2.found %}
+        <button type="button" class="btn btn-success btn-sm"
+                onclick="sendOfferEmail('{{ req.id }}', '{{ (customer.email if customer else '') | e }}', '{{ req.event_name | e }}', '{{ req.request_no | e }}')">
+          <i class="bi bi-envelope-arrow-up me-1"></i> Müşteriye Teklif Gönder
+        </button>
+        {% endif %}
         {% endif %}
         {# Manager direkt yönetim #}
         {% if can_direct_manage %}
