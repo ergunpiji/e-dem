@@ -193,7 +193,7 @@ def fill_customer_template(
     if service_fee:
         flat_rows.append(("row", service_fee))
 
-    # Anchor satırını bul (boş satır eklemek için)
+    # Anchor satırını bul
     anchor_row = None
     if end_anchor:
         for r_idx in range(start_row, ws.max_row + 1):
@@ -205,7 +205,12 @@ def fill_customer_template(
             if anchor_row:
                 break
 
-    # Gerekenden az satır varsa ekle
+    # Veri alanındaki mevcut içeriği temizle
+    clear_end = (anchor_row - 1) if anchor_row else (start_row + 50)
+    for r_idx in range(start_row, clear_end + 1):
+        for c_idx in range(1, ws.max_column + 1):
+            ws.cell(row=r_idx, column=c_idx).value = None
+
     needed = len(flat_rows)
     if anchor_row:
         available = anchor_row - start_row
@@ -232,6 +237,10 @@ def fill_customer_template(
             except Exception:
                 pass
         current_row += 1
+
+    # Kullanılmayan fazla satırları sil
+    if anchor_row and current_row < anchor_row:
+        ws.delete_rows(current_row, anchor_row - current_row)
 
     output = io.BytesIO()
     wb.save(output)
@@ -292,6 +301,12 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
             if anchor_row:
                 break
 
+    # Veri alanındaki mevcut içeriği temizle (formatlamayı koru, sadece değerleri sil)
+    clear_end = (anchor_row - 1) if anchor_row else (start_row + 50)
+    for r_idx in range(start_row, clear_end + 1):
+        for c_idx in range(1, ws.max_column + 1):
+            ws.cell(row=r_idx, column=c_idx).value = None
+
     needed = len(flat_rows)
     if anchor_row:
         available = anchor_row - start_row
@@ -316,6 +331,11 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
             except Exception:
                 pass
         current_row += 1
+
+    # Kullanılmayan fazla satırları sil (anchor'dan önce)
+    if anchor_row and current_row < anchor_row:
+        rows_to_delete = anchor_row - current_row
+        ws.delete_rows(current_row, rows_to_delete)
 
 
 def fill_customer_template_multi(
