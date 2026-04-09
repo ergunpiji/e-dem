@@ -103,8 +103,8 @@
           </form>
           {% endif %}
         {% endif %}
-        {# Müşteriye Teklif Gönder — tüm roller, onaylı bütçe varsa #}
-        {% if req.status in ('budget_ready', 'offer_sent', 'confirmed', 'in_progress', 'venues_contacted') %}
+        {# Müşteriye Teklif Gönder — iptal dışı, onaylı bütçe varsa #}
+        {% if req.status != 'cancelled' %}
         {% set ns_approv2 = namespace(found=false) %}
         {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_approv2.found = true %}{% endif %}{% endfor %}
         {% if ns_approv2.found %}
