@@ -327,38 +327,39 @@ def _write_sheet(
 
             bg = C_ROW_ALT if alt else C_WHITE
             alt = not alt
+            r_idx = current_row  # closure bug önlemi — yerel kopya
 
-            def wc(letter, value, fmt=None, h="left", ind=1):
-                c2 = ws.cell(row=current_row,
+            def _wc(letter, value, fmt=None, h="left", ind=1, _row=r_idx, _bg=bg):
+                c2 = ws.cell(row=_row,
                              column=column_index_from_string(letter),
                              value=value)
                 c2.font      = _font(size=9)
-                c2.fill      = _fill(bg)
+                c2.fill      = _fill(_bg)
                 c2.border    = _border()
                 c2.alignment = _align(h=h, indent=ind if h == "left" else 0)
                 if fmt:
                     c2.number_format = fmt
 
-            wc(COL_SVC,   row.get("service_name", ""))
-            wc(COL_UNIT,  row.get("unit", "Adet"),   h="center")
-            wc(COL_QTY,   qty,    fmt="#,##0",       h="center")
-            wc(COL_NIGHT, nights, fmt="#,##0",       h="center")
-            wc(COL_PRICE, price_val, fmt=num_fmt,    h="right", ind=0)
+            _wc(COL_SVC,   row.get("service_name", ""))
+            _wc(COL_UNIT,  row.get("unit", "Adet"),   h="center")
+            _wc(COL_QTY,   qty,    fmt="#,##0",       h="center")
+            _wc(COL_NIGHT, nights, fmt="#,##0",       h="center")
+            _wc(COL_PRICE, price_val, fmt=num_fmt,    h="right", ind=0)
             if COL_VAT:
-                wc(COL_VAT, vat / 100, fmt="0%",    h="center")
+                _wc(COL_VAT, vat / 100, fmt="0%",    h="center")
             # G sütunu: formüllü = Birim Fiyat × Miktar × Gece
-            total_formula = f"={COL_PRICE}{current_row}*{COL_QTY}{current_row}*{COL_NIGHT}{current_row}"
-            wc(COL_TOTAL, total_formula, fmt=num_fmt, h="right", ind=0)
-            wc(COL_NOTE,  row.get("notes", ""))
+            total_formula = f"={COL_PRICE}{r_idx}*{COL_QTY}{r_idx}*{COL_NIGHT}{r_idx}"
+            _wc(COL_TOTAL, total_formula, fmt=num_fmt, h="right", ind=0)
+            _wc(COL_NOTE,  row.get("notes", ""))
             # KDV grubuna kaydet (exclusive modda formül için)
-            data_rows_by_vat[int(vat)].append(f"{COL_TOTAL}{current_row}")
+            data_rows_by_vat[int(vat)].append(f"{COL_TOTAL}{r_idx}")
             # Servis bedeli tabanı (tüm gerçek data satırları)
-            sf_base_refs.append(f"{COL_TOTAL}{current_row}")
+            sf_base_refs.append(f"{COL_TOTAL}{r_idx}")
             # Konaklama bölümü için ayrıca takip et
             if sec == "accommodation":
-                accom_data_refs.append(f"{COL_TOTAL}{current_row}")
+                accom_data_refs.append(f"{COL_TOTAL}{r_idx}")
 
-            ws.row_dimensions[current_row].height = 15
+            ws.row_dimensions[r_idx].height = 15
             current_row += 1
 
         # ── Konaklama Vergisi (%2) — formüllü ─────────────────────────────────
