@@ -674,6 +674,18 @@ async def budgets_export(
     try:
         template_path = customer.excel_template_path if customer else ""
         cell_map      = cfg.get("cell_map") or {}
+        b64_data      = getattr(customer, "excel_template_b64", "") if customer else ""
+
+        # Dosya yoksa ama DB'de base64 varsa yeniden yaz (Railway restart sonrası)
+        if b64_data and (not template_path or not os.path.exists(template_path)):
+            import base64 as _b64
+            upload_dir = "static/uploads/customer_templates"
+            os.makedirs(upload_dir, exist_ok=True)
+            template_path = os.path.join(upload_dir, f"{customer.id}.xlsx")
+            with open(template_path, "wb") as _f:
+                _f.write(_b64.b64decode(b64_data))
+            customer.excel_template_path = template_path
+            db.commit()
 
         if template_path and os.path.exists(template_path) and cell_map:
             # ── Müşteri template'i ─────────────────────────────────────────

@@ -219,13 +219,21 @@ async def customers_upload_template(
 
     # Eski template'i sil
     if customer.excel_template_path and os.path.exists(customer.excel_template_path):
-        os.remove(customer.excel_template_path)
+        try:
+            os.remove(customer.excel_template_path)
+        except Exception:
+            pass
+
+    contents = await template_file.read()
 
     save_path = os.path.join(upload_dir, f"{customer_id}{ext}")
     with open(save_path, "wb") as f:
-        shutil.copyfileobj(template_file.file, f)
+        f.write(contents)
 
+    # DB'ye de kaydet (Railway filesystem ephemeral — kalıcılık için)
+    import base64
     customer.excel_template_path = save_path
+    customer.excel_template_b64  = base64.b64encode(contents).decode("ascii")
     db.commit()
     return RedirectResponse(
         url=f"/customers/{customer_id}/edit?saved=template",

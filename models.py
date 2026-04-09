@@ -375,6 +375,7 @@ class Customer(Base):
     docs_json           = Column(Text, default="[]")         # list[{name, path}] yüklü belgeler
     created_at          = Column(DateTime, default=_now, nullable=False)
     excel_template_path = Column(String(500), default="")   # yüklenen template dosya yolu
+    excel_template_b64  = Column(Text, default="")          # template içeriği base64 (Railway kalıcılığı)
     excel_config_json   = Column(Text, default="{}")        # sütun mapping JSON
 
     # İlişkiler

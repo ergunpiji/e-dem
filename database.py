@@ -512,6 +512,7 @@ def migrate_db():
 
         # Customers
         _safe_add_column(conn, "customers", "excel_template_path", "TEXT", "''")
+        _safe_add_column(conn, "customers", "excel_template_b64",  "TEXT", "''")
         _safe_add_column(conn, "customers", "excel_config_json",   "TEXT", "'{}'")
         _safe_add_column(conn, "customers", "docs_json",           "TEXT", "'[]'")
 
