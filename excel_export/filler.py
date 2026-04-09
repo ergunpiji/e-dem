@@ -205,11 +205,14 @@ def fill_customer_template(
             if anchor_row:
                 break
 
-    # Veri alanındaki mevcut içeriği temizle
+    # Veri alanındaki mevcut içeriği temizle (merged hücreleri atla)
     clear_end = (anchor_row - 1) if anchor_row else (start_row + 50)
     for r_idx in range(start_row, clear_end + 1):
         for c_idx in range(1, ws.max_column + 1):
-            ws.cell(row=r_idx, column=c_idx).value = None
+            try:
+                ws.cell(row=r_idx, column=c_idx).value = None
+            except AttributeError:
+                pass  # MergedCell
 
     needed = len(flat_rows)
     if anchor_row:
@@ -301,11 +304,15 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
             if anchor_row:
                 break
 
-    # Veri alanındaki mevcut içeriği temizle (formatlamayı koru, sadece değerleri sil)
+    # Veri alanındaki mevcut içeriği temizle (merged hücreleri atla)
     clear_end = (anchor_row - 1) if anchor_row else (start_row + 50)
     for r_idx in range(start_row, clear_end + 1):
         for c_idx in range(1, ws.max_column + 1):
-            ws.cell(row=r_idx, column=c_idx).value = None
+            cell = ws.cell(row=r_idx, column=c_idx)
+            try:
+                cell.value = None
+            except AttributeError:
+                pass  # MergedCell — atla
 
     needed = len(flat_rows)
     if anchor_row:
@@ -319,16 +326,18 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
     for row_type, row_data in flat_rows:
         if row_type == "section" and sec_hdr_col:
             ci = column_index_from_string(sec_hdr_col.upper())
-            ws.cell(row=current_row, column=ci,
-                    value=SECTION_LABELS.get(row_data, row_data))
+            try:
+                ws.cell(row=current_row, column=ci).value = SECTION_LABELS.get(row_data, row_data)
+            except AttributeError:
+                pass
             current_row += 1
             continue
         for col_letter, field_name in col_defs.items():
             try:
                 ci  = column_index_from_string(col_letter.upper())
                 val = _row_value(field_name, row_data, budget, currency)
-                ws.cell(row=current_row, column=ci, value=val)
-            except Exception:
+                ws.cell(row=current_row, column=ci).value = val
+            except (AttributeError, Exception):
                 pass
         current_row += 1
 
