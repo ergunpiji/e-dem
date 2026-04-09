@@ -734,7 +734,9 @@ async def budgets_export(
                   .filter(Customer.id == req.customer_id)
                   .first()
                 if req and req.customer_id else None)
-    creator  = db.query(User).filter(User.id == budget.created_by).first()
+    # Excel'de "Hazırlayan:" = talebi oluşturan PM (manager), bütçeyi hazırlayan E-dem değil
+    manager_user_id = req.created_by if req else budget.created_by
+    creator  = db.query(User).filter(User.id == manager_user_id).first()
 
     # KDV modu öncelik: query param > customer config > varsayılan 'exclusive'
     cfg = customer.excel_config if customer else {}
@@ -862,6 +864,8 @@ async def budgets_copy_edem(
         rows_json=src_rows,
         budget_status="draft_edem",
         service_fee_pct=budget.service_fee_pct,
+        offer_currency=budget.offer_currency or "TRY",
+        exchange_rates_json=budget.exchange_rates_json or "{}",
         created_by=current_user.id,
         created_at=_now(),
         updated_at=_now(),
@@ -894,6 +898,8 @@ async def budgets_copy(
         rows_json=src_rows,
         budget_status="pending_manager",
         service_fee_pct=budget.service_fee_pct,
+        offer_currency=budget.offer_currency or "TRY",
+        exchange_rates_json=budget.exchange_rates_json or "{}",
         created_by=budget.created_by,
         created_at=_now(),
         updated_at=_now(),

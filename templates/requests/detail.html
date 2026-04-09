@@ -1419,19 +1419,36 @@ const REQ_CHECK_IN   = "{{ req.check_in or '' }}";
 const REQ_CHECK_OUT  = "{{ req.check_out or '' }}";
 
 function _emailCard(title, borderColor, headerBg, headerColor, iconCls, subject, bodyText, contacts) {
-  const toStr = contacts.map(c => c.email).filter(Boolean).join(', ');
-  const mailtoHref = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
-  const copyId = 'ec-' + Math.random().toString(36).slice(2);
+  const cardId = 'ec-' + Math.random().toString(36).slice(2);
+  const copyId = cardId + '-copy';
+
+  // Kontakt checkbox listesi
+  let contactsHtml = '';
+  if (contacts.length === 0) {
+    contactsHtml = '<span class="badge bg-warning text-dark" style="font-size:10px;">Kontakt tanımlı değil</span>';
+  } else {
+    contactsHtml = contacts.map((c, i) => {
+      const cbId = cardId + '-cb' + i;
+      const label = (c.name ? `${c.name}` : '') + (c.email ? ` &lt;${c.email}&gt;` : '');
+      return `<div class="form-check form-check-inline mb-0" style="font-size:11px;">
+        <input class="form-check-input ec-cb" type="checkbox" id="${cbId}" data-email="${c.email || ''}" data-card="${cardId}" checked>
+        <label class="form-check-label" for="${cbId}">${label}</label>
+      </div>`;
+    }).join('');
+  }
+
   return `
-  <div class="card mb-2" style="border-color:${borderColor};">
-    <div class="card-header d-flex align-items-center justify-content-between py-1" style="background:${headerBg}; color:${headerColor}; font-size:12px;">
+  <div class="card mb-2" style="border-color:${borderColor};" id="${cardId}">
+    <div class="card-header d-flex align-items-start justify-content-between py-2 gap-2 flex-wrap" style="background:${headerBg}; color:${headerColor}; font-size:12px;">
       <span><i class="${iconCls} me-1"></i>${title}</span>
-      ${contacts.length ? `<span class="badge bg-white text-dark" style="font-size:10px;">${contacts.map(c=>c.name||c.email).join(', ')}</span>` : '<span class="badge bg-warning text-dark" style="font-size:10px;">Kontakt tanımlı değil</span>'}
+      <div class="d-flex flex-wrap gap-1">${contactsHtml}</div>
     </div>
     <div class="card-body py-2 d-flex gap-2 align-items-center">
-      <a href="${mailtoHref}" class="btn btn-sm btn-outline-primary" style="font-size:12px;" target="_blank">
+      <button type="button" class="btn btn-sm btn-outline-primary ec-send-btn" data-card="${cardId}"
+              data-subject="${escAttr(subject)}" data-body="${escAttr(bodyText)}"
+              style="font-size:12px;" onclick="_sendEmail(this)">
         <i class="bi bi-envelope me-1"></i>Mail Gönder
-      </a>
+      </button>
       <button type="button" class="btn btn-sm btn-outline-secondary" style="font-size:12px;"
               onclick="navigator.clipboard.writeText(document.getElementById('${copyId}').textContent).then(()=>showToast('Kopyalandı'))">
         <i class="bi bi-clipboard me-1"></i>Kopyala
@@ -1442,6 +1459,21 @@ function _emailCard(title, borderColor, headerBg, headerColor, iconCls, subject,
       </details>
     </div>
   </div>`;
+}
+
+function escAttr(s) {
+  return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function _sendEmail(btn) {
+  const cardId = btn.dataset.card;
+  const subject = btn.dataset.subject;
+  const body    = btn.dataset.body;
+  const checked = document.querySelectorAll(`#${cardId} .ec-cb:checked`);
+  const emails  = Array.from(checked).map(cb => cb.dataset.email).filter(Boolean);
+  if (emails.length === 0) { alert('Lütfen en az bir alıcı seçin.'); return; }
+  const href = `mailto:${encodeURIComponent(emails.join(', '))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = href;
 }
 
 function escHtml(s) {

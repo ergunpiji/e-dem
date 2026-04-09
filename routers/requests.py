@@ -771,14 +771,16 @@ async def requests_export(
     custom_cats = [{"id": cc.id, "name": cc.name}
                    for cc in db.query(CustomCategory).all()]
 
+    # Excel'de "Hazırlayan:" = talebi oluşturan PM (manager)
+    manager_user = db.query(User).filter(User.id == req.created_by).first() if req.created_by else None
+
     entries = []
     for b in budgets:
-        creator = db.query(User).filter(User.id == b.created_by).first()
         entries.append({
             "budget":   b,
             "request":  req,
             "customer": customer,
-            "creator":  creator,
+            "creator":  manager_user,
         })
 
     try:
