@@ -7,6 +7,7 @@ E-dem: Gelen referanslar, durum güncelle
 
 import io
 import json
+import os
 import unicodedata
 import urllib.parse
 from datetime import date
@@ -679,9 +680,43 @@ async def requests_export(
         })
 
     try:
-        from excel_export import build_multi_sheet
-        output = build_multi_sheet(entries, vat_mode=vat_mode,
-                                   custom_sections=custom_cats)
+        # Müşteri template'i varsa her bütçe için ayrı sheet olarak doldur
+        cfg          = customer.excel_config if customer else {}
+        cell_map     = cfg.get("cell_map") or {}
+        b64_data     = getattr(customer, "excel_template_b64", "") if customer else ""
+        tpl_path     = (customer.excel_template_path or "") if customer else ""
+
+        # Dosya yoksa ama DB'de base64 varsa yeniden oluştur (Railway restart)
+        if b64_data and (not tpl_path or not os.path.exists(tpl_path)):
+            import base64 as _b64
+            _upload_dir = "static/uploads/customer_templates"
+            os.makedirs(_upload_dir, exist_ok=True)
+            tpl_path = os.path.join(_upload_dir, f"{customer.id}.xlsx")
+            with open(tpl_path, "wb") as _f:
+                _f.write(_b64.b64decode(b64_data))
+            customer.excel_template_path = tpl_path
+            db.commit()
+
+        use_template = bool(tpl_path and os.path.exists(tpl_path) and cell_map)
+        print(
+            f"[REQ-EXPORT] req={req_id} tpl_path={tpl_path!r} "
+            f"file_exists={os.path.exists(tpl_path) if tpl_path else False} "
+            f"b64_len={len(b64_data)} cell_map_keys={list(cell_map.keys())} "
+            f"use_template={use_template}",
+            flush=True,
+        )
+
+        if use_template:
+            from excel_export import fill_customer_template_multi
+            output = fill_customer_template_multi(
+                template_path=tpl_path,
+                cell_map=cell_map,
+                entries=entries,
+            )
+        else:
+            from excel_export import build_multi_sheet
+            output = build_multi_sheet(entries, vat_mode=vat_mode,
+                                       custom_sections=custom_cats)
     except Exception as exc:
         import traceback as _tb
         detail = f"Excel oluşturma hatası: {exc}\n{_tb.format_exc()}"

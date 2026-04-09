@@ -229,3 +229,135 @@ def fill_customer_template(
     wb.save(output)
     output.seek(0)
     return output
+
+
+def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
+    """Mevcut bir worksheet'i cell_map ile doldurur (in-place)."""
+    currency = (budget.offer_currency or "TRY").upper()
+
+    header_vals = _header_resolvers(budget, request, customer, creator)
+    for cell_addr, field_name in (cell_map.get("header") or {}).items():
+        val = header_vals.get(field_name)
+        if val is not None:
+            try:
+                ws[cell_addr.upper()] = val
+            except Exception:
+                pass
+
+    data_block = cell_map.get("data_block")
+    if not data_block:
+        return
+
+    start_row   = int(data_block.get("start_row", 1))
+    col_defs    = data_block.get("columns", {})
+    sec_hdr_col = data_block.get("section_header_col")
+    end_anchor  = data_block.get("end_anchor_text")
+
+    rows_by_sec: dict[str, list] = {}
+    service_fee = None
+    for r in budget.rows:
+        if r.get("is_service_fee"):
+            service_fee = r
+            continue
+        sec = r.get("section", "other")
+        rows_by_sec.setdefault(sec, []).append(r)
+
+    flat_rows: list[tuple] = []
+    for sec in SECTIONS_ORDER:
+        sec_rows = rows_by_sec.get(sec, [])
+        if not sec_rows:
+            continue
+        if sec_hdr_col:
+            flat_rows.append(("section", sec))
+        flat_rows.extend(("row", r) for r in sec_rows)
+    if service_fee:
+        flat_rows.append(("row", service_fee))
+
+    anchor_row = None
+    if end_anchor:
+        for r_idx in range(start_row, ws.max_row + 1):
+            for c_idx in range(1, ws.max_column + 1):
+                val = ws.cell(row=r_idx, column=c_idx).value
+                if val and isinstance(val, str) and end_anchor.lower() in val.lower():
+                    anchor_row = r_idx
+                    break
+            if anchor_row:
+                break
+
+    needed = len(flat_rows)
+    if anchor_row:
+        available = anchor_row - start_row
+        if needed > available:
+            for _ in range(needed - available):
+                ws.insert_rows(anchor_row)
+                anchor_row += 1
+
+    current_row = start_row
+    for row_type, row_data in flat_rows:
+        if row_type == "section" and sec_hdr_col:
+            ci = column_index_from_string(sec_hdr_col.upper())
+            ws.cell(row=current_row, column=ci,
+                    value=SECTION_LABELS.get(row_data, row_data))
+            current_row += 1
+            continue
+        for col_letter, field_name in col_defs.items():
+            try:
+                ci  = column_index_from_string(col_letter.upper())
+                val = _row_value(field_name, row_data, budget, currency)
+                ws.cell(row=current_row, column=ci, value=val)
+            except Exception:
+                pass
+        current_row += 1
+
+
+def fill_customer_template_multi(
+    template_path: str,
+    cell_map: dict,
+    entries: list,          # [{"budget":..., "request":..., "customer":..., "creator":...}]
+) -> io.BytesIO:
+    """
+    Birden fazla bütçeyi tek dosyada, her biri ayrı sheet olarak doldurur.
+    Her sheet template'in aktif sayfasının bir kopyasıdır.
+    """
+    if not OPENPYXL_OK:
+        raise RuntimeError("openpyxl kurulu değil")
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f"Template bulunamadı: {template_path}")
+
+    sheet_name = (cell_map.get("data_block") or {}).get("sheet")
+    used_titles: list[str] = []
+
+    wb = openpyxl.load_workbook(template_path)
+    src_ws = (wb[sheet_name]
+              if sheet_name and sheet_name in wb.sheetnames
+              else wb.active)
+    src_name = src_ws.title
+
+    for i, entry in enumerate(entries):
+        b   = entry["budget"]
+        req = entry.get("request")
+        cus = entry.get("customer")
+        cre = entry.get("creator")
+
+        if i == 0:
+            ws = src_ws
+        else:
+            ws = wb.copy_worksheet(src_ws)
+
+        # Sheet adı: venue_name
+        raw_title = (b.venue_name or f"Bütçe {i+1}")[:28].strip()
+        title = raw_title
+        suffix = 2
+        while title in used_titles:
+            title = f"{raw_title[:25]} {suffix}"
+            suffix += 1
+        used_titles.append(title)
+        ws.title = title
+
+        _fill_ws(ws, cell_map, b, req, cus, cre)
+
+    # Kaynak sheet ilk entry ile doldu; eğer entries boşsa yine de kaydedilir
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
