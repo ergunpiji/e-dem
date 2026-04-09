@@ -358,4 +358,66 @@
   </div>
 </div>
 
+{# ─── FİYAT GEÇMİŞİ ─── #}
+{% set ph = budget.price_history %}
+{% if ph %}
+<div class="card mt-4">
+  <div class="card-header d-flex align-items-center gap-2 py-2" style="background:#f8fafc;">
+    <i class="bi bi-clock-history text-secondary"></i>
+    <span class="fw-semibold" style="font-size:13px;">Fiyat Geçmişi</span>
+    <span class="badge bg-secondary ms-1" style="font-size:11px;">{{ ph | length }} revizyon</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="accordion accordion-flush" id="priceHistoryAccordion">
+      {% for entry in ph | reverse %}
+      {% set loop_idx = loop.index %}
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button {% if loop_idx > 1 %}collapsed{% endif %} py-2"
+                  type="button" data-bs-toggle="collapse"
+                  data-bs-target="#ph-{{ loop_idx }}" style="font-size:12px; background:transparent;">
+            <span class="me-3 text-muted">{{ entry.ts }}</span>
+            <span class="fw-semibold me-2">{{ entry.user }}</span>
+            <span class="badge bg-secondary bg-opacity-15 text-secondary" style="font-size:10px;">
+              {% if entry.role == 'e_dem' %}E-dem{% elif entry.role == 'project_manager' %}Manager{% else %}Admin{% endif %}
+            </span>
+            <span class="ms-2 text-muted" style="font-size:11px;">{{ entry.changes | length }} değişiklik</span>
+          </button>
+        </h2>
+        <div id="ph-{{ loop_idx }}" class="accordion-collapse collapse {% if loop_idx == 1 %}show{% endif %}">
+          <div class="accordion-body p-0">
+            <table class="table table-sm mb-0" style="font-size:12px;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th class="ps-3" style="font-size:11px; color:#64748b; width:40%;">Hizmet</th>
+                  <th style="font-size:11px; color:#64748b; width:15%;">Alan</th>
+                  <th style="font-size:11px; color:#64748b; width:15%;">Eski</th>
+                  <th style="font-size:11px; color:#64748b; width:15%;">Yeni</th>
+                  <th style="font-size:11px; color:#64748b; width:15%;">Fark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for c in entry.changes %}
+                {% set diff = c.new - c.old %}
+                <tr>
+                  <td class="ps-3">{{ c.row }}</td>
+                  <td class="text-muted">{{ c.field }}</td>
+                  <td class="text-muted">{{ c.old | money }}</td>
+                  <td class="fw-semibold">{{ c.new | money }}</td>
+                  <td class="fw-semibold {% if diff > 0 %}text-danger{% elif diff < 0 %}text-success{% endif %}">
+                    {% if diff > 0 %}+{% endif %}{{ diff | money }}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}

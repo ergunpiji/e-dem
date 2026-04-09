@@ -587,6 +587,7 @@ class Budget(Base):
     service_fee_pct      = Column(Float, default=0.0) # manager girer
     offer_currency       = Column(String(3), default="TRY")   # teklif para birimi
     exchange_rates_json  = Column(Text, default="{}")          # {"EUR":40.5,"USD":35.0}
+    price_history_json   = Column(Text, default="[]")          # fiyat revize geçmişi
 
     # İlişkiler
     request = relationship("Request", back_populates="budgets")
@@ -609,6 +610,13 @@ class Budget(Base):
             return json.loads(self.exchange_rates_json or "{}")
         except Exception:
             return {}
+
+    @property
+    def price_history(self) -> list:
+        try:
+            return json.loads(self.price_history_json or "[]")
+        except Exception:
+            return []
 
     def rate_to_try(self, currency: str) -> float:
         """Verilen para biriminin TRY karşılığı (1 birim = X TRY)"""

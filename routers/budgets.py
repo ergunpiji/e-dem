@@ -40,6 +40,51 @@ from models import (
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 from templates_config import templates
 
+
+# ---------------------------------------------------------------------------
+# Fiyat geçmişi kaydedici
+# ---------------------------------------------------------------------------
+
+FIELD_LABELS = {
+    "cost_price":           "Maliyet",
+    "sale_price":           "Satış",
+    "confirmed_cost_price": "Kesin Maliyet",
+}
+
+def _record_price_changes(budget: "Budget", new_rows: list, current_user: "User",
+                           fields: list[str]) -> None:
+    """Eski ve yeni satırları karşılaştır; değişen fiyatları geçmişe ekle."""
+    old_by_id = {}
+    for i, r in enumerate(budget.rows):
+        key = r.get("id") or str(i)
+        old_by_id[key] = r
+
+    changes = []
+    for i, new_row in enumerate(new_rows):
+        key = new_row.get("id") or str(i)
+        old_row = old_by_id.get(key, {})
+        desc = new_row.get("service_name") or f"Satır {i+1}"
+        for field in fields:
+            old_val = round(float(old_row.get(field) or 0), 4)
+            new_val = round(float(new_row.get(field) or 0), 4)
+            if abs(old_val - new_val) > 0.001:
+                changes.append({
+                    "row": desc,
+                    "field": FIELD_LABELS.get(field, field),
+                    "old": old_val,
+                    "new": new_val,
+                })
+
+    if changes:
+        history = budget.price_history or []
+        history.append({
+            "ts":   _now().strftime("%d.%m.%Y %H:%M"),
+            "user": f"{current_user.name} {current_user.surname}".strip() or current_user.email,
+            "role": current_user.role,
+            "changes": changes,
+        })
+        budget.price_history_json = json.dumps(history, ensure_ascii=False)
+
 BUDGET_STATUS_LABELS = {
     "draft_edem":         "Taslak (E-dem)",
     "pending_manager":    "Manager Onayında",
@@ -397,6 +442,9 @@ async def budgets_update(
         for row in new_rows:
             if not row.get("is_service_fee"):
                 row["sale_price"] = 0
+        # Fiyat geçmişi: cost_price ve confirmed_cost_price değişimlerini kaydet
+        _record_price_changes(budget, new_rows, current_user,
+                              ["cost_price", "confirmed_cost_price"])
         rows_json = json.dumps(new_rows, ensure_ascii=False)
     except Exception:
         pass
@@ -537,6 +585,13 @@ async def budgets_price_save(
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
+
+    # Fiyat geçmişi: sale_price değişimlerini kaydet
+    try:
+        new_rows = json.loads(rows_json)
+        _record_price_changes(budget, new_rows, current_user, ["sale_price"])
+    except Exception:
+        pass
 
     budget.rows_json           = rows_json
     budget.service_fee_pct     = float(service_fee_pct or 0)
