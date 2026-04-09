@@ -687,7 +687,19 @@ async def budgets_export(
             customer.excel_template_path = template_path
             db.commit()
 
-        if template_path and os.path.exists(template_path) and cell_map:
+        use_template = bool(template_path and os.path.exists(template_path) and cell_map)
+        print(
+            f"[EXPORT] budget={budget_id} "
+            f"customer={customer.id if customer else 'None'} "
+            f"template_path={template_path!r} "
+            f"file_exists={os.path.exists(template_path) if template_path else False} "
+            f"b64_len={len(b64_data)} "
+            f"cell_map_keys={list(cell_map.keys()) if cell_map else []} "
+            f"use_template={use_template}",
+            flush=True,
+        )
+
+        if use_template:
             # ── Müşteri template'i ─────────────────────────────────────────
             from excel_export import fill_customer_template
             output = fill_customer_template(

@@ -321,6 +321,37 @@ async def customers_analyze_template(
     })
 
 
+@router.get("/{customer_id}/template-status", name="customers_template_status")
+async def customers_template_status(
+    customer_id:  str,
+    current_user: User = Depends(require_admin),
+    db:           Session = Depends(get_db),
+):
+    """Müşterinin template durumunu JSON olarak döndürür (debug için)."""
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
+
+    b64 = getattr(customer, "excel_template_b64", "") or ""
+    cfg = customer.excel_config
+    cell_map = cfg.get("cell_map", {})
+    template_path = customer.excel_template_path or ""
+    file_exists = os.path.exists(template_path) if template_path else False
+
+    return JSONResponse({
+        "customer_name":    customer.name,
+        "template_path":    template_path,
+        "file_exists_disk": file_exists,
+        "b64_stored":       bool(b64),
+        "b64_length":       len(b64),
+        "vat_mode":         cfg.get("vat_mode", "exclusive"),
+        "cell_map_keys":    list(cell_map.keys()),
+        "cell_map_header":  cell_map.get("header", {}),
+        "cell_map_data_block": cell_map.get("data_block", {}),
+        "will_use_template": bool(template_path and (file_exists or b64) and cell_map),
+    })
+
+
 @router.post("/{customer_id}/upload-doc", name="customers_upload_doc")
 async def customers_upload_doc(
     customer_id: str,
