@@ -683,7 +683,10 @@ async def requests_export(
         output = build_multi_sheet(entries, vat_mode=vat_mode,
                                    custom_sections=custom_cats)
     except Exception as exc:
-        raise HTTPException(500, f"Excel oluşturma hatası: {exc}")
+        import traceback as _tb
+        detail = f"Excel oluşturma hatası: {exc}\n{_tb.format_exc()}"
+        print(detail, flush=True)
+        raise HTTPException(500, detail)
 
     # Dosya adı
     raw_name = (req.event_name or req.request_no or "teklif")[:30]

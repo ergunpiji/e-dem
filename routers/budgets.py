@@ -710,7 +710,10 @@ async def budgets_export(
                 custom_sections=custom_cats,
             )
     except Exception as exc:
-        raise HTTPException(500, f"Excel oluşturma hatası: {exc}")
+        import traceback as _tb
+        detail = f"Excel oluşturma hatası: {exc}\n{_tb.format_exc()}"
+        print(detail, flush=True)
+        raise HTTPException(500, detail)
 
     # Dosya adı: Türkçe karakterleri ASCII'ye çevir (HTTP header latin-1 sınırı)
     import unicodedata
