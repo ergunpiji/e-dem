@@ -31,8 +31,10 @@ async def users_list(
     request: Request,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
+    welcome_for: str = "",
 ):
     users = db.query(User).order_by(User.created_at.desc()).all()
+    welcome_user = db.query(User).filter(User.id == welcome_for).first() if welcome_for else None
     return templates.TemplateResponse(
         "users/list.html",
         {
@@ -41,6 +43,7 @@ async def users_list(
             "users":        users,
             "page_title":   "Kullanıcı Yönetimi",
             "user_roles":   USER_ROLES,
+            "welcome_user": welcome_user,
         },
     )
 
@@ -154,7 +157,11 @@ async def users_create(
     )
     db.add(user)
     db.commit()
-    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
+    # Hoşgeldin bildirimi için mailto: hazırla
+    return RedirectResponse(
+        url=f"/users?welcome_for={user.id}",
+        status_code=status.HTTP_302_FOUND,
+    )
 
 
 @router.get("/{user_id}/edit", response_class=HTMLResponse, name="users_edit")

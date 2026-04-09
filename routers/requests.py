@@ -719,8 +719,19 @@ async def requests_send_all_to_manager(
     if drafts:
         db.commit()
 
+    # Manager bildirimi: talebi oluşturan PM'e mailto: hazırla
+    manager_email = ""
+    if req.created_by:
+        pm = db.query(User).filter(User.id == req.created_by).first()
+        if pm and pm.email:
+            manager_email = pm.email
+
+    redirect_url = f"/requests/{req_id}"
+    if manager_email:
+        redirect_url += f"?manager_notified={manager_email}"
+
     return RedirectResponse(
-        url=f"/requests/{req_id}",
+        url=redirect_url,
         status_code=status.HTTP_302_FOUND,
     )
 

@@ -2238,7 +2238,10 @@ function applyVenuePickerSelection(section, emailFilterSection) {
 
 <script>
 (function(){
-  const reviseId = new URLSearchParams(location.search).get('show_revise');
+  const params = new URLSearchParams(location.search);
+
+  // Revize fiyat modalı
+  const reviseId = params.get('show_revise');
   if (reviseId) {
     const footer = document.getElementById('revisePriceModalFooter');
     if (footer) {
@@ -2251,6 +2254,32 @@ function applyVenuePickerSelection(section, emailFilterSection) {
     const modal = new bootstrap.Modal(document.getElementById('revisePriceModal'));
     modal.show();
     history.replaceState({}, '', location.pathname + '#tab-summary');
+  }
+
+  // Manager bildirim toast + mailto: butonu
+  const managerEmail = params.get('manager_notified');
+  if (managerEmail) {
+    const reqNo  = '{{ req.request_no }}';
+    const evName = '{{ req.event_name | replace("'", "\\'") }}';
+    const subject = encodeURIComponent('Yeni Bütçe Hazır: ' + reqNo + ' — ' + evName);
+    const body    = encodeURIComponent(
+      'Merhaba,\n\n' + reqNo + ' referans numaralı "' + evName + '" etkinliğine ait bütçe(ler) incelemenize sunulmuştur.\n\n' +
+      'Giriş yaparak bütçeleri inceleyebilirsiniz.\n\nİyi çalışmalar.'
+    );
+    const mailto = 'mailto:' + managerEmail + '?subject=' + subject + '&body=' + body;
+
+    // Flash container'a toast ekle
+    const fc = document.getElementById('flashContainer');
+    if (fc) {
+      const div = document.createElement('div');
+      div.className = 'alert alert-info alert-dismissible fade show shadow-sm';
+      div.role = 'alert';
+      div.innerHTML = '<i class="bi bi-envelope me-2"></i>Bütçe(ler) manager\'a gönderildi. '
+        + '<a href="' + mailto + '" class="alert-link">Bildirim maili gönder →</a>'
+        + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+      fc.appendChild(div);
+    }
+    history.replaceState({}, '', location.pathname);
   }
 })();
 </script>

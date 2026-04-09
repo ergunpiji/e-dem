@@ -485,4 +485,31 @@
 </div>
 {% endif %}
 
+{% block extra_scripts %}
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  const managerEmail = params.get('manager_notified');
+  if (managerEmail) {
+    const subject = encodeURIComponent('Yeni Bütçe İncelemenizi Bekliyor');
+    const body    = encodeURIComponent(
+      'Merhaba,\n\nIncelemenizi bekleyen yeni bir bütçe hazırlandı.\n\nSisteme giriş yaparak bütçeyi inceleyebilirsiniz.\n\nİyi çalışmalar.'
+    );
+    const mailto = 'mailto:' + managerEmail + '?subject=' + subject + '&body=' + body;
+    const fc = document.getElementById('flashContainer');
+    if (fc) {
+      const div = document.createElement('div');
+      div.className = 'alert alert-info alert-dismissible fade show shadow-sm';
+      div.role = 'alert';
+      div.innerHTML = '<i class="bi bi-envelope me-2"></i>Bütçe manager\'a gönderildi. '
+        + '<a href="' + mailto + '" class="alert-link">Bildirim maili gönder →</a>'
+        + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+      fc.appendChild(div);
+    }
+    history.replaceState({}, '', location.pathname);
+  }
+})();
+</script>
+{% endblock %}
+
 {% endblock %}

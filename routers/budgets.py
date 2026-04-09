@@ -480,9 +480,26 @@ async def budgets_send_to_manager(
         budget.budget_status = "pending_manager"
         budget.updated_at    = _now()
         db.commit()
+
+    # Manager bildirimi için mailto: hazırla
+    manager_email = ""
+    if budget:
+        req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
+        if req and req.created_by:
+            pm = db.query(User).filter(User.id == req.created_by).first()
+            if pm and pm.email:
+                manager_email = pm.email
+
     if back:
-        return RedirectResponse(url=f"/requests/{back}#tab-summary", status_code=status.HTTP_302_FOUND)
-    return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
+        url = f"/requests/{back}#tab-summary"
+        if manager_email:
+            url = f"/requests/{back}?manager_notified={manager_email}#tab-summary"
+        return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
+
+    url = f"/budgets/{budget_id}"
+    if manager_email:
+        url += f"?manager_notified={manager_email}"
+    return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/{budget_id}/json", name="budgets_json")

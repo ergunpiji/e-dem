@@ -107,4 +107,33 @@
     </div>
   </div>
 </div>
+
+{% if welcome_user %}
+{% block extra_scripts %}
+<script>
+(function(){
+  const email = {{ welcome_user.email | tojson }};
+  const name  = {{ welcome_user.full_name | tojson }};
+  const subject = encodeURIComponent('E-dem Sistemi — Hesabınız Hazır');
+  const body = encodeURIComponent(
+    'Merhaba ' + name + ',\n\nE-dem etkinlik yönetim sistemine hoş geldiniz!\n\n'
+    + 'Giriş bilgileriniz:\nE-posta: ' + email + '\nŞifre: (Yöneticinizden alınız)\n\nİyi çalışmalar.'
+  );
+  const mailto = 'mailto:' + email + '?subject=' + subject + '&body=' + body;
+  const fc = document.getElementById('flashContainer');
+  if (fc) {
+    const div = document.createElement('div');
+    div.className = 'alert alert-success alert-dismissible fade show shadow-sm';
+    div.role = 'alert';
+    div.innerHTML = '<i class="bi bi-person-check me-2"></i><strong>' + name + '</strong> oluşturuldu. '
+      + '<a href="' + mailto + '" class="alert-link">Hoşgeldin maili gönder →</a>'
+      + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    fc.appendChild(div);
+  }
+  history.replaceState({}, '', '/users');
+})();
+</script>
+{% endblock %}
+{% endif %}
+
 {% endblock %}
