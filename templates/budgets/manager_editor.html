@@ -156,7 +156,7 @@
 </div>
 {% endif %}
 
-<form method="post" action="/budgets/{{ budget.id }}/price" id="managerForm">
+<form method="post" action="/budgets/{{ budget.id }}/{% if revise_mode %}revise-price{% else %}price{% endif %}" id="managerForm">
   <input type="hidden" name="venue_name" id="venueNameHidden" value="{{ budget.venue_name or '' }}">
   <input type="hidden" name="exchange_rates_json" id="exchangeRatesJson" value="{{ exchange_rates | tojson }}">
 

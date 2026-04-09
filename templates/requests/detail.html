@@ -2215,4 +2215,44 @@ function applyVenuePickerSelection(section, emailFilterSection) {
   </div>
 </div>
 
+{# ══════════════════════════════════════════════════════════════════
+   MODAL: Revize Fiyat
+   ══════════════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="revisePriceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1d4ed8; color:white;">
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Revize Fiyat</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:14px;">Müşteri bütçeyi onayladı. Revize kesin maliyet ve satış fiyatlarını girmek ister misiniz?</p>
+        <p class="text-muted" style="font-size:12px;">Bu adımı atlayabilirsiniz — fiyatları daha sonra bütçe detay sayfasından da güncelleyebilirsiniz.</p>
+      </div>
+      <div class="modal-footer" id="revisePriceModalFooter">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Daha Sonra</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const reviseId = new URLSearchParams(location.search).get('show_revise');
+  if (reviseId) {
+    const footer = document.getElementById('revisePriceModalFooter');
+    if (footer) {
+      const btn = document.createElement('a');
+      btn.href = '/budgets/' + reviseId + '/revise-price';
+      btn.className = 'btn btn-primary btn-sm';
+      btn.innerHTML = '<i class="bi bi-pencil-square me-1"></i>Evet — Fiyatları Güncelle';
+      footer.appendChild(btn);
+    }
+    const modal = new bootstrap.Modal(document.getElementById('revisePriceModal'));
+    modal.show();
+    history.replaceState({}, '', location.pathname + '#tab-summary');
+  }
+})();
+</script>
+
 {% endblock %}

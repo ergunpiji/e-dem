@@ -588,6 +588,7 @@ class Budget(Base):
     offer_currency       = Column(String(3), default="TRY")   # teklif para birimi
     exchange_rates_json  = Column(Text, default="{}")          # {"EUR":40.5,"USD":35.0}
     price_history_json   = Column(Text, default="[]")          # fiyat revize geçmişi
+    price_snapshots_json = Column(Text, default="[]")          # fiyat arşivi (tam satır kopyaları)
 
     # İlişkiler
     request = relationship("Request", back_populates="budgets")
@@ -615,6 +616,13 @@ class Budget(Base):
     def price_history(self) -> list:
         try:
             return json.loads(self.price_history_json or "[]")
+        except Exception:
+            return []
+
+    @property
+    def price_snapshots(self) -> list:
+        try:
+            return json.loads(self.price_snapshots_json or "[]")
         except Exception:
             return []
 

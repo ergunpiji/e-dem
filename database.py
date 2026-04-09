@@ -509,8 +509,9 @@ def migrate_db():
         _safe_add_column(conn, "budgets", "service_fee_pct",     "REAL",  "0")
         _safe_add_column(conn, "budgets", "offer_currency",      "TEXT",  "'TRY'")
         _safe_add_column(conn, "budgets", "exchange_rates_json", "TEXT",  "'{}'")
-        _safe_add_column(conn, "budgets", "venue_id",           "TEXT")
-        _safe_add_column(conn, "budgets", "price_history_json", "TEXT", "'[]'")
+        _safe_add_column(conn, "budgets", "venue_id",              "TEXT")
+        _safe_add_column(conn, "budgets", "price_history_json",   "TEXT", "'[]'")
+        _safe_add_column(conn, "budgets", "price_snapshots_json",  "TEXT", "'[]'")
 
         # Requests — post-offer workflow
         _safe_add_column(conn, "requests", "confirmed_at",        "TIMESTAMP")

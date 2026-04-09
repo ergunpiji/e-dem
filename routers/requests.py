@@ -591,16 +591,30 @@ async def requests_confirm(
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
 
+    revise_budget_id = None
     if budget_id:
         bgt = db.query(Budget).filter(Budget.id == budget_id, Budget.request_id == req_id).first()
         if bgt:
             bgt.budget_status = "confirmed"
+            # Onay anı fiyat snapshot'ı
+            import copy
+            snap = {
+                "ts":      _now().strftime("%d.%m.%Y %H:%M"),
+                "label":   "Müşteri Onay Anı",
+                "trigger": "confirm",
+                "rows":    copy.deepcopy(bgt.rows),
+            }
+            snaps = bgt.price_snapshots
+            snaps.append(snap)
+            bgt.price_snapshots_json = json.dumps(snaps, ensure_ascii=False)
+            revise_budget_id = bgt.id
         req.confirmed_budget_id = budget_id
     req.status       = "confirmed"
     req.confirmed_at = _now()
     req.updated_at   = _now()
     db.commit()
-    return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
+    redirect_url = f"/requests/{req_id}?show_revise={revise_budget_id}#tab-summary" if revise_budget_id else f"/requests/{req_id}#tab-summary"
+    return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{req_id}/cancel-job", name="requests_cancel_job")

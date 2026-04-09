@@ -885,3 +885,106 @@ async def budgets_copy(
     db.commit()
     db.refresh(new_budget)
     return RedirectResponse(url=f"/budgets/{new_budget.id}/price", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Revize Fiyat (konfirme sonrası kesin maliyet + satış revizyonu)
+# ---------------------------------------------------------------------------
+
+@router.get("/{budget_id}/revise-price", response_class=HTMLResponse, name="budgets_revise_price")
+async def budgets_revise_price(
+    budget_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Konfirme bütçenin fiyatlarını revize et (manager veya e_dem)"""
+    if current_user.role not in ("admin", "project_manager", "e_dem"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if not budget:
+        return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
+    if budget.budget_status != "confirmed":
+        return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
+
+    req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
+    customer = db.query(Customer).filter(Customer.id == req.customer_id).first() if req and req.customer_id else None
+    rows_by_section: dict = {}
+    for row in budget.rows:
+        sec = row.get("section", "other")
+        rows_by_section.setdefault(sec, []).append(row)
+    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    grouped_services: dict = {}
+    for svc in services:
+        grouped_services.setdefault(svc.category, []).append(svc.to_dict())
+
+    return templates.TemplateResponse("budgets/manager_editor.html", {
+        "request":             request,
+        "current_user":        current_user,
+        "budget":              budget,
+        "req":                 req,
+        "customer":            customer,
+        "page_title":          f"Revize Fiyat — {budget.venue_name}",
+        "rows_by_section":     rows_by_section,
+        "status_label":        BUDGET_STATUS_LABELS.get(budget.budget_status, budget.budget_status),
+        "status_color":        BUDGET_STATUS_COLORS.get(budget.budget_status, "secondary"),
+        "grouped_services":    json.dumps(grouped_services, ensure_ascii=False),
+        "all_request_budgets": [],
+        "status_labels":       BUDGET_STATUS_LABELS,
+        "status_colors":       BUDGET_STATUS_COLORS,
+        "preferred_venues":    [],
+        "offer_currency":      budget.offer_currency or "TRY",
+        "exchange_rates":      budget.exchange_rates,
+        "revise_mode":         True,
+    })
+
+
+@router.post("/{budget_id}/revise-price", name="budgets_revise_price_save")
+async def budgets_revise_price_save(
+    budget_id:           str,
+    rows_json:           str = Form("[]"),
+    service_fee_pct:     str = Form("0"),
+    manager_notes:       str = Form(""),
+    venue_name:          str = Form(""),
+    exchange_rates_json: str = Form("{}"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role not in ("admin", "project_manager", "e_dem"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if not budget or budget.budget_status != "confirmed":
+        return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
+
+    import copy
+
+    # Revize öncesi snapshot al
+    snap = {
+        "ts":      _now().strftime("%d.%m.%Y %H:%M"),
+        "label":   f"Revize Öncesi ({current_user.full_name})",
+        "trigger": "revise",
+        "rows":    copy.deepcopy(budget.rows),
+    }
+    snaps = budget.price_snapshots
+    snaps.append(snap)
+    budget.price_snapshots_json = json.dumps(snaps, ensure_ascii=False)
+
+    # Fiyat geçmişi: hem maliyet hem satış değişimlerini kaydet
+    try:
+        new_rows = json.loads(rows_json)
+        _record_price_changes(budget, new_rows, current_user, ["cost_price", "sale_price", "confirmed_cost_price"])
+    except Exception:
+        pass
+
+    budget.rows_json           = rows_json
+    budget.service_fee_pct     = float(service_fee_pct or 0)
+    budget.manager_notes       = manager_notes.strip()
+    budget.exchange_rates_json = exchange_rates_json or "{}"
+    if venue_name.strip():
+        budget.venue_name      = venue_name.strip()
+    # confirmed durumu korunur
+    budget.updated_at          = _now()
+    db.commit()
+
+    req_id = budget.request_id
+    return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)

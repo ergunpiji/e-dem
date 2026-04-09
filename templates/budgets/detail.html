@@ -14,6 +14,11 @@
   {% if budget.budget_status == 'approved' %}Düzenle{% else %}Fiyat Gir{% endif %}
 </a>
 {% endif %}
+{% if budget.budget_status == 'confirmed' and current_user.role in ('admin', 'project_manager', 'e_dem') %}
+<a href="/budgets/{{ budget.id }}/revise-price" class="btn btn-outline-primary btn-sm">
+  <i class="bi bi-pencil-square me-1"></i> Revize Fiyat
+</a>
+{% endif %}
 {% endblock %}
 
 {% block extra_head %}
@@ -411,6 +416,66 @@
                 {% endfor %}
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ─── FİYAT ARŞİVİ (SNAPSHOT) ─── #}
+{% set ps = budget.price_snapshots %}
+{% if ps %}
+<div class="card mt-4">
+  <div class="card-header d-flex align-items-center gap-2 py-2" style="background:#f0fdf4;">
+    <i class="bi bi-archive text-success"></i>
+    <span class="fw-semibold" style="font-size:13px;">Fiyat Arşivi</span>
+    <span class="badge bg-success ms-1" style="font-size:11px;">{{ ps | length }} snapshot</span>
+    <span class="text-muted ms-2" style="font-size:11px;">Salt okunur — tam satır kopyaları</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="accordion accordion-flush" id="snapshotAccordion">
+      {% for snap in ps | reverse %}
+      {% set si = loop.index %}
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed py-2" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#snap-{{ si }}"
+                  style="font-size:12px; background:transparent;">
+            <span class="me-3 text-muted">{{ snap.ts }}</span>
+            <span class="fw-semibold text-success">{{ snap.label }}</span>
+          </button>
+        </h2>
+        <div id="snap-{{ si }}" class="accordion-collapse collapse">
+          <div class="accordion-body p-0">
+            <div class="table-responsive">
+              <table class="table table-sm mb-0" style="font-size:11px;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th class="ps-3">Hizmet</th>
+                    <th>Birim</th>
+                    <th class="text-end">Miktar</th>
+                    <th class="text-end">Maliyet</th>
+                    <th class="text-end">Satış</th>
+                    <th class="text-end pe-3">KDV%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in snap.rows %}
+                  <tr>
+                    <td class="ps-3" style="color:#374151;">{{ row.service_name or row.description or '—' }}</td>
+                    <td>{{ row.unit or '—' }}</td>
+                    <td class="text-end">{{ row.qty or 1 }}</td>
+                    <td class="text-end">{{ '{:,.2f}'.format(row.cost_price | float) }}</td>
+                    <td class="text-end">{{ '{:,.2f}'.format(row.sale_price | float) }}</td>
+                    <td class="text-end pe-3">%{{ ((row.vat_rate | float) * 100) | int }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
