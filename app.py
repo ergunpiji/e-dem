@@ -16,6 +16,16 @@ from templates_config import templates
 # ---------------------------------------------------------------------------
 # Veritabanı başlat
 # ---------------------------------------------------------------------------
+import os as _os_db
+
+_db_url = _os_db.environ.get("DATABASE_URL", "")
+if _db_url.startswith("postgres"):
+    print(f"[DB] PostgreSQL bağlantısı kullanılıyor ✓", flush=True)
+elif _db_url.startswith("sqlite") or not _db_url:
+    print(f"[DB] ⚠️  SQLite kullanılıyor — veriler her restart'ta SİLİNİR!", flush=True)
+else:
+    print(f"[DB] Bağlantı tipi: {_db_url[:20]}...", flush=True)
+
 Base.metadata.create_all(bind=engine)
 migrate_db()
 seed_data()
