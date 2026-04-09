@@ -231,6 +231,7 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
     formula_cols = _extract_formula_templates(
         ws, start_row, written_cols, ws.max_column
     )
+    print(f"[FILLER] start_row={start_row} anchor={anchor_row} written={sorted(written_cols)} formula_cols={dict(formula_cols)}", flush=True)
 
     # 4. Veri alanını temizle (start_row → anchor+10 arası)
     clear_end = (anchor_row + 10) if anchor_row else (start_row + 100)
@@ -281,6 +282,7 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
             current_row += 1
 
         sec_data_end = current_row - 1
+        print(f"[FILLER] sec={sec} hdr={sec_data_start-1} data={sec_data_start}..{sec_data_end} subtotal={current_row}", flush=True)
 
         # Ara toplam satırı
         sub_label = SECTION_SUBTOTAL_LABELS.get(sec, f"{sec_label} Ara Toplam")
