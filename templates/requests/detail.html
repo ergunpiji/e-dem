@@ -1411,6 +1411,130 @@ function showToast(msg) {
   else { alert(msg); }
 }
 
+// ─── Bütçe + venue kontakt verisi (email taslakları için) ───
+const budgetsJson = {{ budgets_json | tojson }};
+const REQ_EVENT_NAME = {{ req.event_name | tojson }};
+const REQ_REF_NO     = {{ req.request_no | tojson }};
+const REQ_CHECK_IN   = "{{ req.check_in or '' }}";
+const REQ_CHECK_OUT  = "{{ req.check_out or '' }}";
+
+function _emailCard(title, borderColor, headerBg, headerColor, iconCls, subject, bodyText, contacts) {
+  const toStr = contacts.map(c => c.email).filter(Boolean).join(', ');
+  const mailtoHref = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+  const copyId = 'ec-' + Math.random().toString(36).slice(2);
+  return `
+  <div class="card mb-2" style="border-color:${borderColor};">
+    <div class="card-header d-flex align-items-center justify-content-between py-1" style="background:${headerBg}; color:${headerColor}; font-size:12px;">
+      <span><i class="${iconCls} me-1"></i>${title}</span>
+      ${contacts.length ? `<span class="badge bg-white text-dark" style="font-size:10px;">${contacts.map(c=>c.name||c.email).join(', ')}</span>` : '<span class="badge bg-warning text-dark" style="font-size:10px;">Kontakt tanımlı değil</span>'}
+    </div>
+    <div class="card-body py-2 d-flex gap-2 align-items-center">
+      <a href="${mailtoHref}" class="btn btn-sm btn-outline-primary" style="font-size:12px;" target="_blank">
+        <i class="bi bi-envelope me-1"></i>Mail Gönder
+      </a>
+      <button type="button" class="btn btn-sm btn-outline-secondary" style="font-size:12px;"
+              onclick="navigator.clipboard.writeText(document.getElementById('${copyId}').textContent).then(()=>showToast('Kopyalandı'))">
+        <i class="bi bi-clipboard me-1"></i>Kopyala
+      </button>
+      <details style="font-size:11px; flex:1;">
+        <summary class="text-muted" style="cursor:pointer;">Metin önizle</summary>
+        <pre id="${copyId}" class="mt-1 p-2 rounded" style="background:#f8fafc; font-size:11px; white-space:pre-wrap; max-height:120px; overflow-y:auto;">${escHtml(bodyText)}</pre>
+      </details>
+    </div>
+  </div>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _buildConfirmEmailBody(venueName) {
+  return `Sayın Yetkili,\n\n${REQ_EVENT_NAME} etkinliğimiz için hazırladığınız teklif değerlendirmemiz tamamlanmış olup mekanınız konfirme edilmiştir.\n\nReferans No: ${REQ_REF_NO}\nEtkinlik Tarihleri: ${REQ_CHECK_IN} – ${REQ_CHECK_OUT}\n\nKesin maliyet fiyatlarınızı iletmenizi rica ederiz.\n\nSaygılarımızla`;
+}
+
+function _buildCancelEmailBody(venueName) {
+  return `Sayın Yetkili,\n\n${REQ_EVENT_NAME} etkinliğimiz kapsamında ${venueName || 'mekanınız'} için tarafınıza ilettiğimiz teklif talebini iptal etmek zorunda kaldık.\n\nReferans No: ${REQ_REF_NO}\nEtkinlik Tarihleri: ${REQ_CHECK_IN} – ${REQ_CHECK_OUT}\n\nGösterdiğiniz ilgi için teşekkür eder, ilerleyen projelerde tekrar bir araya gelmeyi umuyoruz.\n\nSaygılarımızla`;
+}
+
+function goConfirmStep2() {
+  const sel = document.getElementById('confirmBudgetSelect');
+  if (!sel || !sel.value) { alert('Lütfen onaylanan bütçeyi seçin.'); return; }
+  const budgetId = sel.value;
+  document.getElementById('confirmedBudgetIdInput').value = budgetId;
+
+  const selBudget = budgetsJson.find(b => b.id === budgetId);
+  const others = budgetsJson.filter(b => b.id !== budgetId && b.status === 'approved');
+
+  // Seçilen mekana konfirme maili
+  const confirmBody = document.getElementById('confirmEmailBody');
+  if (selBudget) {
+    const subj = `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Konfirme Bildirimi`;
+    confirmBody.innerHTML = _emailCard(
+      `${selBudget.venue_name || 'Seçilen Mekan'} — Konfirme Bildirimi`,
+      '#16a34a', '#d1fae5', '#065f46', 'bi bi-check-circle',
+      subj, _buildConfirmEmailBody(selBudget.venue_name), selBudget.contacts || []
+    );
+  }
+
+  // Diğer mekanlara iptal maili
+  const cancelCards = document.getElementById('cancelEmailCards');
+  if (others.length > 0) {
+    let html = `<div class="fw-semibold mb-2" style="font-size:13px; color:#991b1b;"><i class="bi bi-x-circle me-1"></i>Diğer Mekanlara — İptal Bildirimi</div>`;
+    others.forEach(b => {
+      const subj = `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Teklif Talebi İptali`;
+      html += _emailCard(
+        b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
+        subj, _buildCancelEmailBody(b.venue_name), b.contacts || []
+      );
+    });
+    cancelCards.innerHTML = html;
+  } else {
+    cancelCards.innerHTML = '<div class="text-muted" style="font-size:12px;"><i class="bi bi-info-circle me-1"></i>Diğer onaylı bütçe yok.</div>';
+  }
+
+  document.getElementById('confirmStep1').hidden = true;
+  document.getElementById('confirmStep2').hidden = false;
+}
+
+function goConfirmStep1() {
+  document.getElementById('confirmStep2').hidden = true;
+  document.getElementById('confirmStep1').hidden = false;
+}
+
+function toggleCancelEmailSection(checked) {
+  const sec = document.getElementById('cancelEmailSection');
+  sec.hidden = !checked;
+  if (checked && !sec.dataset.built) {
+    sec.dataset.built = '1';
+    const cards = document.getElementById('cancelEmailCards2');
+    const targets = budgetsJson.filter(b => ['approved','pending_manager','confirmed'].includes(b.status));
+    if (targets.length === 0) {
+      cards.innerHTML = '<div class="text-muted" style="font-size:12px;">Bildirim yapılacak mekan bulunamadı.</div>';
+    } else {
+      let html = '';
+      targets.forEach(b => {
+        const subj = `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Teklif Talebi İptali`;
+        html += _emailCard(
+          b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
+          subj, _buildCancelEmailBody(b.venue_name), b.contacts || []
+        );
+      });
+      cards.innerHTML = html;
+    }
+  }
+}
+
+// Modal kapanınca adım 1'e sıfırla
+document.getElementById('confirmModal')?.addEventListener('hidden.bs.modal', () => {
+  goConfirmStep1();
+});
+document.getElementById('cancelJobModal')?.addEventListener('hidden.bs.modal', () => {
+  const cb = document.getElementById('sendCancelEmailsCb');
+  if (cb) { cb.checked = false; }
+  const sec = document.getElementById('cancelEmailSection');
+  if (sec) { sec.hidden = true; delete sec.dataset.built; }
+});
+
 function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
   // 1) Durumu "offer_sent" olarak güncelle
   fetch(`/requests/${reqId}/offer-sent`, { method: 'POST' })
@@ -1929,20 +2053,22 @@ function applyVenuePickerSelection(section, emailFilterSection) {
 </div>
 
 {# ══════════════════════════════
-   MODAL: Müşteri Onayı
+   MODAL: Müşteri Onayı (2 adımlı)
    ══════════════════════════════ #}
 <div class="modal fade" id="confirmModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header" style="background:#166534; color:white;">
         <h5 class="modal-title"><i class="bi bi-check-circle me-2"></i>Müşteri Onayladı</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
-      <form method="post" action="/requests/{{ req.id }}/confirm">
+
+      {# Adım 1: Bütçe seçimi #}
+      <div id="confirmStep1">
         <div class="modal-body">
-          <p class="text-muted" style="font-size:13px;">Müşterinin onayladığı mekanı/bütçeyi seçin. Bu işlem talep durumunu <strong>Müşteri Onayladı</strong> olarak güncelleyecek.</p>
+          <p class="text-muted" style="font-size:13px;">Müşterinin onayladığı mekanı/bütçeyi seçin.</p>
           <label class="form-label fw-semibold">Onaylanan Bütçe / Mekan</label>
-          <select name="budget_id" class="form-select">
+          <select id="confirmBudgetSelect" class="form-select">
             <option value="">— Seçiniz —</option>
             {% for b in req.budgets %}
             {% if b.budget_status in ('approved', 'confirmed') %}
@@ -1955,11 +2081,43 @@ function applyVenuePickerSelection(section, emailFilterSection) {
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
-          <button type="submit" class="btn btn-success btn-sm">
-            <i class="bi bi-check-lg me-1"></i>Onayı Kaydet
+          <button type="button" class="btn btn-success btn-sm" onclick="goConfirmStep2()">
+            Devam Et <i class="bi bi-arrow-right ms-1"></i>
           </button>
         </div>
-      </form>
+      </div>
+
+      {# Adım 2: Email taslakları + onay #}
+      <div id="confirmStep2" hidden>
+        <form method="post" action="/requests/{{ req.id }}/confirm">
+          <input type="hidden" name="budget_id" id="confirmedBudgetIdInput">
+          <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+            <p class="text-muted mb-3" style="font-size:13px;">Aşağıdaki mail taslakları hazırlandı. Göndermek istediklerinizi gönderin, ardından <strong>Onayı Kaydet</strong>'e tıklayın.</p>
+
+            {# Seçilen mekana konfirme maili #}
+            <div id="confirmEmailCard" class="card mb-3 border-success">
+              <div class="card-header fw-semibold" style="background:#d1fae5; color:#065f46; font-size:13px;">
+                <i class="bi bi-check-circle me-1"></i>Seçilen Mekana — Konfirme &amp; Revize Fiyat Talebi
+              </div>
+              <div class="card-body py-2" id="confirmEmailBody">
+                <div class="text-muted" style="font-size:12px;">Bütçe seçildikten sonra hazırlanacak…</div>
+              </div>
+            </div>
+
+            {# Diğer mekanlara iptal maili #}
+            <div id="cancelEmailCards"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="goConfirmStep1()">
+              <i class="bi bi-arrow-left me-1"></i>Geri
+            </button>
+            <button type="submit" class="btn btn-success btn-sm">
+              <i class="bi bi-check-lg me-1"></i>Onayı Kaydet
+            </button>
+          </div>
+        </form>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1968,7 +2126,7 @@ function applyVenuePickerSelection(section, emailFilterSection) {
    MODAL: İşi İptal Et
    ══════════════════════════════ #}
 <div class="modal fade" id="cancelJobModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header" style="background:#991b1b; color:white;">
         <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>İşi İptal Et</h5>
@@ -1978,8 +2136,19 @@ function applyVenuePickerSelection(section, emailFilterSection) {
         <div class="modal-body">
           <p class="text-muted" style="font-size:13px;">Bu işlem talebi ve tüm onaylı bütçeleri <strong>İptal Edildi</strong> olarak işaretleyecek.</p>
           <label class="form-label fw-semibold">İptal Nedeni <span class="text-muted fw-normal">(isteğe bağlı)</span></label>
-          <textarea name="reason" class="form-control" rows="3"
+          <textarea name="reason" class="form-control" rows="2"
                     placeholder="İptal nedeni, müşteriden gelen mesaj…">{% if req.cancellation_reason %}{{ req.cancellation_reason }}{% endif %}</textarea>
+
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="sendCancelEmailsCb"
+                   onchange="toggleCancelEmailSection(this.checked)">
+            <label class="form-check-label fw-semibold" for="sendCancelEmailsCb" style="font-size:13px;">
+              Mekanlara iptal bildirimi gönder
+            </label>
+          </div>
+          <div id="cancelEmailSection" hidden class="mt-2">
+            <div id="cancelEmailCards2"></div>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>

@@ -211,6 +211,7 @@ async def budgets_create(
     request: Request,
     req_id:              str = Form(...),
     venue_name:          str = Form(""),
+    venue_id:            str = Form(""),
     rows_json:           str = Form("[]"),
     offer_currency:      str = Form("TRY"),
     exchange_rates_json: str = Form("{}"),
@@ -234,6 +235,7 @@ async def budgets_create(
         id=_uuid(),
         request_id=req_id,
         venue_name=venue_name.strip(),
+        venue_id=venue_id.strip() or None,
         rows_json=rows_json,
         budget_status="draft_edem",
         created_by=current_user.id,
@@ -375,6 +377,7 @@ async def budgets_edit(
 async def budgets_update(
     budget_id:           str,
     venue_name:          str = Form(""),
+    venue_id:            str = Form(""),
     rows_json:           str = Form("[]"),
     next_action:         str = Form(""),
     offer_currency:      str = Form("TRY"),
@@ -399,6 +402,7 @@ async def budgets_update(
         pass
 
     budget.venue_name          = venue_name.strip()
+    budget.venue_id            = venue_id.strip() or None
     budget.rows_json           = rows_json
     budget.offer_currency      = offer_currency.upper() or "TRY"
     budget.exchange_rates_json = exchange_rates_json or "{}"

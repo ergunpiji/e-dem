@@ -576,6 +576,7 @@ class Budget(Base):
     id                   = Column(String(36), primary_key=True, default=_uuid)
     request_id           = Column(String(36), ForeignKey("requests.id"), nullable=False)
     venue_name           = Column(String(255), default="")
+    venue_id             = Column(String(36), nullable=True)   # Venue.id bağlantısı (isteğe bağlı)
     rows_json            = Column(Text, default="[]")     # list[BudgetRow] JSON
     created_by           = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at           = Column(DateTime, default=_now, nullable=False)

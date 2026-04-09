@@ -170,11 +170,13 @@
     <div class="card-body">
       <div class="col-12">
         <label class="form-label fw-semibold" style="font-size:13px;">Mekan / Tedarikçi Adı</label>
+        <input type="hidden" name="venue_id" id="venueIdInput" value="{{ (budget.venue_id or '') if budget else '' }}">
         {% if preferred_venues %}
         <select class="form-select mb-2" id="venueNameSelect" onchange="onVenueSelectEdem(this.value)">
           <option value="">— Talep edilen mekanlardan seçin —</option>
           {% for v in preferred_venues %}
-          <option value="{{ v.name | e }}" {% if budget and budget.venue_name == v.name %}selected{% endif %}>
+          <option value="{{ v.name | e }}" data-venue-id="{{ v.id }}"
+                  {% if budget and budget.venue_name == v.name %}selected{% endif %}>
             {{ v.name }}
           </option>
           {% endfor %}
@@ -202,6 +204,9 @@
               <th style="width:70px;">Gün/Gece</th>
               <th style="width:72px;">Para Birimi</th>
               <th style="width:130px;">Maliyet (KDV hariç)</th>
+              {% if budget and budget.budget_status == 'confirmed' %}
+              <th style="width:130px; background:#d1fae5; color:#065f46;">Kesin Maliyet (KDV hariç)</th>
+              {% endif %}
               <th style="width:70px;">KDV %</th>
               <th style="width:110px;">Maliyet (KDV dahil)</th>
               <th style="width:36px;"></th>
@@ -352,6 +357,8 @@ const REQ_MTG_IN    = '{{ req.check_in  or "" if req else "" }}';
 const REQ_MTG_OUT   = '{{ req.check_out or "" if req else "" }}';
 
 // ─── Veri ───
+const BUDGET_IS_CONFIRMED = "{{ (budget.budget_status if budget else '') }}" === 'confirmed';
+
 let rows = [];
 try { rows = JSON.parse(document.getElementById('rowsJson').value || '[]'); } catch(e) {}
 // Service fee satırlarını filtrele — E-dem editöründe hizmet bedeli yok
@@ -588,6 +595,16 @@ function renderTable() {
             </div>
             ${rowCur !== 'TRY' && cost > 0 ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">≈ ${fmtMoney(amountToTry(total,rowCur))}</div>` : ''}
           </td>
+          ${BUDGET_IS_CONFIRMED ? `<td style="background:#f0fdf4;">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text" style="font-size:11px;padding:2px 5px;background:#d1fae5;color:#065f46;">${currSymbol(rowCur)}</span>
+              <input type="number" class="form-control" min="0" step="0.01"
+                     value="${row.confirmed_cost_price != null ? row.confirmed_cost_price : ''}"
+                     placeholder="Kesin..." id="confirmedCostInput-${i}"
+                     oninput="rows[${i}].confirmed_cost_price=parseFloat(this.value)||null;saveRows()"
+                     style="background:#f0fdf4;">
+            </div>
+          </td>` : ''}
           <td>${vatCell}</td>
           <td class="text-end fw-semibold" style="font-size:12px; white-space:nowrap;" id="total-${i}">
             ${fmtCurrency(total, rowCur)}
@@ -840,9 +857,11 @@ async function _saveCurrentEdem(showMsg = false) {
   saveRows();
   const rowsJson  = document.getElementById('rowsJson')?.value || '[]';
   const venueName = document.getElementById('venueNameInput')?.value || '';
+  const venueId   = document.getElementById('venueIdInput')?.value || '';
   const fd = new FormData();
   fd.append('rows_json',           rowsJson);
   fd.append('venue_name',          venueName);
+  fd.append('venue_id',            venueId);
   fd.append('offer_currency',      offerCurrency);
   fd.append('exchange_rates_json', JSON.stringify(exchangeRates));
   await fetch(`/budgets/${_currentBudgetId}/edit`, { method: 'POST', body: fd });
@@ -854,13 +873,19 @@ async function _saveCurrentEdem(showMsg = false) {
 
 function onVenueSelectEdem(val) {
   const inp = document.getElementById('venueNameInput');
+  const vidInp = document.getElementById('venueIdInput');
   if (val === '__manual__') {
     inp.style.display = '';
     inp.value = '';
+    if (vidInp) vidInp.value = '';
     inp.focus();
   } else {
     inp.style.display = val ? 'none' : '';
     inp.value = val;
+    // venue_id'yi seçilen option'ın data-venue-id'sinden al
+    const sel = document.getElementById('venueNameSelect');
+    const opt = sel ? [...sel.options].find(o => o.value === val) : null;
+    if (vidInp) vidInp.value = (opt && opt.dataset.venueId) ? opt.dataset.venueId : '';
   }
 }
 

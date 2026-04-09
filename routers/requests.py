@@ -349,6 +349,20 @@ async def requests_detail(
     customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
                 if req.customer_id else None)
 
+    # Email taslakları için bütçe + venue kontakt bilgileri
+    budgets_json = []
+    for b in req.budgets:
+        contacts = []
+        if b.venue_id and b.venue_id in venues_map:
+            contacts = venues_map[b.venue_id].get("contacts", []) or []
+        budgets_json.append({
+            "id":         b.id,
+            "venue_name": b.venue_name or "",
+            "venue_id":   b.venue_id or "",
+            "contacts":   contacts,
+            "status":     b.budget_status,
+        })
+
     return templates.TemplateResponse(
         "requests/detail.html",
         {
@@ -368,6 +382,7 @@ async def requests_detail(
             "budgets_data":     budgets_data,
             "all_sections":     all_sections_set,
             "customer":         customer,
+            "budgets_json":     budgets_json,
         },
     )
 
