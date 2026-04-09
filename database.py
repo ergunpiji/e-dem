@@ -32,6 +32,12 @@ _is_sqlite   = DATABASE_URL.startswith("sqlite")
 _engine_kwargs: dict = {"echo": False}
 if _is_sqlite:
     _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # PostgreSQL: stale bağlantıları otomatik yenile (Railway idle timeout)
+    _engine_kwargs["pool_pre_ping"]   = True
+    _engine_kwargs["pool_recycle"]    = 300   # 5 dk'da bir bağlantıyı yenile
+    _engine_kwargs["pool_size"]       = 5
+    _engine_kwargs["max_overflow"]    = 10
 
 engine = create_engine(DATABASE_URL, **_engine_kwargs)
 
