@@ -103,12 +103,12 @@
           </form>
           {% endif %}
         {% endif %}
-        {# Müşteriye Teklif Gönder — iptal dışı, onaylı bütçe varsa #}
-        {% if req.status != 'cancelled' %}
+        {# Müşteriye Teklif Gönder — manager onayladıktan sonra, henüz confirmed değilse #}
+        {% if req.status not in ('cancelled', 'completed', 'confirmed') %}
         {% set ns_approv2 = namespace(found=false) %}
-        {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_approv2.found = true %}{% endif %}{% endfor %}
+        {% for b in req.budgets %}{% if b.budget_status == 'approved' %}{% set ns_approv2.found = true %}{% endif %}{% endfor %}
         {% if ns_approv2.found %}
-        <button type="button" class="btn btn-success btn-sm"
+        <button type="button" class="btn btn-primary btn-sm"
                 onclick="sendOfferEmail('{{ req.id }}', '{{ (customer.email if customer else '') | e }}', '{{ req.event_name | e }}', '{{ req.request_no | e }}')">
           <i class="bi bi-envelope-arrow-up me-1"></i> Müşteriye Teklif Gönder
         </button>
@@ -483,6 +483,10 @@
                 </li>
               </ul>
             </div>
+            <button type="button" class="btn btn-primary btn-sm" style="font-size:11px;"
+                    onclick="sendOfferEmail('{{ req.id }}', '{{ (customer.email if customer else '') | e }}', '{{ req.event_name | e }}', '{{ req.request_no | e }}')">
+              <i class="bi bi-envelope-arrow-up me-1"></i>Müşteriye Gönder
+            </button>
           </div>
           {% endif %}
         </div>
@@ -1408,7 +1412,11 @@ function showToast(msg) {
 }
 
 function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
-  // 1) Excel'i indir
+  // 1) Durumu "offer_sent" olarak güncelle
+  fetch(`/requests/${reqId}/offer-sent`, { method: 'POST' })
+    .catch(() => {});  // sessiz hata — zaten offer_sent ise de sorun yok
+
+  // 2) Excel'i indir
   const exportUrl = `/requests/${reqId}/export?vat=exclusive`;
   const a = document.createElement('a');
   a.href = exportUrl;
@@ -1417,7 +1425,7 @@ function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
   a.click();
   document.body.removeChild(a);
 
-  // 2) Mail istemcisini aç (müşteri adresi varsa)
+  // 3) Mail istemcisini aç (müşteri adresi varsa)
   if (customerEmail) {
     const subject = encodeURIComponent(`Etkinlik Teklifi: ${eventName} — ${refNo}`);
     const body    = encodeURIComponent(
@@ -1429,9 +1437,9 @@ function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
     setTimeout(() => {
       window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank');
     }, 800);
-    showToast('Excel indiriliyor, mail uygulamanız açılıyor. Dosyayı maille ekleyin.');
+    showToast('Teklif gönderildi olarak işaretlendi. Excel indiriliyor, mail uygulamanız açılıyor.');
   } else {
-    showToast('Excel indiriliyor. Müşteri email adresi tanımlı değil.');
+    showToast('Teklif gönderildi olarak işaretlendi. Excel indiriliyor. Müşteri email adresi tanımlı değil.');
   }
 }
 

@@ -527,15 +527,18 @@ async def requests_offer_sent(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Teklif müşteriye gönderildi → status: offer_sent"""
+    """Teklif müşteriye gönderildi → status: offer_sent
+    fetch() ile AJAX olarak da çağrılabilir (redirect'i görmez, 200/302 döner).
+    """
     req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
-    if req.status not in ("budget_ready", "in_progress", "venues_contacted"):
-        return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
-    req.status     = "offer_sent"
-    req.updated_at = _now()
-    db.commit()
+    # Onaylı bütçesi olan her non-terminal statüden offer_sent'e geçilebilir
+    allowed = ("in_progress", "venues_contacted", "budget_ready", "offer_sent", "revision")
+    if req.status in allowed and req.status != "offer_sent":
+        req.status     = "offer_sent"
+        req.updated_at = _now()
+        db.commit()
     return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
 
 
