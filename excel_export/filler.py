@@ -46,7 +46,15 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
     req = request
 
     def _date(d):
-        return d.strftime("%d.%m.%Y") if d else ""
+        if not d:
+            return ""
+        if isinstance(d, str):
+            try:
+                from datetime import date as _date_cls
+                d = _date_cls.fromisoformat(d[:10])
+            except Exception:
+                return d
+        return d.strftime("%d.%m.%Y")
 
     cities = ""
     if req:
