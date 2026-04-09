@@ -108,8 +108,10 @@
   </div>
 </div>
 
-{% if welcome_user %}
+{% endblock %}
+
 {% block extra_scripts %}
+{% if welcome_user %}
 <script>
 (function(){
   const email = {{ welcome_user.email | tojson }};
@@ -133,7 +135,5 @@
   history.replaceState({}, '', '/users');
 })();
 </script>
-{% endblock %}
 {% endif %}
-
 {% endblock %}
