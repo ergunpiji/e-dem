@@ -1,44 +1,69 @@
 """
 Müşteri Excel template'ini cell_map ile doldurur.
 
-customer.excel_config_json'da saklanan cell_map yapısı:
+cell_map yapısı (customer.excel_config_json içinde):
 {
   "vat_mode": "exclusive" | "inclusive",
   "header": {
-      "B3": "event_name",
-      "C4": "ref_no",
+      "B4": "event_name",
+      "C5": "check_in",
       ...
   },
   "data_block": {
-      "start_row": 9,
-      "end_anchor_text": "ARA TOPLAM",   // veya "end_row": 20
-      "sheet": "Sheet1",                 // opsiyonel
+      "start_row": 11,
+      "end_anchor_text": "ARA TOPLAM",
+      "sheet": "Sheet1",
       "columns": {
           "B": "service_name",
           "C": "notes",
           "D": "nights",
           "E": "qty",
           "F": "sale_price_eur",
-          "H": "sale_price",
-          "J": "total_incl"
-      },
-      "section_header_col": "B"          // opsiyonel
+          "H": "sale_price"
+      }
   }
 }
+
+Formül kolonları (G, I, J vb.) template'in ilk dolu satırından otomatik tespit edilir.
 """
 from __future__ import annotations
 
 import io
 import os
+import re
 
 try:
     import openpyxl
-    from openpyxl.utils import column_index_from_string
+    from openpyxl.utils import column_index_from_string, get_column_letter
+    from openpyxl.styles import Font, PatternFill, Alignment
     OPENPYXL_OK = True
 except ImportError:
     OPENPYXL_OK = False
 
 from .builder import SECTION_LABELS, SECTIONS_ORDER
+
+
+# Bölüm ara toplam etiketleri
+SECTION_SUBTOTAL_LABELS: dict[str, str] = {
+    "accommodation": "Konaklama Ara Toplam",
+    "meeting":       "Toplantı / Salon Ara Toplam",
+    "fb":            "Yeme & İçme Ara Toplam",
+    "teknik":        "Teknik Ekipman Ara Toplam",
+    "dekor":         "Dekor / Süsleme Ara Toplam",
+    "transfer":      "Transfer / Ulaşım Ara Toplam",
+    "tasarim":       "Tasarım & Baskı Ara Toplam",
+    "other":         "Diğer Hizmetler Ara Toplam",
+}
+
+
+# ── Stil sabitleri ─────────────────────────────────────────────────────────────
+def _HDR_FONT(): return Font(bold=True, color="FFFFFF", size=10)
+def _HDR_FILL(): return PatternFill(fill_type="solid", fgColor="1E5F8C")
+def _SUB_FONT(): return Font(bold=True, color="1A3A5C", size=10)
+def _SUB_FILL(): return PatternFill(fill_type="solid", fgColor="D0E8F5")
+def _TOT_FONT(): return Font(bold=True, color="FFFFFF", size=11)
+def _TOT_FILL(): return PatternFill(fill_type="solid", fgColor="1A3A5C")
+def _DAT_FONT(): return Font(color="000000", size=10)
 
 
 # ── Header alan çözücüleri ─────────────────────────────────────────────────────
@@ -83,13 +108,11 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
 
 # ── Satır alan çözücüleri ──────────────────────────────────────────────────────
 def _row_value(field: str, row: dict, budget, currency: str) -> float | str:
-    """Tek bir bütçe satırı için istenen alanı döndürür."""
     qty    = float(row.get("qty",    1) or 1)
     nights = float(row.get("nights", 1) or 1)
     sale   = float(row.get("sale_price", 0) or 0)
     vat    = float(row.get("vat_rate",   0) or 0)
 
-    # Para birimi dönüşümü
     row_cur = (row.get("currency") or "TRY").upper()
     if row_cur != currency:
         row_rate   = budget.rate_to_try(row_cur) or 1.0
@@ -120,7 +143,188 @@ def _row_value(field: str, row: dict, budget, currency: str) -> float | str:
         case _:                return ""
 
 
-# ── Ana fonksiyon ──────────────────────────────────────────────────────────────
+# ── Formül şablonu çıkarıcı ────────────────────────────────────────────────────
+def _extract_formula_templates(ws, start_row: int, written_cols: set, max_col: int) -> dict:
+    """
+    Template'deki veri satırlarından formül şablonlarını çıkarır.
+    Yazan kolonlar (col_defs) hariç, formül içeren kolonları tespit eder.
+    Satır numarasını {row} ile değiştirir.
+    """
+    formula_cols: dict[str, str] = {}
+    for r_idx in range(start_row, min(start_row + 30, ws.max_row + 1)):
+        found = False
+        for c_idx in range(1, max_col + 1):
+            col_letter = get_column_letter(c_idx)
+            if col_letter.upper() in written_cols:
+                continue
+            if col_letter in formula_cols:
+                continue
+            try:
+                cell = ws.cell(row=r_idx, column=c_idx)
+            except Exception:
+                continue
+            if isinstance(cell.value, str) and cell.value.startswith("="):
+                # Satır numarasını {row} ile değiştir
+                pattern = r'(?<=[A-Za-z\$])(' + str(r_idx) + r')(?=[^0-9]|$)'
+                tpl = re.sub(pattern, '{row}', cell.value)
+                formula_cols[col_letter] = tpl
+                found = True
+        if found:
+            break
+    return formula_cols
+
+
+# ── Güvenli hücre yazma ────────────────────────────────────────────────────────
+def _safe_set(ws, row: int, col_letter: str, value,
+              font=None, fill=None) -> None:
+    try:
+        ci   = column_index_from_string(col_letter.upper())
+        cell = ws.cell(row=row, column=ci)
+        cell.value = value
+        if font is not None:
+            cell.font = font
+        if fill is not None:
+            cell.fill = fill
+    except (AttributeError, Exception):
+        pass
+
+
+# ── Ana fill fonksiyonu (in-place) ────────────────────────────────────────────
+def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
+    """Worksheet'i cell_map ile doldurur: header, bölüm başlıkları, ara toplamlar, genel toplam."""
+    currency = (budget.offer_currency or "TRY").upper()
+
+    # 1. Header hücrelerini doldur
+    header_vals = _header_resolvers(budget, request, customer, creator)
+    for cell_addr, field_name in (cell_map.get("header") or {}).items():
+        val = header_vals.get(field_name)
+        if val is not None:
+            try:
+                ws[cell_addr.upper()] = val
+                ws[cell_addr.upper()].font = Font(color="000000")
+            except (AttributeError, Exception):
+                pass
+
+    data_block = cell_map.get("data_block")
+    if not data_block:
+        return
+
+    start_row  = int(data_block.get("start_row", 1))
+    col_defs   = data_block.get("columns", {})           # {letter: field_name}
+    end_anchor = data_block.get("end_anchor_text")
+    label_col  = "B"                                      # bölüm etiketleri için varsayılan kolon
+
+    # 2. Anchor satırını bul
+    anchor_row = None
+    if end_anchor:
+        for r_idx in range(start_row, ws.max_row + 1):
+            for c_idx in range(1, ws.max_column + 1):
+                v = ws.cell(row=r_idx, column=c_idx).value
+                if v and isinstance(v, str) and end_anchor.lower() in v.lower():
+                    anchor_row = r_idx
+                    break
+            if anchor_row:
+                break
+
+    # 3. Formül şablonlarını temizlemeden önce çıkar
+    written_cols = {c.upper() for c in col_defs}
+    formula_cols = _extract_formula_templates(
+        ws, start_row, written_cols, ws.max_column
+    )
+
+    # 4. Veri alanını temizle (start_row → anchor+10 arası)
+    clear_end = (anchor_row + 10) if anchor_row else (start_row + 100)
+    for r_idx in range(start_row, min(clear_end + 1, ws.max_row + 1)):
+        for c_idx in range(1, ws.max_column + 1):
+            try:
+                ws.cell(row=r_idx, column=c_idx).value = None
+            except AttributeError:
+                pass
+
+    # 5. Bütçe satırlarını bölümlere ayır
+    rows_by_sec: dict[str, list] = {}
+    service_fee = None
+    for r in budget.rows:
+        if r.get("is_service_fee"):
+            service_fee = r
+            continue
+        sec = r.get("section", "other")
+        rows_by_sec.setdefault(sec, []).append(r)
+
+    # 6. Bölümleri yaz
+    current_row = start_row
+    subtotal_rows: dict[str, list[int]] = {}   # col_letter -> [subtotal satır numaraları]
+
+    for sec in SECTIONS_ORDER:
+        sec_rows = rows_by_sec.get(sec, [])
+        if not sec_rows:
+            continue
+
+        sec_label = SECTION_LABELS.get(sec, sec)
+
+        # Bölüm başlık satırı
+        _safe_set(ws, current_row, label_col, sec_label,
+                  font=_HDR_FONT(), fill=_HDR_FILL())
+        current_row += 1
+
+        sec_data_start = current_row
+
+        # Veri satırları
+        for row_data in sec_rows:
+            for col_letter, field_name in col_defs.items():
+                val = _row_value(field_name, row_data, budget, currency)
+                _safe_set(ws, current_row, col_letter, val, font=_DAT_FONT())
+            # Formül kolonları
+            for col_letter, tpl in formula_cols.items():
+                formula = tpl.replace("{row}", str(current_row))
+                _safe_set(ws, current_row, col_letter, formula, font=_DAT_FONT())
+            current_row += 1
+
+        sec_data_end = current_row - 1
+
+        # Ara toplam satırı
+        sub_label = SECTION_SUBTOTAL_LABELS.get(sec, f"{sec_label} Ara Toplam")
+        _safe_set(ws, current_row, label_col, sub_label,
+                  font=_SUB_FONT(), fill=_SUB_FILL())
+        for col_letter in formula_cols:
+            formula = f"=SUM({col_letter}{sec_data_start}:{col_letter}{sec_data_end})"
+            _safe_set(ws, current_row, col_letter, formula,
+                      font=_SUB_FONT(), fill=_SUB_FILL())
+            subtotal_rows.setdefault(col_letter, []).append(current_row)
+        current_row += 1
+
+    # Hizmet bedeli satırı
+    if service_fee:
+        sf_label = service_fee.get("service_name") or "Hizmet Bedeli"
+        _safe_set(ws, current_row, label_col, sf_label, font=_DAT_FONT())
+        for col_letter, field_name in col_defs.items():
+            val = _row_value(field_name, service_fee, budget, currency)
+            _safe_set(ws, current_row, col_letter, val, font=_DAT_FONT())
+        for col_letter, tpl in formula_cols.items():
+            formula = tpl.replace("{row}", str(current_row))
+            _safe_set(ws, current_row, col_letter, formula, font=_DAT_FONT())
+            subtotal_rows.setdefault(col_letter, []).append(current_row)
+        current_row += 1
+
+    # Genel toplam satırı
+    if subtotal_rows:
+        _safe_set(ws, current_row, label_col, "GENEL TOPLAM (KDV Hariç)",
+                  font=_TOT_FONT(), fill=_TOT_FILL())
+        for col_letter, rows in subtotal_rows.items():
+            refs = "+".join(f"{col_letter}{r}" for r in rows)
+            _safe_set(ws, current_row, col_letter, f"={refs}",
+                      font=_TOT_FONT(), fill=_TOT_FILL())
+        current_row += 1
+
+    # 7. Kullanılmayan eski satırları sil
+    if clear_end >= current_row:
+        try:
+            ws.delete_rows(current_row, clear_end - current_row + 1)
+        except Exception:
+            pass
+
+
+# ── Tek bütçe export ──────────────────────────────────────────────────────────
 def fill_customer_template(
     template_path: str,
     cell_map: dict,
@@ -129,121 +333,19 @@ def fill_customer_template(
     customer,
     creator,
 ) -> io.BytesIO:
-    """
-    Müşteri template'ini verilen cell_map ile doldurur.
-    Dosyayı BytesIO olarak döndürür.
-    """
+    """Müşteri template'ini tek bütçe ile doldurur."""
     if not OPENPYXL_OK:
         raise RuntimeError("openpyxl kurulu değil")
     if not os.path.exists(template_path):
         raise FileNotFoundError(f"Template bulunamadı: {template_path}")
 
     wb = openpyxl.load_workbook(template_path)
-
-    # Sayfa seçimi
     sheet_name = (cell_map.get("data_block") or {}).get("sheet")
     ws = (wb[sheet_name]
           if sheet_name and sheet_name in wb.sheetnames
           else wb.active)
 
-    currency = (budget.offer_currency or "TRY").upper()
-
-    # ── Header hücrelerini doldur ──────────────────────────────────────────────
-    header_vals = _header_resolvers(budget, request, customer, creator)
-    for cell_addr, field_name in (cell_map.get("header") or {}).items():
-        val = header_vals.get(field_name)
-        if val is not None:
-            try:
-                ws[cell_addr.upper()] = val
-            except Exception:
-                pass
-
-    # ── Veri bloğu ────────────────────────────────────────────────────────────
-    data_block = cell_map.get("data_block")
-    if not data_block:
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        return output
-
-    start_row   = int(data_block.get("start_row", 1))
-    col_defs    = data_block.get("columns", {})      # {letter: field_name}
-    sec_hdr_col = data_block.get("section_header_col")
-    end_anchor  = data_block.get("end_anchor_text")
-
-    # Bütçe satırlarını grupla
-    rows_by_sec: dict[str, list] = {}
-    service_fee = None
-    for r in budget.rows:
-        if r.get("is_service_fee"):
-            service_fee = r
-            continue
-        sec = r.get("section", "other")
-        rows_by_sec.setdefault(sec, []).append(r)
-
-    # Düz satır listesi: (type, data) — 'section' başlıkları + 'row' verileri
-    flat_rows: list[tuple] = []
-    for sec in SECTIONS_ORDER:
-        sec_rows = rows_by_sec.get(sec, [])
-        if not sec_rows:
-            continue
-        if sec_hdr_col:
-            flat_rows.append(("section", sec))
-        flat_rows.extend(("row", r) for r in sec_rows)
-    if service_fee:
-        flat_rows.append(("row", service_fee))
-
-    # Anchor satırını bul
-    anchor_row = None
-    if end_anchor:
-        for r_idx in range(start_row, ws.max_row + 1):
-            for c_idx in range(1, ws.max_column + 1):
-                val = ws.cell(row=r_idx, column=c_idx).value
-                if val and isinstance(val, str) and end_anchor.lower() in val.lower():
-                    anchor_row = r_idx
-                    break
-            if anchor_row:
-                break
-
-    # Veri alanındaki mevcut içeriği temizle (merged hücreleri atla)
-    clear_end = (anchor_row - 1) if anchor_row else (start_row + 50)
-    for r_idx in range(start_row, clear_end + 1):
-        for c_idx in range(1, ws.max_column + 1):
-            try:
-                ws.cell(row=r_idx, column=c_idx).value = None
-            except AttributeError:
-                pass  # MergedCell
-
-    needed = len(flat_rows)
-    if anchor_row:
-        available = anchor_row - start_row
-        if needed > available:
-            for _ in range(needed - available):
-                ws.insert_rows(anchor_row)
-                anchor_row += 1
-
-    # Satırları yaz
-    current_row = start_row
-    for row_type, row_data in flat_rows:
-        if row_type == "section" and sec_hdr_col:
-            ci = column_index_from_string(sec_hdr_col.upper())
-            ws.cell(row=current_row, column=ci,
-                    value=SECTION_LABELS.get(row_data, row_data))
-            current_row += 1
-            continue
-
-        for col_letter, field_name in col_defs.items():
-            try:
-                ci  = column_index_from_string(col_letter.upper())
-                val = _row_value(field_name, row_data, budget, currency)
-                ws.cell(row=current_row, column=ci, value=val)
-            except Exception:
-                pass
-        current_row += 1
-
-    # Kullanılmayan fazla satırları sil
-    if anchor_row and current_row < anchor_row:
-        ws.delete_rows(current_row, anchor_row - current_row)
+    _fill_ws(ws, cell_map, budget, request, customer, creator)
 
     output = io.BytesIO()
     wb.save(output)
@@ -251,110 +353,15 @@ def fill_customer_template(
     return output
 
 
-def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
-    """Mevcut bir worksheet'i cell_map ile doldurur (in-place)."""
-    currency = (budget.offer_currency or "TRY").upper()
-
-    header_vals = _header_resolvers(budget, request, customer, creator)
-    for cell_addr, field_name in (cell_map.get("header") or {}).items():
-        val = header_vals.get(field_name)
-        if val is not None:
-            try:
-                ws[cell_addr.upper()] = val
-            except Exception:
-                pass
-
-    data_block = cell_map.get("data_block")
-    if not data_block:
-        return
-
-    start_row   = int(data_block.get("start_row", 1))
-    col_defs    = data_block.get("columns", {})
-    sec_hdr_col = data_block.get("section_header_col")
-    end_anchor  = data_block.get("end_anchor_text")
-
-    rows_by_sec: dict[str, list] = {}
-    service_fee = None
-    for r in budget.rows:
-        if r.get("is_service_fee"):
-            service_fee = r
-            continue
-        sec = r.get("section", "other")
-        rows_by_sec.setdefault(sec, []).append(r)
-
-    flat_rows: list[tuple] = []
-    for sec in SECTIONS_ORDER:
-        sec_rows = rows_by_sec.get(sec, [])
-        if not sec_rows:
-            continue
-        if sec_hdr_col:
-            flat_rows.append(("section", sec))
-        flat_rows.extend(("row", r) for r in sec_rows)
-    if service_fee:
-        flat_rows.append(("row", service_fee))
-
-    anchor_row = None
-    if end_anchor:
-        for r_idx in range(start_row, ws.max_row + 1):
-            for c_idx in range(1, ws.max_column + 1):
-                val = ws.cell(row=r_idx, column=c_idx).value
-                if val and isinstance(val, str) and end_anchor.lower() in val.lower():
-                    anchor_row = r_idx
-                    break
-            if anchor_row:
-                break
-
-    # Veri alanındaki mevcut içeriği temizle (merged hücreleri atla)
-    clear_end = (anchor_row - 1) if anchor_row else (start_row + 50)
-    for r_idx in range(start_row, clear_end + 1):
-        for c_idx in range(1, ws.max_column + 1):
-            cell = ws.cell(row=r_idx, column=c_idx)
-            try:
-                cell.value = None
-            except AttributeError:
-                pass  # MergedCell — atla
-
-    needed = len(flat_rows)
-    if anchor_row:
-        available = anchor_row - start_row
-        if needed > available:
-            for _ in range(needed - available):
-                ws.insert_rows(anchor_row)
-                anchor_row += 1
-
-    current_row = start_row
-    for row_type, row_data in flat_rows:
-        if row_type == "section" and sec_hdr_col:
-            ci = column_index_from_string(sec_hdr_col.upper())
-            try:
-                ws.cell(row=current_row, column=ci).value = SECTION_LABELS.get(row_data, row_data)
-            except AttributeError:
-                pass
-            current_row += 1
-            continue
-        for col_letter, field_name in col_defs.items():
-            try:
-                ci  = column_index_from_string(col_letter.upper())
-                val = _row_value(field_name, row_data, budget, currency)
-                ws.cell(row=current_row, column=ci).value = val
-            except (AttributeError, Exception):
-                pass
-        current_row += 1
-
-    # Kullanılmayan fazla satırları sil (anchor'dan önce)
-    if anchor_row and current_row < anchor_row:
-        rows_to_delete = anchor_row - current_row
-        ws.delete_rows(current_row, rows_to_delete)
-
-
+# ── Çok bütçe export (her bütçe ayrı sheet) ──────────────────────────────────
 def fill_customer_template_multi(
     template_path: str,
     cell_map: dict,
-    entries: list,          # [{"budget":..., "request":..., "customer":..., "creator":...}]
+    entries: list,
 ) -> io.BytesIO:
     """
-    Birden fazla bütçeyi tek dosyada, her biri ayrı sheet olarak doldurur.
-    Her sheet template'in aktif sayfasının bir kopyasıdır.
+    Birden fazla bütçeyi tek dosyada, her biri template kopyası olarak doldurur.
+    entries: [{"budget": ..., "request": ..., "customer": ..., "creator": ...}]
     """
     if not OPENPYXL_OK:
         raise RuntimeError("openpyxl kurulu değil")
@@ -368,7 +375,6 @@ def fill_customer_template_multi(
     src_ws = (wb[sheet_name]
               if sheet_name and sheet_name in wb.sheetnames
               else wb.active)
-    src_name = src_ws.title
 
     for i, entry in enumerate(entries):
         b   = entry["budget"]
@@ -376,12 +382,9 @@ def fill_customer_template_multi(
         cus = entry.get("customer")
         cre = entry.get("creator")
 
-        if i == 0:
-            ws = src_ws
-        else:
-            ws = wb.copy_worksheet(src_ws)
+        ws = src_ws if i == 0 else wb.copy_worksheet(src_ws)
 
-        # Sheet adı: venue_name
+        # Sheet adı = mekan/otel adı
         raw_title = (b.venue_name or f"Bütçe {i+1}")[:28].strip()
         title = raw_title
         suffix = 2
@@ -393,7 +396,6 @@ def fill_customer_template_multi(
 
         _fill_ws(ws, cell_map, b, req, cus, cre)
 
-    # Kaynak sheet ilk entry ile doldu; eğer entries boşsa yine de kaydedilir
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
