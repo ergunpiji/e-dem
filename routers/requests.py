@@ -549,7 +549,7 @@ async def requests_offer_sent(
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
     # Onaylı bütçesi olan her non-terminal statüden offer_sent'e geçilebilir
-    allowed = ("in_progress", "venues_contacted", "budget_ready", "offer_sent", "revision")
+    allowed = ("in_progress", "venues_contacted", "budget_ready", "offer_sent", "revision", "completed")
     if req.status in allowed and req.status != "offer_sent":
         req.status     = "offer_sent"
         req.updated_at = _now()

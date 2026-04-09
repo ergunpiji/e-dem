@@ -143,8 +143,8 @@
           </a>
         {% endif %}
 
-        {# Müşteri Onayı — budget_ready / offer_sent / revision aşamasında #}
-        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status in ('budget_ready', 'offer_sent', 'revision') %}
+        {# Müşteri Onayı — offer_sent ve diğer aktif statülerde #}
+        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status in ('budget_ready', 'offer_sent', 'revision', 'completed') %}
         {% set ns_any_approved = namespace(found=false) %}
         {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_any_approved.found = true %}{% endif %}{% endfor %}
         {% if ns_any_approved.found %}
