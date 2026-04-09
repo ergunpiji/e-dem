@@ -64,6 +64,10 @@
     .sidebar-link.active { background: var(--sidebar-active-bg); color: var(--sidebar-active-color); border-left-color: var(--sidebar-active-border); }
     .sidebar-link .nav-icon { font-size: 16px; width: 20px; text-align: center; }
     .sidebar-footer { padding: 14px 20px; border-top: 1px solid rgba(255,255,255,.08); }
+    .nav-section-label.section-main { color: rgba(255,255,255,.55); font-size: 11px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.07); margin-top: 6px; }
+    .nav-section-label.section-main:first-of-type { border-top: none; margin-top: 0; }
+    .nav-section-label.section-cancel { color: #fca5a5; }
+    .sidebar-link .nav-badge { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,255,255,.15); color: rgba(255,255,255,.7); }
 
     /* ── Main ── */
     .main-content { margin-left: var(--sidebar-width); min-height: 100vh; }
@@ -130,96 +134,127 @@
   </div>
 
   <nav class="sidebar-nav">
+    {% set cur_path = request.url.path %}
+    {% set cur_query = request.url.query %}
 
     <!-- Dashboard — tüm roller -->
-    <div class="nav-section-label">Ana Menü</div>
     <a href="/dashboard"
-       class="sidebar-link {% if request.url.path == '/dashboard' %}active{% endif %}">
+       class="sidebar-link {% if cur_path == '/dashboard' %}active{% endif %}">
       <span class="nav-icon">📊</span> Dashboard
     </a>
 
     {% if current_user.role == 'admin' %}
-    <!-- ── ADMIN NAVİGASYON ── -->
-    <div class="nav-section-label">Referanslar</div>
+    <!-- ── ADMIN ── -->
+    <div class="nav-section-label section-main">Talepler</div>
     <a href="/requests"
-       class="sidebar-link {% if '/requests' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if cur_path == '/requests' and 'view=' not in cur_query %}active{% endif %}">
       <span class="nav-icon">📋</span> Tüm Referanslar
     </a>
+    <a href="/requests?view=ongoing"
+       class="sidebar-link {% if 'view=ongoing' in cur_query %}active{% endif %}">
+      <span class="nav-icon">🔄</span> Devam Eden İşler
+    </a>
 
-    <div class="nav-section-label">Yönetim</div>
+    <div class="nav-section-label section-main">Yönetim</div>
     <a href="/venues"
-       class="sidebar-link {% if '/venues' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/venues' in cur_path %}active{% endif %}">
       <span class="nav-icon">🏨</span> Tedarikçi Havuzu
     </a>
     <a href="/services"
-       class="sidebar-link {% if '/services' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/services' in cur_path %}active{% endif %}">
       <span class="nav-icon">🗂</span> Hizmet Kataloğu
     </a>
     <a href="/customers"
-       class="sidebar-link {% if '/customers' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/customers' in cur_path %}active{% endif %}">
       <span class="nav-icon">🏢</span> Müşteri Yönetimi
     </a>
     <a href="/users"
-       class="sidebar-link {% if request.url.path == '/users' or (('/users' in request.url.path) and ('/org-titles' not in request.url.path)) %}active{% endif %}">
+       class="sidebar-link {% if cur_path == '/users' or (('/users' in cur_path) and ('/org-titles' not in cur_path)) %}active{% endif %}">
       <span class="nav-icon">👥</span> Kullanıcı Yönetimi
     </a>
     <a href="/users/org-titles"
-       class="sidebar-link {% if '/users/org-titles' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/users/org-titles' in cur_path %}active{% endif %}">
       <span class="nav-icon">🏛</span> Org Yapısı
     </a>
     <a href="/event-types"
-       class="sidebar-link {% if '/event-types' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/event-types' in cur_path %}active{% endif %}">
       <span class="nav-icon">🏷</span> Etkinlik Tipleri
     </a>
 
-    <div class="nav-section-label">Admin</div>
+    <div class="nav-section-label section-main">Admin</div>
     <a href="/reports"
-       class="sidebar-link {% if '/reports' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/reports' in cur_path %}active{% endif %}">
       <span class="nav-icon">📈</span> Raporlar
     </a>
     <a href="/settings"
-       class="sidebar-link {% if '/settings' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/settings' in cur_path %}active{% endif %}">
       <span class="nav-icon">⚙️</span> Sistem Ayarları
     </a>
 
+    <div class="nav-section-label section-main section-cancel">İptal</div>
+    <a href="/requests?view=cancelled"
+       class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
+      <span class="nav-icon">🚫</span> İptal İşler
+    </a>
+
     {% elif current_user.role == 'project_manager' %}
-    <!-- ── PROJE YÖNETİCİSİ NAVİGASYON ── -->
-    <div class="nav-section-label">Talepler</div>
+    <!-- ── PROJE YÖNETİCİSİ ── -->
+    <div class="nav-section-label section-main">Talepler</div>
     <a href="/requests/new"
-       class="sidebar-link {% if request.url.path == '/requests/new' %}active{% endif %}">
+       class="sidebar-link {% if cur_path == '/requests/new' %}active{% endif %}">
       <span class="nav-icon">➕</span> Yeni Talep Oluştur
     </a>
     <a href="/requests"
-       class="sidebar-link {% if request.url.path == '/requests' %}active{% endif %}">
+       class="sidebar-link {% if cur_path == '/requests' and 'view=' not in cur_query %}active{% endif %}">
       <span class="nav-icon">📋</span> Referanslarım
     </a>
+    <a href="/requests?view=ongoing"
+       class="sidebar-link {% if 'view=ongoing' in cur_query %}active{% endif %}">
+      <span class="nav-icon">🔄</span> Devam Eden İşler
+    </a>
     <a href="/budgets"
-       class="sidebar-link {% if '/budgets' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/budgets' in cur_path %}active{% endif %}">
       <span class="nav-icon">💰</span> Bütçeler
     </a>
 
-    <div class="nav-section-label">Bilgi</div>
+    <div class="nav-section-label section-main">Bilgi</div>
     <a href="/venues"
-       class="sidebar-link {% if '/venues' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/venues' in cur_path %}active{% endif %}">
       <span class="nav-icon">🏨</span> Tedarikçi Havuzu
+    </a>
+
+    <div class="nav-section-label section-main section-cancel">İptal</div>
+    <a href="/requests?view=cancelled"
+       class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
+      <span class="nav-icon">🚫</span> İptal İşler
     </a>
 
     {% elif current_user.role == 'e_dem' %}
-    <!-- ── E-DEM NAVİGASYON ── -->
-    <div class="nav-section-label">İşlemler</div>
+    <!-- ── E-DEM ── -->
+    <div class="nav-section-label section-main">Talepler</div>
     <a href="/requests"
-       class="sidebar-link {% if request.url.path == '/requests' %}active{% endif %}">
+       class="sidebar-link {% if cur_path == '/requests' and 'view=' not in cur_query %}active{% endif %}">
       <span class="nav-icon">📥</span> Gelen Referanslar
     </a>
+    <a href="/requests?view=ongoing"
+       class="sidebar-link {% if 'view=ongoing' in cur_query %}active{% endif %}">
+      <span class="nav-icon">🔄</span> Devam Eden İşler
+    </a>
     <a href="/budgets"
-       class="sidebar-link {% if '/budgets' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/budgets' in cur_path %}active{% endif %}">
       <span class="nav-icon">💰</span> Bütçe Yönetimi
     </a>
 
-    <div class="nav-section-label">Bilgi</div>
+    <div class="nav-section-label section-main">Bilgi</div>
     <a href="/venues"
-       class="sidebar-link {% if '/venues' in request.url.path %}active{% endif %}">
+       class="sidebar-link {% if '/venues' in cur_path %}active{% endif %}">
       <span class="nav-icon">🏨</span> Tedarikçi Havuzu
+    </a>
+
+    <div class="nav-section-label section-main section-cancel">İptal</div>
+    <a href="/requests?view=cancelled"
+       class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
+      <span class="nav-icon">🚫</span> İptal İşler
     </a>
     {% endif %}
 

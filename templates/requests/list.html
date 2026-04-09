@@ -63,7 +63,11 @@
             <th>Şehir(ler)</th>
             <th>Tarih</th>
             <th>Katılımcı</th>
+            {% if view == 'ongoing' %}
+            <th>Konfirme Mekan</th>
+            {% else %}
             <th>Durum</th>
+            {% endif %}
             <th class="text-end pe-4">İşlemler</th>
           </tr>
         </thead>
@@ -92,11 +96,17 @@
             <td style="font-size:13px; color:#64748b; text-align:center;">
               {{ req.attendee_count or '—' }}
             </td>
+            {% if view == 'ongoing' %}
+            <td style="font-size:13px; color:#0f766e; font-weight:600;">
+              {{ confirmed_venue_map.get(req.id, '—') }}
+            </td>
+            {% else %}
             <td>
               <span class="badge badge-status-{{ req.status }}">
                 {{ req.status_label }}
               </span>
             </td>
+            {% endif %}
             <td class="text-end pe-4">
               <a href="/requests/{{ req.id }}" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-eye"></i>

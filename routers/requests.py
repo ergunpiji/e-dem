@@ -48,11 +48,22 @@ async def requests_list(
     db: Session = Depends(get_db),
     status_filter: str = "",
     search: str = "",
+    view: str = "",
 ):
     """Rol bazlı talep listesi"""
     query = db.query(ReqModel)
 
-    if current_user.role == "project_manager":
+    # Special views take priority over role-based filtering
+    if view == "ongoing":
+        query = query.filter(
+            ReqModel.status == "confirmed",
+            ReqModel.confirmed_budget_id.isnot(None),
+        )
+        page_title = "Devam Eden İşler"
+    elif view == "cancelled":
+        query = query.filter(ReqModel.status == "cancelled")
+        page_title = "İptal İşler"
+    elif current_user.role == "project_manager":
         query = query.filter(ReqModel.created_by == current_user.id)
         page_title = "Referanslarım"
     elif current_user.role == "e_dem":
@@ -77,16 +88,27 @@ async def requests_list(
 
     requests_all = query.order_by(ReqModel.created_at.desc()).all()
 
+    # For ongoing view, resolve confirmed venue name from budget
+    confirmed_venue_map = {}
+    if view == "ongoing":
+        for req in requests_all:
+            if req.confirmed_budget_id:
+                bgt = db.query(Budget).filter(Budget.id == req.confirmed_budget_id).first()
+                if bgt:
+                    confirmed_venue_map[req.id] = bgt.venue_name
+
     return templates.TemplateResponse(
         "requests/list.html",
         {
-            "request":          request,
-            "current_user":     current_user,
-            "requests":         requests_all,
-            "page_title":       page_title,
-            "statuses":         REQUEST_STATUSES,
-            "status_filter":    status_filter,
-            "search":           search,
+            "request":               request,
+            "current_user":          current_user,
+            "requests":              requests_all,
+            "page_title":            page_title,
+            "statuses":              REQUEST_STATUSES,
+            "status_filter":         status_filter,
+            "search":                search,
+            "view":                  view,
+            "confirmed_venue_map":   confirmed_venue_map,
         },
     )
 
