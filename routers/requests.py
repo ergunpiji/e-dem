@@ -810,6 +810,154 @@ async def requests_send_all_to_manager(
 
 
 # ---------------------------------------------------------------------------
+# Müşteri teklif önizleme sayfası
+# ---------------------------------------------------------------------------
+
+SECTION_LABELS_TR = {
+    "accommodation": "Konaklama",
+    "meeting":       "Toplantı / Salon",
+    "fb":            "F&B (Yiyecek & İçecek)",
+    "teknik":        "Teknik Ekipman",
+    "dekor":         "Dekor / Süsleme",
+    "transfer":      "Transfer & Ulaşım",
+    "tasarim":       "Tasarım & Basılı Malzeme",
+    "other":         "Diğer Hizmetler",
+}
+SECTIONS_ORDER_PREVIEW = [
+    "accommodation", "meeting", "fb",
+    "teknik", "dekor", "transfer", "tasarim", "other",
+]
+
+
+def _preview_budget_data(budget, vat_mode: str = "exclusive"):
+    """Bütçe satırlarını önizleme için hazırlar (sadece satış fiyatı)."""
+    currency  = (budget.offer_currency or "TRY").upper()
+    rate      = budget.rate_to_try(currency)
+    syms      = {"TRY": "₺", "EUR": "€", "USD": "$"}
+    sym       = syms.get(currency, currency)
+
+    sections = {}
+    sf_sale = sf_vat = 0.0
+    grand_sale = grand_vat = 0.0
+
+    for row in budget.rows:
+        if row.get("is_accommodation_tax"):
+            continue
+        if row.get("is_service_fee"):
+            sf_pct  = float(budget.service_fee_pct or 0)
+            # hesap budget'ta tutuldu, satır değerlerinden al
+            sale  = float(row.get("sale_price", 0) or 0)
+            qty   = float(row.get("qty", 1) or 1)
+            nts   = float(row.get("nights", 1) or 1)
+            row_currency = row.get("currency", "TRY") or "TRY"
+            row_rate = budget.rate_to_try(row_currency)
+            conv  = (row_rate / rate) if rate else 1.0
+            sf_sale += sale * qty * nts * conv
+            sf_vat  += sf_sale * (float(row.get("vat_rate", 0) or 0) / 100)
+            continue
+
+        sec  = row.get("section", "other")
+        qty  = float(row.get("qty", 1) or 1)
+        nts  = float(row.get("nights", 1) or 1)
+        sale = float(row.get("sale_price", 0) or 0)
+        vat  = float(row.get("vat_rate", 0) or 0)
+        row_currency = row.get("currency", "TRY") or "TRY"
+        row_rate = budget.rate_to_try(row_currency)
+        conv   = (row_rate / rate) if rate else 1.0
+        sale_sub = sale * qty * nts * conv
+        vat_sub  = sale_sub * (vat / 100)
+
+        if sec not in sections:
+            sections[sec] = {"label": SECTION_LABELS_TR.get(sec, sec), "rows": [], "subtotal": 0.0, "subtotal_vat": 0.0}
+        sections[sec]["rows"].append({
+            "description": row.get("description") or "",
+            "unit":        row.get("unit") or "",
+            "qty":         qty,
+            "nights":      nts,
+            "sale_price":  sale * conv,
+            "vat_rate":    vat,
+            "sale_total":  sale_sub,
+            "vat_total":   vat_sub,
+            "notes":       row.get("notes") or "",
+            "is_accommodation": sec == "accommodation",
+        })
+        sections[sec]["subtotal"]     += sale_sub
+        sections[sec]["subtotal_vat"] += vat_sub
+        grand_sale += sale_sub
+        grand_vat  += vat_sub
+
+    # Sıralı section listesi
+    ordered = []
+    for s in SECTIONS_ORDER_PREVIEW:
+        if s in sections:
+            ordered.append(sections[s])
+    # Özel kategoriler (sıra dışı)
+    for s, v in sections.items():
+        if s not in SECTIONS_ORDER_PREVIEW:
+            ordered.append(v)
+
+    sf_total = sf_sale + sf_vat
+    return {
+        "sections":   ordered,
+        "grand_sale": grand_sale,
+        "grand_vat":  grand_vat,
+        "grand_total": grand_sale + grand_vat,
+        "sf_sale":    sf_sale,
+        "sf_vat":     sf_vat,
+        "sf_total":   sf_total,
+        "final_total": grand_sale + grand_vat + sf_total,
+        "currency":   currency,
+        "sym":        sym,
+    }
+
+
+@router.get("/{req_id}/preview", response_class=HTMLResponse, name="requests_preview")
+async def requests_preview(
+    req_id:    str,
+    budget_id: str = "",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşteriye gösterilecek teklif önizleme sayfası (sidebar yok, baskıya uygun)."""
+    from models import Settings as SettingsModel
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        raise HTTPException(404)
+
+    approved_budgets = [
+        b for b in req.budgets
+        if b.budget_status in ("approved", "confirmed")
+    ]
+    if not approved_budgets:
+        raise HTTPException(404, "Bu talep için onaylı bütçe bulunamadı.")
+
+    # Seçili bütçe
+    budget = next((b for b in approved_budgets if b.id == budget_id), approved_budgets[0])
+
+    customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
+                if req.customer_id else None)
+    settings = db.query(SettingsModel).filter(SettingsModel.id == 1).first()
+    manager  = db.query(User).filter(User.id == req.created_by).first() if req.created_by else None
+
+    preview_data_excl = _preview_budget_data(budget, "exclusive")
+    preview_data_incl = _preview_budget_data(budget, "inclusive")
+
+    return templates.TemplateResponse("requests/preview.html", {
+        "request":       req,
+        "current_user":  current_user,
+        "req":           req,
+        "budget":        budget,
+        "customer":      customer,
+        "settings":      settings,
+        "manager":       manager,
+        "approved_budgets": approved_budgets,
+        "data_excl":     preview_data_excl,
+        "data_incl":     preview_data_incl,
+        "page_title":    f"Teklif Önizleme — {req.request_no}",
+    })
+
+
+# ---------------------------------------------------------------------------
 # Çoklu bütçe → tek Excel (özet sayfasından export)
 # ---------------------------------------------------------------------------
 

@@ -473,6 +473,10 @@
                 </li>
               </ul>
             </div>
+            <a href="/requests/{{ req.id }}/preview" target="_blank"
+               class="btn btn-outline-primary btn-sm" style="font-size:11px;">
+              <i class="bi bi-eye me-1"></i>Teklif Önizle
+            </a>
             <button type="button" class="btn btn-primary btn-sm" style="font-size:11px;"
                     onclick="sendOfferEmail('{{ req.id }}', '{{ (customer.email if customer else '') | e }}', '{{ req.event_name | e }}', '{{ req.request_no | e }}')">
               <i class="bi bi-envelope-arrow-up me-1"></i>Müşteriye Gönder
