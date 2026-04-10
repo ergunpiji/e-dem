@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ customer.name }} — Şablon Eşleştirme</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root { --brand:#1a3a5c; --brand2:#1e5f8c; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; margin: 0; font-family: 'Segoe UI', sans-serif; font-size: 13px; }
+
+    /* ── Layout ── */
+    .editor-root { display:flex; flex-direction:column; height:100vh; }
+    .topbar {
+      background: var(--brand); color:white; padding:8px 16px;
+      display:flex; align-items:center; gap:10px; flex-shrink:0;
+    }
+    .topbar .brand { font-size:16px; font-weight:900; color:#93c5fd; }
+    .editor-body { display:flex; flex:1; overflow:hidden; }
+
+    /* ── Sol panel ── */
+    .left-panel {
+      width:260px; min-width:260px; background:#0f2744; color:white;
+      overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px;
+    }
+    .panel-section-title {
+      font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+      color:#94a3b8; margin-bottom:4px; padding-bottom:4px; border-bottom:1px solid rgba(255,255,255,.1);
+    }
+    .field-chip {
+      display:inline-flex; align-items:center; gap:4px;
+      padding:3px 8px; border-radius:12px; font-size:11px; font-weight:600;
+      cursor:pointer; margin:2px; transition:.15s;
+      background:rgba(255,255,255,.12); color:rgba(255,255,255,.85);
+      border:2px solid transparent;
+      user-select:none;
+    }
+    .field-chip:hover { background:rgba(255,255,255,.22); }
+    .field-chip.active { background:#f59e0b; color:#1a1a1a; border-color:#fbbf24; }
+    .field-chip.assigned { background:#059669; color:white; }
+    .field-chip.assigned.active { background:#f59e0b; color:#1a1a1a; }
+    .chip-x { font-size:10px; opacity:.7; }
+    .chip-x:hover { opacity:1; }
+
+    /* ── Sağ panel ── */
+    .right-panel { flex:1; overflow:auto; padding:12px; background:#f1f5f9; }
+    .excel-wrap {
+      background:white; border-radius:8px;
+      box-shadow:0 2px 12px rgba(0,0,0,.08); overflow:auto;
+    }
+
+    /* ── Excel tablo ── */
+    table.xl {
+      border-collapse:collapse; font-size:12px; white-space:nowrap;
+    }
+    table.xl th.ch {   /* column header */
+      background:#e2e8f0; color:#475569; font-weight:700; text-align:center;
+      padding:4px 14px; border:1px solid #cbd5e1; min-width:90px;
+      cursor:pointer; position:sticky; top:0; z-index:3;
+    }
+    table.xl th.ch:hover  { background:#bfdbfe; }
+    table.xl th.ch.col-assigned { background:#bbf7d0; color:#065f46; }
+    table.xl th.rh {   /* row header */
+      background:#e2e8f0; color:#64748b; font-weight:700; text-align:center;
+      padding:4px 10px; border:1px solid #cbd5e1;
+      cursor:pointer; position:sticky; left:0; z-index:2;
+      min-width:36px;
+    }
+    table.xl th.rh:hover { background:#bfdbfe; }
+    table.xl th.rh.start-row { background:#fef3c7; color:#92400e; }
+    table.xl td {
+      border:1px solid #e2e8f0; padding:3px 8px; color:#1e293b;
+      cursor:pointer; max-width:180px; overflow:hidden; text-overflow:ellipsis;
+      position:relative;
+    }
+    table.xl td:hover { background:#eff6ff; }
+    table.xl td.hdr-assigned { background:#d1fae5; }
+    table.xl tr.start-row-tr td, table.xl tr.start-row-tr th.rh {
+      background:#fffbeb;
+    }
+    .cell-badge {
+      display:inline-block; font-size:9px; font-weight:700;
+      background:#059669; color:white; border-radius:3px;
+      padding:1px 4px; margin-left:4px; vertical-align:middle;
+    }
+    .col-badge {
+      display:block; font-size:9px; font-weight:700;
+      background:#059669; color:white; border-radius:3px;
+      padding:1px 3px; margin-top:1px; text-align:center;
+    }
+
+    /* ── Ayarlar kutusu ── */
+    .settings-box { background:rgba(255,255,255,.07); border-radius:6px; padding:8px; }
+    .settings-box label { font-size:11px; color:#cbd5e1; margin-bottom:3px; display:block; }
+    .settings-box input, .settings-box select {
+      width:100%; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
+      border-radius:4px; padding:4px 6px; color:white; font-size:11px;
+    }
+    .settings-box input::placeholder { color:#94a3b8; }
+
+    /* ── Hint ── */
+    .mode-hint {
+      font-size:11px; background:#f59e0b; color:#1a1a1a;
+      padding:4px 10px; border-radius:20px; font-weight:600;
+      display:none;
+    }
+    .mode-hint.visible { display:inline-block; }
+
+    /* ── Save toast ── */
+    #saveToast {
+      position:fixed; bottom:20px; right:20px; z-index:9999;
+      background:#059669; color:white; padding:10px 18px; border-radius:8px;
+      font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,.2);
+      display:none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="editor-root">
+
+  {# ── Topbar ── #}
+  <div class="topbar">
+    <a href="/customers/{{ customer.id }}/edit" class="btn btn-sm btn-outline-light py-1" style="font-size:12px;">
+      <i class="bi bi-arrow-left"></i>
+    </a>
+    <span class="brand">E-dem</span>
+    <span style="opacity:.6; font-size:12px;">|</span>
+    <span style="font-weight:600;">{{ customer.name }}</span>
+    <span style="opacity:.5; font-size:11px;">— Şablon Eşleştirme</span>
+    <div class="ms-auto d-flex align-items:center gap-2">
+      <span class="mode-hint" id="modeHint"></span>
+      <button class="btn btn-sm btn-warning fw-bold" onclick="saveConfig()" style="font-size:12px;">
+        <i class="bi bi-check2-circle me-1"></i>Kaydet
+      </button>
+    </div>
+  </div>
+
+  <div class="editor-body">
+
+    {# ── Sol panel ── #}
+    <div class="left-panel">
+
+      {# Header alanları #}
+      <div>
+        <div class="panel-section-title"><i class="bi bi-hash me-1"></i>Header Alanları</div>
+        <div class="text-muted" style="font-size:10px; margin-bottom:6px; color:#94a3b8;">
+          Seç → hücreye tıkla
+        </div>
+        <div id="headerChips"></div>
+      </div>
+
+      {# Satır alanları #}
+      <div>
+        <div class="panel-section-title"><i class="bi bi-layout-three-columns me-1"></i>Satır Alanları</div>
+        <div class="text-muted" style="font-size:10px; margin-bottom:6px; color:#94a3b8;">
+          Seç → sütun harfine tıkla
+        </div>
+        <div id="rowChips"></div>
+      </div>
+
+      {# Ayarlar #}
+      <div class="settings-box">
+        <div class="panel-section-title"><i class="bi bi-gear me-1"></i>Ayarlar</div>
+
+        <label>KDV Modu</label>
+        <select id="vatMode">
+          <option value="exclusive">KDV Hariç</option>
+          <option value="inclusive">KDV Dahil</option>
+        </select>
+
+        <label style="margin-top:8px;">Veri Başlangıç Satırı</label>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <input id="startRowInput" type="number" min="1" placeholder="Satır no" style="width:80px;">
+          <span style="font-size:10px; color:#94a3b8;">veya satır no'ya tıkla</span>
+        </div>
+
+        <label style="margin-top:8px;">Bitiş Anchor Metni</label>
+        <input id="endAnchorInput" type="text" placeholder="örn: ARA TOPLAM">
+
+        <label style="margin-top:8px;">Bölüm Başlık Sütunu</label>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <input id="sectionColInput" type="text" placeholder="örn: B" style="width:50px; text-transform:uppercase;">
+          <span style="font-size:10px; color:#94a3b8;">veya boş bırak</span>
+        </div>
+      </div>
+
+      {# Temizle #}
+      <button class="btn btn-sm btn-outline-danger w-100" onclick="clearAll()" style="font-size:11px;">
+        <i class="bi bi-x-circle me-1"></i>Tümünü Temizle
+      </button>
+
+    </div>
+
+    {# ── Sağ panel: Excel tablo ── #}
+    <div class="right-panel">
+      <div class="excel-wrap">
+        <table class="xl" id="xlTable">
+          <thead>
+            <tr>
+              <th class="rh" style="cursor:default; position:sticky; top:0; z-index:4;"></th>
+              {% for col in excel_data.col_letters %}
+              <th class="ch" id="ch-{{ col }}" onclick="clickColHeader('{{ col }}')">{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row_cells in excel_data.rows %}
+            {% set row_num = loop.index %}
+            <tr id="tr-{{ row_num }}">
+              <th class="rh" id="rh-{{ row_num }}" onclick="clickRowHeader({{ row_num }})">{{ row_num }}</th>
+              {% for cell in row_cells %}
+              <td id="td-{{ cell.coord }}"
+                  data-coord="{{ cell.coord }}"
+                  data-col="{{ cell.col }}"
+                  data-row="{{ cell.row }}"
+                  {% if cell.rowspan > 1 %}rowspan="{{ cell.rowspan }}"{% endif %}
+                  {% if cell.colspan > 1 %}colspan="{{ cell.colspan }}"{% endif %}
+                  onclick="clickCell('{{ cell.coord }}', '{{ cell.col }}', {{ cell.row }})">
+                <span class="cell-val">{{ cell.value }}</span>
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="saveToast"><i class="bi bi-check-circle me-1"></i>Kaydedildi!</div>
+
+<script>
+// ── Alan tanımları ──────────────────────────────────────────────────────────
+const HEADER_FIELDS = {
+  event_name:     "Etkinlik Adı",
+  ref_no:         "Referans No",
+  check_in:       "Giriş Tarihi",
+  check_out:      "Çıkış Tarihi",
+  venue_name:     "Mekan Adı",
+  customer_name:  "Müşteri Adı",
+  creator_name:   "Hazırlayan",
+  eur_rate:       "EUR Kuru",
+  usd_rate:       "USD Kuru",
+  attendee_count: "Katılımcı Sayısı",
+  city:           "Şehir",
+};
+
+const ROW_FIELDS = {
+  service_name:    "Hizmet Adı",
+  notes:           "Açıklama",
+  unit:            "Birim",
+  qty:             "Miktar",
+  nights:          "Gece",
+  sale_price:      "Birim Fiyat (Hariç KDV)",
+  sale_price_inc:  "Birim Fiyat (Dahil KDV)",
+  vat_rate:        "KDV %",
+  vat_pct:         "KDV Oranı",
+  total_excl:      "Toplam (KDV Hariç)",
+  total_incl:      "Toplam (KDV Dahil)",
+  sale_price_eur:  "EUR Birim Fiyat",
+  total_eur:       "EUR Toplam",
+  sale_price_usd:  "USD Birim Fiyat",
+  total_usd:       "USD Toplam",
+};
+
+// ── Durum ───────────────────────────────────────────────────────────────────
+let activeField = null;   // { key, type: 'header'|'row' }
+let headerMap   = {};     // { "B3": "event_name" }
+let columnMap   = {};     // { "B": "service_name" }
+let startRow    = null;
+let vatMode     = "exclusive";
+
+// ── Mevcut config yükle ──────────────────────────────────────────────────────
+(function loadExisting() {
+  const raw = {{ existing_config | safe }};
+  vatMode = raw.vat_mode || "exclusive";
+  document.getElementById("vatMode").value = vatMode;
+
+  const cm = raw.cell_map || raw;
+  if (cm.header)      headerMap = Object.assign({}, cm.header);
+  if (cm.data_block) {
+    const db = cm.data_block;
+    if (db.columns)    columnMap = Object.assign({}, db.columns);
+    if (db.start_row)  startRow  = db.start_row;
+    if (db.end_anchor_text) document.getElementById("endAnchorInput").value = db.end_anchor_text || "";
+    if (db.section_header_col) document.getElementById("sectionColInput").value = db.section_header_col || "";
+    if (startRow) document.getElementById("startRowInput").value = startRow;
+  }
+})();
+
+// ── Chip render ──────────────────────────────────────────────────────────────
+function renderChips() {
+  const hc = document.getElementById("headerChips");
+  const rc = document.getElementById("rowChips");
+
+  hc.innerHTML = Object.entries(HEADER_FIELDS).map(([key, label]) => {
+    const coord = Object.entries(headerMap).find(([,v]) => v === key)?.[0] || null;
+    const isAssigned = !!coord;
+    const isActive   = activeField?.key === key;
+    return `<span class="field-chip${isAssigned?' assigned':''}${isActive?' active':''}"
+                  onclick="selectField('${key}','header')" title="${key}">
+      ${label}${isAssigned ? `<span class="chip-x" onclick="unassignHeader('${coord}');event.stopPropagation()">×</span>` : ""}
+    </span>`;
+  }).join("");
+
+  rc.innerHTML = Object.entries(ROW_FIELDS).map(([key, label]) => {
+    const col = Object.entries(columnMap).find(([,v]) => v === key)?.[0] || null;
+    const isAssigned = !!col;
+    const isActive   = activeField?.key === key;
+    return `<span class="field-chip${isAssigned?' assigned':''}${isActive?' active':''}"
+                  onclick="selectField('${key}','row')" title="${key}">
+      ${label}${isAssigned ? `<span class="chip-x" onclick="unassignCol('${col}');event.stopPropagation()">×</span>` : ""}
+    </span>`;
+  }).join("");
+}
+
+// ── Tablo render ─────────────────────────────────────────────────────────────
+function renderTable() {
+  // Sütun headerları
+  document.querySelectorAll("th.ch").forEach(th => {
+    const col = th.id.replace("ch-", "");
+    const field = columnMap[col];
+    const badge = field ? `<span class="col-badge">${ROW_FIELDS[field] || field}</span>` : "";
+    th.innerHTML = col + badge;
+    th.classList.toggle("col-assigned", !!field);
+  });
+
+  // Hücre badge'leri
+  document.querySelectorAll("td[data-coord]").forEach(td => {
+    const coord = td.dataset.coord;
+    const field = headerMap[coord];
+    const valEl = td.querySelector(".cell-val");
+    const val   = valEl ? valEl.textContent : "";
+    td.innerHTML = `<span class="cell-val">${val}</span>` +
+      (field ? `<span class="cell-badge">${HEADER_FIELDS[field] || field}</span>` : "");
+    td.classList.toggle("hdr-assigned", !!field);
+  });
+
+  // Başlangıç satırı vurgula
+  document.querySelectorAll("tr[id^='tr-']").forEach(tr => {
+    const rn = parseInt(tr.id.replace("tr-", ""));
+    tr.classList.toggle("start-row-tr", rn === startRow);
+  });
+  document.querySelectorAll("th.rh[id^='rh-']").forEach(th => {
+    const rn = parseInt(th.id.replace("rh-", ""));
+    th.classList.toggle("start-row", rn === startRow);
+  });
+}
+
+// ── Etkileşim ────────────────────────────────────────────────────────────────
+function selectField(key, type) {
+  if (activeField?.key === key) {
+    activeField = null;
+    document.getElementById("modeHint").classList.remove("visible");
+  } else {
+    activeField = { key, type };
+    const label = type === "header" ? HEADER_FIELDS[key] : ROW_FIELDS[key];
+    const hint  = type === "header" ? `"${label}" için hücre seç` : `"${label}" için sütun seç`;
+    const h = document.getElementById("modeHint");
+    h.textContent = hint;
+    h.classList.add("visible");
+  }
+  renderChips();
+}
+
+function clickCell(coord, col, row) {
+  if (!activeField) return;
+
+  if (activeField.type === "header") {
+    // Varsa eski atamasını kaldır
+    const oldCoord = Object.entries(headerMap).find(([,v]) => v === activeField.key)?.[0];
+    if (oldCoord) delete headerMap[oldCoord];
+    headerMap[coord] = activeField.key;
+  } else {
+    // Row field → sütuna ata (sütun harfini kullan)
+    const oldCol = Object.entries(columnMap).find(([,v]) => v === activeField.key)?.[0];
+    if (oldCol) delete columnMap[oldCol];
+    columnMap[col] = activeField.key;
+  }
+
+  activeField = null;
+  document.getElementById("modeHint").classList.remove("visible");
+  renderChips();
+  renderTable();
+}
+
+function clickColHeader(col) {
+  if (!activeField) return;
+  if (activeField.type !== "row") return;  // Header field → col header'a tıklama geçersiz
+
+  const oldCol = Object.entries(columnMap).find(([,v]) => v === activeField.key)?.[0];
+  if (oldCol) delete columnMap[oldCol];
+  columnMap[col] = activeField.key;
+
+  activeField = null;
+  document.getElementById("modeHint").classList.remove("visible");
+  renderChips();
+  renderTable();
+}
+
+function clickRowHeader(rowNum) {
+  startRow = (startRow === rowNum) ? null : rowNum;
+  document.getElementById("startRowInput").value = startRow || "";
+  renderTable();
+}
+
+function unassignHeader(coord) {
+  delete headerMap[coord];
+  renderChips();
+  renderTable();
+}
+
+function unassignCol(col) {
+  delete columnMap[col];
+  renderChips();
+  renderTable();
+}
+
+function clearAll() {
+  if (!confirm("Tüm eşleştirmeleri temizle?")) return;
+  headerMap = {}; columnMap = {}; startRow = null;
+  document.getElementById("startRowInput").value = "";
+  document.getElementById("endAnchorInput").value = "";
+  document.getElementById("sectionColInput").value = "";
+  activeField = null;
+  document.getElementById("modeHint").classList.remove("visible");
+  renderChips();
+  renderTable();
+}
+
+// startRow input manuel giriş
+document.getElementById("startRowInput").addEventListener("input", function() {
+  const v = parseInt(this.value);
+  startRow = isNaN(v) ? null : v;
+  renderTable();
+});
+
+document.getElementById("vatMode").addEventListener("change", function() {
+  vatMode = this.value;
+});
+
+// ── Config build + save ───────────────────────────────────────────────────────
+function buildConfig() {
+  const endAnchor = document.getElementById("endAnchorInput").value.trim() || null;
+  const secCol    = (document.getElementById("sectionColInput").value.trim().toUpperCase()) || null;
+  return {
+    vat_mode: vatMode,
+    cell_map: {
+      vat_mode: vatMode,
+      header:   headerMap,
+      data_block: {
+        start_row:          startRow,
+        end_anchor_text:    endAnchor,
+        sheet:              null,
+        columns:            columnMap,
+        section_header_col: secCol,
+      },
+    },
+  };
+}
+
+async function saveConfig() {
+  const cfg = buildConfig();
+  try {
+    const resp = await fetch("/customers/{{ customer.id }}/template-editor", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "config_json=" + encodeURIComponent(JSON.stringify(cfg)),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      const t = document.getElementById("saveToast");
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 2500);
+    } else {
+      alert("Hata: " + (data.error || "Bilinmeyen hata"));
+    }
+  } catch(e) {
+    alert("Kayıt hatası: " + e);
+  }
+}
+
+// ── İlk render ───────────────────────────────────────────────────────────────
+renderChips();
+renderTable();
+</script>
+</body>
+</html>

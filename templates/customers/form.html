@@ -280,38 +280,30 @@
           </form>
         </div>
 
-        {# AI Template Analizi #}
+        {# Şablon Eşleştirme #}
         {% if customer.excel_template_path or customer.excel_template_b64 %}
         <hr>
         <div class="mb-4">
           <h6 class="fw-semibold mb-2" style="font-size:13px;">
-            <i class="bi bi-cpu me-1 text-purple" style="color:#7c3aed;"></i>AI Template Analizi
+            <i class="bi bi-grid-3x3-gap me-1" style="color:#0369a1;"></i>Hücre Eşleştirme
           </h6>
-          <p class="text-muted mb-3" style="font-size:12px;">
-            Yüklü template'i yapay zeka ile analiz edin. Claude, template'in hangi hücrelerine
-            hangi E-dem verilerinin yazılacağını otomatik belirler.
-          </p>
+          {% set cfg = customer.excel_config %}
           {% set has_map = cfg.get('cell_map') %}
           {% if has_map %}
           <div class="alert alert-success py-2 mb-3" style="font-size:12px;">
             <i class="bi bi-check-circle me-1"></i>
-            <strong>Cell map kayıtlı.</strong> Template doldurma aktif.
-            Son güncelleme: mevcut kayıtlı eşleştirme kullanılıyor.
+            <strong>Eşleştirme kayıtlı.</strong> Template doldurma aktif.
           </div>
+          {% else %}
+          <p class="text-muted mb-3" style="font-size:12px;">
+            Hangi hücreye hangi E-dem verisi yazılacağını görsel editörle belirleyin.
+          </p>
           {% endif %}
-          <div class="d-flex gap-2 align-items-center">
-            <button type="button" class="btn btn-sm btn-primary" id="analyzeBtn"
-                    onclick="analyzeTemplate('{{ customer.id }}')">
-              <i class="bi bi-cpu me-1"></i>AI ile Analiz Et
-            </button>
-            <span id="analyzeSpinner" class="d-none">
-              <span class="spinner-border spinner-border-sm text-primary me-1"></span>
-              <span style="font-size:12px;">Analiz ediliyor...</span>
-            </span>
-          </div>
-          <div id="analyzeResult" class="mt-3 d-none">
-            <div class="alert" id="analyzeAlert"></div>
-          </div>
+          <a href="/customers/{{ customer.id }}/template-editor"
+             class="btn btn-sm btn-primary">
+            <i class="bi bi-grid-3x3-gap me-1"></i>
+            {{ "Eşleştirmeyi Düzenle" if has_map else "Şablonu Eşleştir" }}
+          </a>
         </div>
         {% endif %}
 

@@ -426,6 +426,130 @@ async def customers_delete_doc(
     return RedirectResponse(url=f"/customers/{customer_id}/edit", status_code=status.HTTP_302_FOUND)
 
 
+def _read_excel_for_editor(path: str, max_rows: int = 50, max_cols: int = 20) -> dict:
+    """Excel dosyasını template editörü için hücre matrisi olarak okur."""
+    try:
+        import openpyxl
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return {"rows": [], "col_letters": [], "error": "openpyxl kurulu değil"}
+
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+        ws = wb.active
+
+        # Merged cell bölgeleri
+        merged_skip = set()   # (row, col) — ana hücre değil, atla
+        merged_spans = {}     # (row, col) → {rowspan, colspan}
+        for region in ws.merged_cells.ranges:
+            for r in range(region.min_row, region.max_row + 1):
+                for c in range(region.min_col, region.max_col + 1):
+                    if r == region.min_row and c == region.min_col:
+                        rs = region.max_row - region.min_row + 1
+                        cs = region.max_col - region.min_col + 1
+                        if rs > 1 or cs > 1:
+                            merged_spans[(r, c)] = (rs, cs)
+                    else:
+                        merged_skip.add((r, c))
+
+        real_max_row = min(max_rows, ws.max_row or max_rows)
+        real_max_col = min(max_cols, ws.max_column or max_cols)
+        col_letters = [get_column_letter(i) for i in range(1, real_max_col + 1)]
+
+        rows = []
+        for ri in range(1, real_max_row + 1):
+            row_cells = []
+            for ci in range(1, real_max_col + 1):
+                if (ri, ci) in merged_skip:
+                    continue
+                cell = ws.cell(row=ri, column=ci)
+                val = cell.value
+                if val is None:
+                    val_str = ""
+                elif hasattr(val, "isoformat"):
+                    val_str = str(val)
+                else:
+                    val_str = str(val)[:60]
+
+                col_letter = get_column_letter(ci)
+                rs, cs = merged_spans.get((ri, ci), (1, 1))
+                row_cells.append({
+                    "coord":   f"{col_letter}{ri}",
+                    "col":     col_letter,
+                    "row":     ri,
+                    "value":   val_str,
+                    "rowspan": rs,
+                    "colspan": cs,
+                })
+            rows.append(row_cells)
+
+        return {"rows": rows, "col_letters": col_letters, "error": None}
+    except Exception as exc:
+        return {"rows": [], "col_letters": [], "error": str(exc)}
+
+
+@router.get("/{customer_id}/template-editor", response_class=HTMLResponse, name="customers_template_editor")
+async def customers_template_editor(
+    customer_id: str,
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
+
+    tpl_path = customer.excel_template_path or ""
+    b64 = getattr(customer, "excel_template_b64", "") or ""
+
+    if b64 and (not tpl_path or not os.path.exists(tpl_path)):
+        import base64 as _b64
+        _dir = "static/uploads/customer_templates"
+        os.makedirs(_dir, exist_ok=True)
+        tpl_path = os.path.join(_dir, f"{customer_id}.xlsx")
+        with open(tpl_path, "wb") as f:
+            f.write(_b64.b64decode(b64))
+        customer.excel_template_path = tpl_path
+        db.commit()
+
+    if not tpl_path or not os.path.exists(tpl_path):
+        return RedirectResponse(
+            url=f"/customers/{customer_id}/edit?error=Template+dosyası+yüklenmemiş",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    excel_data = _read_excel_for_editor(tpl_path)
+    cfg = customer.excel_config
+
+    return templates.TemplateResponse("customers/template_editor.html", {
+        "request":         request,
+        "current_user":    current_user,
+        "customer":        customer,
+        "excel_data":      excel_data,
+        "existing_config": json.dumps(cfg, ensure_ascii=False),
+        "page_title":      f"{customer.name} — Şablon Eşleştirme",
+    })
+
+
+@router.post("/{customer_id}/template-editor", name="customers_template_editor_save")
+async def customers_template_editor_save(
+    customer_id:  str,
+    config_json:  str = Form("{}"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
+    try:
+        cfg = json.loads(config_json)
+    except Exception:
+        return JSONResponse({"error": "Geçersiz JSON"}, status_code=400)
+    customer.excel_config_json = json.dumps(cfg, ensure_ascii=False)
+    db.commit()
+    return JSONResponse({"ok": True})
+
+
 @router.post("/{customer_id}/delete", name="customers_delete")
 async def customers_delete(
     customer_id: str,
