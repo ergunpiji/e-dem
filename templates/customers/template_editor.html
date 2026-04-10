@@ -211,6 +211,59 @@
         </div>
       </div>
 
+      {# Teklif Özeti #}
+      <div class="settings-box">
+        <div class="panel-section-title" style="cursor:pointer; user-select:none;" onclick="toggleSummarySection()">
+          <i class="bi bi-file-earmark-spreadsheet me-1"></i>Teklif Özeti
+          <span id="summaryToggleIcon" style="float:right; font-size:10px;">▼</span>
+        </div>
+
+        <div id="summaryDetails">
+          <label style="margin-top:6px; display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="summaryEnabled">
+            <span style="font-size:11px; color:#cbd5e1;">Teklif Özeti sayfası ekle</span>
+          </label>
+
+          <div id="summaryOptions" style="display:none; margin-top:8px;">
+            <label>Sayfa Adı</label>
+            <input id="summarySheetName" type="text" value="Teklif Özeti" placeholder="Teklif Özeti">
+
+            <label style="margin-top:8px;">Oluşturma Modu</label>
+            <select id="summaryMode" onchange="updateSummaryModeUI()">
+              <option value="auto">Otomatik (Programatik)</option>
+              <option value="template">Şablondan</option>
+            </select>
+
+            <div id="summaryAutoNote" style="margin-top:6px; font-size:10px; color:#94a3b8; background:rgba(255,255,255,.05); border-radius:4px; padding:5px 7px;">
+              <i class="bi bi-info-circle me-1"></i>Otomatik modda etkinlik bilgileri ve bütçe karşılaştırma tablosu programatik olarak oluşturulur.
+            </div>
+
+            <div id="summaryTemplateOpts" style="display:none; margin-top:8px;">
+              <label>Kaynak Sayfa Adı</label>
+              <input id="summarySourceSheet" type="text" placeholder="Sheet2">
+              <div style="font-size:10px; color:#94a3b8; margin-top:3px;">Excel dosyasındaki özet sayfasının adı</div>
+
+              <div style="margin-top:8px;">
+                <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8; margin-bottom:4px;">
+                  Hücre Eşleştirmeleri
+                </div>
+                <div id="summaryHdrList" style="margin-bottom:5px;"></div>
+                <div style="display:flex; gap:4px; align-items:center;">
+                  <input id="sHdrCell" type="text" placeholder="B3" maxlength="6"
+                    style="width:46px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:4px; padding:3px 5px; color:white; font-size:11px; text-transform:uppercase;">
+                  <select id="sHdrField"
+                    style="flex:1; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:4px; padding:3px 4px; color:white; font-size:11px;">
+                    <option value="">-- Alan --</option>
+                  </select>
+                  <button class="btn btn-sm py-0" onclick="addSummaryHdr()"
+                    style="background:#0ea5e9; color:white; font-size:11px; padding:3px 7px;">+</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {# Temizle #}
       <button class="btn btn-sm btn-outline-danger w-100" onclick="clearAll()" style="font-size:11px;">
         <i class="bi bi-x-circle me-1"></i>Tümünü Temizle
@@ -319,6 +372,9 @@ let formulaCols  = {};     // { "G": "=F{row}*40.5" }
 let startRow     = null;
 let vatMode      = "exclusive";
 
+// Özet sayfa durumu
+let summaryHeaderMap = {};  // { "B3": "event_name" } — template modu için
+
 const DETECTED_FORMULAS = {{ detected_formulas | safe }};
 
 // ── Mevcut config yükle ──────────────────────────────────────────────────────
@@ -337,6 +393,15 @@ const DETECTED_FORMULAS = {{ detected_formulas | safe }};
     if (db.end_anchor_text)  document.getElementById("endAnchorInput").value = db.end_anchor_text || "";
     if (db.section_header_col) document.getElementById("sectionColInput").value = db.section_header_col || "";
     if (startRow) document.getElementById("startRowInput").value = startRow;
+  }
+  if (cm.summary) {
+    const s = cm.summary;
+    document.getElementById("summaryEnabled").checked = !!s.enabled;
+    if (s.sheet_name) document.getElementById("summarySheetName").value = s.sheet_name;
+    if (s.mode)       document.getElementById("summaryMode").value = s.mode;
+    if (s.source_sheet) document.getElementById("summarySourceSheet").value = s.source_sheet;
+    if (s.header)     summaryHeaderMap = Object.assign({}, s.header);
+    updateSummaryUI();
   }
 })();
 
@@ -522,6 +587,80 @@ function clearAll() {
   renderFormulaList();
 }
 
+// ── Teklif Özeti yönetimi ────────────────────────────────────────────────────
+function toggleSummarySection() {
+  const d = document.getElementById("summaryDetails");
+  const icon = document.getElementById("summaryToggleIcon");
+  const collapsed = d.style.display === "none";
+  d.style.display  = collapsed ? "" : "none";
+  icon.textContent = collapsed ? "▼" : "▶";
+}
+
+function updateSummaryUI() {
+  const enabled = document.getElementById("summaryEnabled").checked;
+  document.getElementById("summaryOptions").style.display = enabled ? "" : "none";
+  if (enabled) updateSummaryModeUI();
+}
+
+function updateSummaryModeUI() {
+  const mode = document.getElementById("summaryMode").value;
+  document.getElementById("summaryAutoNote").style.display    = mode === "auto"     ? "" : "none";
+  document.getElementById("summaryTemplateOpts").style.display = mode === "template" ? "" : "none";
+  if (mode === "template") renderSummaryHdrList();
+}
+
+document.getElementById("summaryEnabled").addEventListener("change", updateSummaryUI);
+
+// Populate the header field dropdown
+(function populateSummaryFieldSelect() {
+  const sel = document.getElementById("sHdrField");
+  for (const [key, label] of Object.entries(HEADER_FIELDS)) {
+    const opt = document.createElement("option");
+    opt.value = key; opt.textContent = label;
+    sel.appendChild(opt);
+  }
+})();
+
+function addSummaryHdr() {
+  const cell  = document.getElementById("sHdrCell").value.trim().toUpperCase();
+  const field = document.getElementById("sHdrField").value;
+  if (!cell || !field) return;
+  summaryHeaderMap[cell] = field;
+  document.getElementById("sHdrCell").value  = "";
+  document.getElementById("sHdrField").value = "";
+  renderSummaryHdrList();
+}
+
+function removeSummaryHdr(cell) {
+  delete summaryHeaderMap[cell];
+  renderSummaryHdrList();
+}
+
+function renderSummaryHdrList() {
+  const el = document.getElementById("summaryHdrList");
+  if (!Object.keys(summaryHeaderMap).length) { el.innerHTML = ""; return; }
+  el.innerHTML = Object.entries(summaryHeaderMap).map(([cell, field]) =>
+    `<div style="display:flex; align-items:center; gap:4px; margin-bottom:3px;">
+       <span style="background:#0ea5e9; color:white; border-radius:3px; padding:1px 5px; font-size:11px; font-weight:700; min-width:34px; text-align:center;">${cell}</span>
+       <span style="flex:1; font-size:10px; color:#fbbf24; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${HEADER_FIELDS[field] || field}</span>
+       <span style="cursor:pointer; color:#f87171; font-size:12px;" onclick="removeSummaryHdr('${cell}')">×</span>
+     </div>`
+  ).join("");
+}
+
+function buildSummaryConfig() {
+  const enabled = document.getElementById("summaryEnabled").checked;
+  if (!enabled) return { enabled: false };
+  const mode      = document.getElementById("summaryMode").value;
+  const sheetName = document.getElementById("summarySheetName").value.trim() || "Teklif Özeti";
+  const cfg = { enabled: true, mode, sheet_name: sheetName };
+  if (mode === "template") {
+    cfg.source_sheet = document.getElementById("summarySourceSheet").value.trim() || null;
+    if (Object.keys(summaryHeaderMap).length) cfg.header = summaryHeaderMap;
+  }
+  return cfg;
+}
+
 // startRow input manuel giriş
 document.getElementById("startRowInput").addEventListener("input", function() {
   const v = parseInt(this.value);
@@ -550,6 +689,7 @@ function buildConfig() {
         formula_columns:    Object.keys(formulaCols).length ? formulaCols : undefined,
         section_header_col: secCol,
       },
+      summary: buildSummaryConfig(),
     },
   };
 }
@@ -579,6 +719,7 @@ async function saveConfig() {
 renderChips();
 renderTable();
 renderFormulaList();
+updateSummaryUI();
 </script>
 </body>
 </html>

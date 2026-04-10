@@ -83,6 +83,41 @@ def _primary_contact(customer) -> str:
     return ""
 
 
+def _budget_totals(budget) -> dict:
+    """Bütçenin offer_currency cinsinden genel toplamlarını hesaplar."""
+    currency   = (getattr(budget, "offer_currency", None) or "TRY").upper()
+    offer_rate = budget.rate_to_try(currency) or 1.0
+
+    total_sale_excl = total_sale_incl = 0.0
+    total_cost_excl = total_cost_incl = 0.0
+
+    for r in (budget.rows or []):
+        qty    = float(r.get("qty",    1) or 1)
+        nights = float(r.get("nights", 1) or 1)
+        sale   = float(r.get("sale_price", 0) or 0)
+        cost   = float(r.get("cost_price", 0) or 0)
+        vat    = float(r.get("vat_rate",   0) or 0)
+        row_cur  = (r.get("currency") or "TRY").upper()
+        row_rate = budget.rate_to_try(row_cur) or 1.0
+        conv     = row_rate / offer_rate
+
+        s = sale * conv * qty * nights
+        c = cost * conv * qty * nights
+        total_sale_excl += s
+        total_sale_incl += s * (1 + vat / 100)
+        total_cost_excl += c
+        total_cost_incl += c * (1 + vat / 100)
+
+    return {
+        "venue_name":      budget.venue_name or "",
+        "currency":        currency,
+        "total_sale_excl": round(total_sale_excl, 2),
+        "total_sale_incl": round(total_sale_incl, 2),
+        "total_cost_excl": round(total_cost_excl, 2),
+        "total_cost_incl": round(total_cost_incl, 2),
+    }
+
+
 def _sf_sale(budget, currency: str) -> float:
     """Hizmet bedeli tutarını offer_currency cinsinden hesaplar."""
     pct = float(budget.service_fee_pct or 0)
@@ -401,6 +436,168 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
             pass
 
 
+# ── Özet sayfa oluşturucular ──────────────────────────────────────────────────
+def _add_summary_sheet_auto(wb, entries: list, sheet_name: str = "Teklif Özeti") -> None:
+    """Programatik özet sayfası oluşturur ve workbook'a başa ekler."""
+    if not entries:
+        return
+
+    if sheet_name in wb.sheetnames:
+        del wb[sheet_name]
+    ws = wb.create_sheet(title=sheet_name, index=0)
+
+    first = entries[0]
+    req = first.get("request")
+    cus = first.get("customer")
+    bud = first.get("budget")
+
+    def _date(d):
+        if not d:
+            return ""
+        if isinstance(d, str):
+            try:
+                from datetime import date as _dc
+                d = _dc.fromisoformat(d[:10])
+            except Exception:
+                return d
+        return d.strftime("%d.%m.%Y")
+
+    cities_str = ""
+    if req:
+        cities_str = (", ".join(req.cities)
+                      if getattr(req, "cities", None)
+                      else getattr(req, "city", "") or "")
+
+    # Satır 1 — Başlık
+    ws.merge_cells("A1:G1")
+    c = ws.cell(1, 1, sheet_name.upper())
+    c.font      = Font(bold=True, size=14, color="FFFFFF")
+    c.fill      = PatternFill(fill_type="solid", fgColor="1A3A5C")
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    # Satır 2+ — Etkinlik bilgileri
+    info_items = [
+        ("Etkinlik Adı",       getattr(req, "event_name", None) or (bud.venue_name if bud else "")),
+        ("Referans No",        getattr(req, "request_no",  None) or ""),
+        ("Şehir",              cities_str),
+        ("Etkinlik Tarihleri", f"{_date(getattr(req,'check_in',None))} – "
+                               f"{_date(getattr(req,'check_out',None))}" if req else ""),
+        ("Katılımcı Sayısı",   str(getattr(req, "attendee_count", "") or "")),
+        ("Müşteri / Firma",    getattr(cus, "name", None)
+                               or getattr(req, "client_name", None) or ""),
+        ("Teklif Son Tarihi",  _date(getattr(req, "quote_deadline", None))),
+    ]
+
+    for i, (lbl, val) in enumerate(info_items):
+        r = i + 2
+        lc = ws.cell(r, 1, lbl)
+        lc.font      = Font(bold=True, size=10, color="1A3A5C")
+        lc.fill      = PatternFill(fill_type="solid", fgColor="EFF6FF")
+        lc.alignment = Alignment(vertical="center", indent=1)
+        vc = ws.cell(r, 2, val)
+        vc.font      = Font(size=10, color="1E293B")
+        vc.fill      = PatternFill(fill_type="solid", fgColor="FFFFFF")
+        ws.merge_cells(f"B{r}:G{r}")
+        ws.row_dimensions[r].height = 16
+
+    # Karşılaştırma tablosu
+    tbl_row = len(info_items) + 3   # 1 boş satır boşluk
+    hdr_labels = [
+        "Mekan / Tedarikçi", "Para Birimi",
+        "KDV Hariç Toplam", "KDV Dahil Toplam",
+        "Maliyet (KDV Hariç)", "Maliyet (KDV Dahil)", "Kar Marjı",
+    ]
+    for j, h in enumerate(hdr_labels):
+        cell = ws.cell(tbl_row, j + 1, h)
+        cell.font      = _HDR_FONT()
+        cell.fill      = _HDR_FILL()
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[tbl_row].height = 32
+
+    for i, entry in enumerate(entries):
+        totals = _budget_totals(entry["budget"])
+        dr = tbl_row + 1 + i
+
+        margin = ""
+        if totals["total_sale_excl"] and totals["total_cost_excl"]:
+            m = (totals["total_sale_excl"] - totals["total_cost_excl"]) / totals["total_sale_excl"] * 100
+            margin = f"%{round(m, 1)}"
+
+        row_vals = [
+            totals["venue_name"], totals["currency"],
+            totals["total_sale_excl"], totals["total_sale_incl"],
+            totals["total_cost_excl"], totals["total_cost_incl"],
+            margin,
+        ]
+        bg   = "FFFFFF" if i % 2 == 0 else "F8FAFC"
+        fill = PatternFill(fill_type="solid", fgColor=bg)
+        for j, val in enumerate(row_vals):
+            cell = ws.cell(dr, j + 1, val)
+            cell.font      = _DAT_FONT()
+            cell.fill      = fill
+            cell.alignment = Alignment(vertical="center")
+            if 2 <= j <= 5:
+                cell.number_format = "#,##0.00"
+        ws.row_dimensions[dr].height = 18
+
+    # Çok bütçe: genel toplam satırı
+    if len(entries) > 1:
+        gt_row    = tbl_row + len(entries) + 1
+        first_dr  = tbl_row + 1
+        last_dr   = tbl_row + len(entries)
+        ws.cell(gt_row, 1, "GENEL TOPLAM").font      = _TOT_FONT()
+        ws.cell(gt_row, 1).fill      = _TOT_FILL()
+        ws.cell(gt_row, 1).alignment = Alignment(vertical="center", indent=1)
+        for col_idx in range(3, 7):
+            cl   = get_column_letter(col_idx)
+            cell = ws.cell(gt_row, col_idx, f"=SUM({cl}{first_dr}:{cl}{last_dr})")
+            cell.font          = _TOT_FONT()
+            cell.fill          = _TOT_FILL()
+            cell.number_format = "#,##0.00"
+        ws.row_dimensions[gt_row].height = 20
+
+    # Sütun genişlikleri
+    for j, w in enumerate([32, 14, 20, 20, 20, 20, 14]):
+        ws.column_dimensions[get_column_letter(j + 1)].width = w
+
+
+def _fill_summary_template(wb, entries: list, summary_cfg: dict) -> None:
+    """
+    Template modunda özet sayfasını doldurur.
+    Kaynak sayfa (source_sheet) yoksa otomatiğe düşer.
+    """
+    source_sheet = summary_cfg.get("source_sheet")
+    sheet_name   = summary_cfg.get("sheet_name") or "Teklif Özeti"
+    header_map   = summary_cfg.get("header") or {}
+
+    if not source_sheet or source_sheet not in wb.sheetnames:
+        _add_summary_sheet_auto(wb, entries, sheet_name)
+        return
+
+    ws = wb[source_sheet]
+    if source_sheet != sheet_name:
+        ws.title = sheet_name
+
+    if not entries:
+        return
+
+    first    = entries[0]
+    hdr_vals = _header_resolvers(
+        first["budget"], first.get("request"),
+        first.get("customer"), first.get("creator"),
+    )
+
+    for cell_addr, field_name in header_map.items():
+        val = hdr_vals.get(field_name)
+        if val is not None:
+            try:
+                ws[cell_addr.upper()] = val
+                ws[cell_addr.upper()].font = Font(color="000000")
+            except Exception:
+                pass
+
+
 # ── Tek bütçe export ──────────────────────────────────────────────────────────
 def fill_customer_template(
     template_path: str,
@@ -472,6 +669,15 @@ def fill_customer_template_multi(
         ws.title = title
 
         _fill_ws(ws, cell_map, b, req, cus, cre)
+
+    # ── Özet sayfa (Teklif Özeti) ────────────────────────────────────────
+    summary_cfg = cell_map.get("summary") or {}
+    if summary_cfg.get("enabled"):
+        sum_sheet = summary_cfg.get("sheet_name") or "Teklif Özeti"
+        if (summary_cfg.get("mode") or "auto") == "template":
+            _fill_summary_template(wb, entries, summary_cfg)
+        else:
+            _add_summary_sheet_auto(wb, entries, sum_sheet)
 
     output = io.BytesIO()
     wb.save(output)
