@@ -1015,15 +1015,15 @@ async def requests_export(
             "creator":  manager_user,
         })
 
-    try:
-        # Müşteri template'i varsa her bütçe için ayrı sheet olarak doldur
-        cfg      = customer.excel_config if customer else {}
-        cell_map = cfg.get("cell_map") or {}
-        b64_data = (getattr(customer, "excel_template_b64", None) or "") if customer else ""
-        tpl_path = (customer.excel_template_path or "") if customer else ""
+    # ── Template & cell_map hazırlığı (HTTPException'ları try dışında) ──────────
+    cfg      = customer.excel_config if customer else {}
+    cell_map = cfg.get("cell_map") or {}
+    b64_data = (getattr(customer, "excel_template_b64", None) or "") if customer else ""
+    tpl_path = (customer.excel_template_path or "") if customer else ""
 
-        # Dosya yoksa ama DB'de base64 varsa yeniden oluştur (Railway restart)
-        if b64_data and (not tpl_path or not os.path.exists(tpl_path)):
+    # Dosya yoksa ama DB'de base64 varsa yeniden oluştur (Railway restart)
+    if b64_data and (not tpl_path or not os.path.exists(tpl_path)):
+        try:
             import base64 as _b64
             _upload_dir = "static/uploads/customer_templates"
             os.makedirs(_upload_dir, exist_ok=True)
@@ -1032,25 +1032,28 @@ async def requests_export(
                 _f.write(_b64.b64decode(b64_data))
             customer.excel_template_path = tpl_path
             db.commit()
+        except Exception as _e:
+            print(f"[REQ-EXPORT] b64 restore hatası: {_e}", flush=True)
 
-        has_tpl_file = bool(tpl_path and os.path.exists(tpl_path))
-        use_template = bool(has_tpl_file and cell_map)
+    has_tpl_file = bool(tpl_path and os.path.exists(tpl_path))
+    use_template = bool(has_tpl_file and cell_map)
 
-        # Template var ama eşleştirme yapılmamışsa hata ver
-        if has_tpl_file and not cell_map:
-            raise HTTPException(
-                400,
-                "Müşteri şablonu yüklü ama hücre eşleştirmesi yapılmamış. "
-                "Müşteri sayfasından 'Şablonu Eşleştir' butonunu kullanın."
-            )
-        print(
-            f"[REQ-EXPORT] req={req_id} tpl_path={tpl_path!r} "
-            f"file_exists={os.path.exists(tpl_path) if tpl_path else False} "
-            f"b64_len={len(b64_data)} cell_map_keys={list(cell_map.keys())} "
-            f"use_template={use_template}",
-            flush=True,
+    print(
+        f"[REQ-EXPORT] req={req_id} tpl_path={tpl_path!r} "
+        f"has_tpl_file={has_tpl_file} b64_len={len(b64_data)} "
+        f"cell_map_keys={list(cell_map.keys())} use_template={use_template}",
+        flush=True,
+    )
+
+    if has_tpl_file and not cell_map:
+        raise HTTPException(
+            400,
+            "Müşteri şablonu yüklü ama hücre eşleştirmesi yapılmamış. "
+            "Müşteri sayfasından 'Şablonu Eşleştir' butonunu kullanın."
         )
 
+    # ── Excel oluştur ────────────────────────────────────────────────────────
+    try:
         if use_template:
             from excel_export import fill_customer_template_multi
             output = fill_customer_template_multi(
