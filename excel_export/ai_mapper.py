@@ -165,7 +165,7 @@ async def analyze_template(
     anthropic_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
 
     if gemini_key:
-        return await _analyze_with_gemini(template_path, gemini_key, model or "gemini-1.5-flash")
+        return await _analyze_with_gemini(template_path, gemini_key, model or "auto")
     elif anthropic_key:
         return await _analyze_with_claude(template_path, anthropic_key, model or "claude-haiku-4-5-20251001")
     else:
@@ -176,10 +176,47 @@ async def analyze_template(
         }
 
 
+def _gemini_pick_model(api_key: str) -> str:
+    """
+    Hesapta mevcut Gemini modellerini çeker, uygun birini döner.
+    generateContent destekleyen ilk flash/pro modeli seçilir.
+    """
+    import urllib.request, urllib.error
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        models = data.get("models", [])
+        # generateContent destekleyenler
+        supported = [
+            m["name"].replace("models/", "")
+            for m in models
+            if "generateContent" in m.get("supportedGenerationMethods", [])
+        ]
+        # Tercih sırası
+        for pref in ("gemini-1.5-flash", "gemini-1.5-flash-latest",
+                     "gemini-1.5-pro", "gemini-2.0-flash-lite",
+                     "gemini-2.0-flash-exp"):
+            if pref in supported:
+                return pref
+        # Tercih bulunamazsa flash içeren ilk model
+        for m in supported:
+            if "flash" in m:
+                return m
+        # Son çare: ilk mevcut model
+        return supported[0] if supported else "gemini-1.5-flash-latest"
+    except Exception:
+        return "gemini-1.5-flash-latest"
+
+
 async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> dict:
-    """Gemini REST API ile template analizi (kütüphane bağımlılığı yok)."""
+    """Gemini REST API (v1beta) ile template analizi — kütüphane bağımlılığı yok."""
     import urllib.request
     import urllib.error
+
+    # model parametresi "auto" ise canlı model listesinden seç
+    if model in ("auto", "gemini-1.5-flash", "gemini-2.0-flash"):
+        model = _gemini_pick_model(api_key)
 
     try:
         structure = parse_template_structure(template_path, max_rows=30)
@@ -193,7 +230,7 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
         "Bu template için E-dem cell_map JSON'ını döndür."
     )
 
-    url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
@@ -202,8 +239,7 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
     raw = ""
     try:
         req = urllib.request.Request(
-            url,
-            data=payload,
+            url, data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -216,9 +252,11 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
 
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        return {"cell_map": {}, "raw_response": raw, "error": f"Gemini HTTP {exc.code}: {body[:300]}"}
+        return {"cell_map": {}, "raw_response": raw,
+                "error": f"Gemini HTTP {exc.code}: {body[:400]}"}
     except json.JSONDecodeError as exc:
-        return {"cell_map": {}, "raw_response": raw, "error": f"Gemini yanıtı JSON parse hatası: {exc}"}
+        return {"cell_map": {}, "raw_response": raw,
+                "error": f"Gemini yanıtı JSON parse hatası: {exc}"}
     except Exception as exc:
         return {"cell_map": {}, "raw_response": raw, "error": str(exc)}
 
