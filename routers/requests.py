@@ -389,11 +389,20 @@ async def requests_detail(
     }
 
     # Email taslakları için bütçe + venue kontakt bilgileri
+    # İsim bazlı fallback lookup için: {normalize(name): contacts}
+    _venues_by_name = {
+        v["name"].strip().lower(): v.get("contacts", []) or []
+        for v in venues_map.values()
+    }
+
     budgets_json = []
     for b in req.budgets:
         contacts = []
         if b.venue_id and b.venue_id in venues_map:
             contacts = venues_map[b.venue_id].get("contacts", []) or []
+        elif b.venue_name:
+            # venue_id bağlantısı yoksa isme göre eşleştir
+            contacts = _venues_by_name.get(b.venue_name.strip().lower(), [])
         budgets_json.append({
             "id":         b.id,
             "venue_name": b.venue_name or "",
