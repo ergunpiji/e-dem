@@ -885,7 +885,7 @@ _EMAIL_TEMPLATE_DEFAULTS = [
         "description": "Müşteriye Excel teklif dosyası gönderilirken açılan e-posta şablonu.",
         "subject_tpl": "Etkinlik Teklifi: {event_name} — {request_no}",
         "body_tpl": (
-            "Sayın Yetkili,\n\n"
+            "Sayın {contact_name},\n\n"
             "{event_name} etkinliğiniz için hazırlanan teklif dosyasını ekte sunmaktayız.\n\n"
             "Referans No: {request_no}\n"
             "Müşteri    : {client_name}\n"

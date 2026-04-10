@@ -1209,7 +1209,12 @@ const REQ_DATA = {
 const EMAIL_TEMPLATES = {{ email_templates_json | tojson }};
 const SETTINGS_CTX    = {{ settings_ctx | tojson }};
 
+// Müşteri kontak bilgisi
+const CUSTOMER_CONTACTS = {{ (customer.contacts if customer else []) | tojson }};
+const CUSTOMER_PRIMARY  = CUSTOMER_CONTACTS[0] || {};
+
 // Şablon render: {variable} → değer (eksik key'lerde olduğu gibi bırak)
+// extra ile gelen değerler base context'i override eder (venue mailleri için contact_name vb.)
 function renderEmailTpl(tpl, extra) {
   const ctx = Object.assign({
     event_name:      REQ_DATA.event_name,
@@ -1221,6 +1226,10 @@ function renderEmailTpl(tpl, extra) {
     accom_check_out: fmtDate(REQ_DATA.accom_check_out),
     attendee_count:  REQ_DATA.attendee_count,
     quote_deadline:  deadlineDate(),
+    // Müşteri kontak — müşteriye giden maillerde varsayılan; venue maillerinde extra ile override edilir
+    contact_name:    CUSTOMER_PRIMARY.name  || REQ_DATA.client_name || '',
+    contact_email:   CUSTOMER_PRIMARY.email || '',
+    contact_phone:   CUSTOMER_PRIMARY.phone || '',
     company_name:    SETTINGS_CTX.company_name,
     company_email:   SETTINGS_CTX.company_email,
     company_phone:   SETTINGS_CTX.company_phone,
@@ -1611,38 +1620,67 @@ const REQ_REF_NO     = {{ req.request_no | tojson }};
 const REQ_CHECK_IN   = "{{ req.check_in or '' }}";
 const REQ_CHECK_OUT  = "{{ req.check_out or '' }}";
 
-function _emailCard(title, borderColor, headerBg, headerColor, iconCls, subject, bodyText, contacts) {
+// _emailCard: slug tabanlı, dinamik contact rendering
+// slug: EMAIL_TEMPLATES key (örn. 'confirm_venue', 'cancel_venue')
+// contacts: [{name, email, phone}, ...]
+// baseExtra: {venue_name: ...} — contact bilgisi hariç
+function _emailCard(title, borderColor, headerBg, headerColor, iconCls, slug, contacts, baseExtra) {
   const cardId = 'ec-' + Math.random().toString(36).slice(2);
   const copyId = cardId + '-copy';
+  const tpl = EMAIL_TEMPLATES[slug] || {};
+  const subjTpl = tpl.subject_tpl || '';
+  const bodyTpl = tpl.body_tpl    || '';
 
-  // Kontakt checkbox listesi
+  function _renderFor(c) {
+    const extra = Object.assign({}, baseExtra || {}, {
+      contact_name:  (c && c.name)  || '',
+      contact_email: (c && c.email) || '',
+      contact_phone: (c && c.phone) || '',
+    });
+    return {
+      subj: renderEmailTpl(subjTpl, extra),
+      body: renderEmailTpl(bodyTpl, extra),
+    };
+  }
+
+  const init = _renderFor(contacts[0] || null);
+
+  // Checkbox listesi — ilk tikli kontak ismiyle re-render
   let contactsHtml = '';
   if (contacts.length === 0) {
-    const manualId = cardId + '-manual';
-    contactsHtml = `<input type="email" id="${manualId}" data-card="${cardId}"
+    contactsHtml = `<input type="email" data-card="${cardId}"
       class="form-control form-control-sm ec-manual-email"
       placeholder="E-posta adresi girin"
       style="font-size:11px; width:220px; display:inline-block;">`;
   } else {
     contactsHtml = contacts.map((c, i) => {
       const cbId = cardId + '-cb' + i;
-      const label = (c.name ? `${c.name}` : '') + (c.email ? ` &lt;${c.email}&gt;` : '');
+      const label = (c.name || '') + (c.email ? ` &lt;${c.email}&gt;` : '');
       return `<div class="form-check form-check-inline mb-0" style="font-size:11px;">
-        <input class="form-check-input ec-cb" type="checkbox" id="${cbId}" data-email="${c.email || ''}" data-card="${cardId}" checked>
+        <input class="form-check-input ec-cb" type="checkbox" id="${cbId}"
+               data-email="${escAttr(c.email || '')}"
+               data-name="${escAttr(c.name || '')}"
+               data-phone="${escAttr(c.phone || '')}"
+               data-card="${cardId}" checked
+               onchange="_ecContactChange('${cardId}')">
         <label class="form-check-label" for="${cbId}">${label}</label>
       </div>`;
     }).join('');
   }
 
   return `
-  <div class="card mb-2" style="border-color:${borderColor};" id="${cardId}">
-    <div class="card-header d-flex align-items-start justify-content-between py-2 gap-2 flex-wrap" style="background:${headerBg}; color:${headerColor}; font-size:12px;">
+  <div class="card mb-2" style="border-color:${borderColor};" id="${cardId}"
+       data-subj-tpl="${escAttr(subjTpl)}"
+       data-body-tpl="${escAttr(bodyTpl)}"
+       data-base-extra="${escAttr(JSON.stringify(baseExtra || {}))}">
+    <div class="card-header d-flex align-items-start justify-content-between py-2 gap-2 flex-wrap"
+         style="background:${headerBg}; color:${headerColor}; font-size:12px;">
       <span><i class="${iconCls} me-1"></i>${title}</span>
       <div class="d-flex flex-wrap gap-1">${contactsHtml}</div>
     </div>
     <div class="card-body py-2 d-flex gap-2 align-items-center">
       <button type="button" class="btn btn-sm btn-outline-primary ec-send-btn" data-card="${cardId}"
-              data-subject="${escAttr(subject)}" data-body="${escAttr(bodyText)}"
+              data-subject="${escAttr(init.subj)}" data-body="${escAttr(init.body)}"
               style="font-size:12px;" onclick="_sendEmail(this)">
         <i class="bi bi-envelope me-1"></i>Mail Gönder
       </button>
@@ -1652,10 +1690,39 @@ function _emailCard(title, borderColor, headerBg, headerColor, iconCls, subject,
       </button>
       <details style="font-size:11px; flex:1;">
         <summary class="text-muted" style="cursor:pointer;">Metin önizle</summary>
-        <pre id="${copyId}" class="mt-1 p-2 rounded" style="background:#f8fafc; font-size:11px; white-space:pre-wrap; max-height:120px; overflow-y:auto;">${escHtml(bodyText)}</pre>
+        <pre id="${copyId}" class="mt-1 p-2 rounded"
+             style="background:#f8fafc; font-size:11px; white-space:pre-wrap; max-height:120px; overflow-y:auto;">${escHtml(init.body)}</pre>
       </details>
     </div>
   </div>`;
+}
+
+// Checkbox değişince: ilk tikli kişinin adıyla yeniden render et
+function _ecContactChange(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const subjTpl = card.dataset.subjTpl || '';
+  const bodyTpl = card.dataset.bodyTpl || '';
+  let baseExtra = {};
+  try { baseExtra = JSON.parse(card.dataset.baseExtra || '{}'); } catch(e) {}
+
+  const firstCb = card.querySelector('.ec-cb:checked');
+  const c = firstCb
+    ? { name: firstCb.dataset.name || '', email: firstCb.dataset.email || '', phone: firstCb.dataset.phone || '' }
+    : {};
+
+  const extra = Object.assign({}, baseExtra, {
+    contact_name:  c.name  || '',
+    contact_email: c.email || '',
+    contact_phone: c.phone || '',
+  });
+  const newSubj = renderEmailTpl(subjTpl, extra);
+  const newBody = renderEmailTpl(bodyTpl, extra);
+
+  const btn = card.querySelector('.ec-send-btn');
+  if (btn) { btn.dataset.subject = newSubj; btn.dataset.body = newBody; }
+  const pre = document.getElementById(cardId + '-copy');
+  if (pre) pre.textContent = newBody;
 }
 
 function escAttr(s) {
@@ -1679,29 +1746,6 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function _buildConfirmEmailBody(venueName) {
-  const body = getTplBody('confirm_venue', { venue_name: venueName || '' });
-  if (body) return body;
-  // fallback (şablon tanımlı değilse)
-  return `Sayın Yetkili,\n\n${REQ_EVENT_NAME} etkinliğimiz için hazırladığınız teklif değerlendirmemiz tamamlanmış olup mekanınız konfirme edilmiştir.\n\nReferans No: ${REQ_REF_NO}\nEtkinlik Tarihleri: ${REQ_CHECK_IN} – ${REQ_CHECK_OUT}\n\nKesin maliyet fiyatlarınızı iletmenizi rica ederiz.\n\nSaygılarımızla`;
-}
-
-function _buildConfirmSubject(venueName) {
-  const subj = getTplSubject('confirm_venue', { venue_name: venueName || '' });
-  return subj || `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Konfirme Bildirimi`;
-}
-
-function _buildCancelEmailBody(venueName) {
-  const body = getTplBody('cancel_venue', { venue_name: venueName || 'mekanınız' });
-  if (body) return body;
-  // fallback
-  return `Sayın Yetkili,\n\n${REQ_EVENT_NAME} etkinliğimiz kapsamında ${venueName || 'mekanınız'} için tarafınıza ilettiğimiz teklif talebini iptal etmek zorunda kaldık.\n\nReferans No: ${REQ_REF_NO}\nEtkinlik Tarihleri: ${REQ_CHECK_IN} – ${REQ_CHECK_OUT}\n\nGösterdiğiniz ilgi için teşekkür eder, ilerleyen projelerde tekrar bir araya gelmeyi umuyoruz.\n\nSaygılarımızla`;
-}
-
-function _buildCancelSubject(venueName) {
-  const subj = getTplSubject('cancel_venue', { venue_name: venueName || '' });
-  return subj || `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Teklif Talebi İptali`;
-}
 
 // ─── Proje Durumu Modal ───
 let _psStatus = null;
@@ -1771,12 +1815,11 @@ function goPsStep2Confirmed() {
 
   const confirmBody = document.getElementById('psConfirmEmailBody');
   if (selBudget) {
+    const cList = selBudget.contacts || [];
     confirmBody.innerHTML = _emailCard(
       `${selBudget.venue_name || 'Seçilen Mekan'} — Konfirme Bildirimi`,
       '#16a34a', '#d1fae5', '#065f46', 'bi bi-check-circle',
-      _buildConfirmSubject(selBudget.venue_name),
-      _buildConfirmEmailBody(selBudget.venue_name),
-      selBudget.contacts || []
+      'confirm_venue', cList, { venue_name: selBudget.venue_name || '' }
     );
   }
 
@@ -1786,7 +1829,7 @@ function goPsStep2Confirmed() {
     others.forEach(b => {
       html += _emailCard(
         b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
-        _buildCancelSubject(b.venue_name), _buildCancelEmailBody(b.venue_name), b.contacts || []
+        'cancel_venue', b.contacts || [], { venue_name: b.venue_name || '' }
       );
     });
     cancelCards.innerHTML = html;
@@ -1812,7 +1855,7 @@ function togglePsVenueEmails(checked) {
       targets.forEach(b => {
         html += _emailCard(
           b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
-          _buildCancelSubject(b.venue_name), _buildCancelEmailBody(b.venue_name), b.contacts || []
+          'cancel_venue', b.contacts || [], { venue_name: b.venue_name || '' }
         );
       });
       cards.innerHTML = html;
