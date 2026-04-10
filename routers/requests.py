@@ -685,6 +685,25 @@ async def requests_cancel_job(
     return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
 
 
+@router.post("/{req_id}/postpone", name="requests_postpone")
+async def requests_postpone(
+    req_id: str,
+    reason: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ertelendi → request 'postponed', aktif bütçeler olduğu gibi kalır"""
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req or req.status in ("cancelled", "completed", "postponed"):
+        return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
+
+    req.status              = "postponed"
+    req.cancellation_reason = reason.strip()
+    req.updated_at          = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
+
+
 @router.post("/{req_id}/revision", name="requests_revision")
 async def requests_revision(
     req_id: str,

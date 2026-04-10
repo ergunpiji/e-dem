@@ -58,6 +58,7 @@ REQUEST_STATUSES = [
     {"value": "revision",          "label": "Revizyon",                  "color": "warning"},
     {"value": "completed",         "label": "Tamamlandı",                "color": "success"},
     {"value": "cancelled",         "label": "İptal Edildi",              "color": "danger"},
+    {"value": "postponed",         "label": "Ertelendi",                 "color": "secondary"},
 ]
 
 REQUEST_STATUS_COLORS = {s["value"]: s["color"] for s in REQUEST_STATUSES}
@@ -875,6 +876,21 @@ _EMAIL_TEMPLATE_DEFAULTS = [
             "Tarihler     : {check_in} – {check_out}\n\n"
             "Gösterdiğiniz ilgi ve hazırladığınız teklif için teşekkür eder, "
             "ilerleyen projelerde tekrar bir araya gelmeyi umuyoruz.\n\n"
+            "{email_signature}"
+        ),
+    },
+    {
+        "slug": "offer_customer",
+        "name": "Müşteriye Teklif Gönderimi",
+        "description": "Müşteriye Excel teklif dosyası gönderilirken açılan e-posta şablonu.",
+        "subject_tpl": "Etkinlik Teklifi: {event_name} — {request_no}",
+        "body_tpl": (
+            "Sayın Yetkili,\n\n"
+            "{event_name} etkinliğiniz için hazırlanan teklif dosyasını ekte sunmaktayız.\n\n"
+            "Referans No: {request_no}\n"
+            "Müşteri    : {client_name}\n"
+            "Tarihler   : {check_in} – {check_out}\n\n"
+            "Teklifi inceleyip dönüş yapmanızı rica ederiz.\n\n"
             "{email_signature}"
         ),
     },

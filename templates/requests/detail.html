@@ -143,16 +143,12 @@
           </a>
         {% endif %}
 
-        {# Müşteri Onayı — offer_sent ve diğer aktif statülerde #}
-        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status in ('budget_ready', 'offer_sent', 'revision', 'completed') %}
-        {% set ns_any_approved = namespace(found=false) %}
-        {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_any_approved.found = true %}{% endif %}{% endfor %}
-        {% if ns_any_approved.found %}
-        <button type="button" class="btn btn-success btn-sm"
-                data-bs-toggle="modal" data-bs-target="#confirmModal">
-          <i class="bi bi-check-circle me-1"></i> Müşteri Onayladı
+        {# Proje Durumu — aktif statülerde göster #}
+        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status not in ('cancelled', 'completed', 'postponed') %}
+        <button type="button" class="btn btn-primary btn-sm"
+                data-bs-toggle="modal" data-bs-target="#projectStatusModal">
+          <i class="bi bi-flag me-1"></i> Proje Durumu
         </button>
-        {% endif %}
         {% endif %}
 
         {# Etkinliği Tamamla — confirmed #}
@@ -177,13 +173,7 @@
         </button>
         {% endif %}
 
-        {# İşi İptal Et — tamamlanmış/iptal dışı herkes #}
-        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status not in ('cancelled', 'completed') %}
-        <button type="button" class="btn btn-outline-danger btn-sm"
-                data-bs-toggle="modal" data-bs-target="#cancelJobModal">
-          <i class="bi bi-x-circle me-1"></i> İşi İptal Et
-        </button>
-        {% endif %}
+        {# İşi İptal Et butonu kaldırıldı — "Proje Durumu" modalına taşındı #}
 
         {% if can_edit_req and (req.status == 'draft' or current_user.role == 'admin') %}
         <form method="post" action="/requests/{{ req.id }}/delete"
@@ -1628,7 +1618,11 @@ function _emailCard(title, borderColor, headerBg, headerColor, iconCls, subject,
   // Kontakt checkbox listesi
   let contactsHtml = '';
   if (contacts.length === 0) {
-    contactsHtml = '<span class="badge bg-warning text-dark" style="font-size:10px;">Kontakt tanımlı değil</span>';
+    const manualId = cardId + '-manual';
+    contactsHtml = `<input type="email" id="${manualId}" data-card="${cardId}"
+      class="form-control form-control-sm ec-manual-email"
+      placeholder="E-posta adresi girin"
+      style="font-size:11px; width:220px; display:inline-block;">`;
   } else {
     contactsHtml = contacts.map((c, i) => {
       const cbId = cardId + '-cb' + i;
@@ -1673,8 +1667,10 @@ function _sendEmail(btn) {
   const subject = btn.dataset.subject;
   const body    = btn.dataset.body;
   const checked = document.querySelectorAll(`#${cardId} .ec-cb:checked`);
-  const emails  = Array.from(checked).map(cb => cb.dataset.email).filter(Boolean);
-  if (emails.length === 0) { alert('Lütfen en az bir alıcı seçin.'); return; }
+  const manualEl = document.querySelector(`#${cardId} .ec-manual-email`);
+  let emails = Array.from(checked).map(cb => cb.dataset.email).filter(Boolean);
+  if (manualEl && manualEl.value.trim()) emails.push(manualEl.value.trim());
+  if (emails.length === 0) { alert('Lütfen en az bir alıcı seçin veya e-posta adresi girin.'); return; }
   const href = `mailto:${encodeURIComponent(emails.join(', '))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.location.href = href;
 }
@@ -1707,35 +1703,90 @@ function _buildCancelSubject(venueName) {
   return subj || `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Teklif Talebi İptali`;
 }
 
-function goConfirmStep2() {
-  const sel = document.getElementById('confirmBudgetSelect');
+// ─── Proje Durumu Modal ───
+let _psStatus = null;
+
+function choosePsStatus(val) {
+  _psStatus = val;
+  document.querySelectorAll('.ps-choice-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.value === val);
+  });
+  document.getElementById('psStep0NextBtn').disabled = false;
+  // Header rengi güncelle
+  const hdr = document.getElementById('psModalHeader');
+  if (val === 'confirmed')  hdr.style.background = '#166534';
+  else if (val === 'postponed') hdr.style.background = '#92400e';
+  else                       hdr.style.background = '#991b1b';
+}
+
+function goPsStep0() {
+  document.getElementById('psStep0').hidden          = false;
+  document.getElementById('psStep1Confirmed').hidden = true;
+  document.getElementById('psStep2Confirmed').hidden = true;
+  document.getElementById('psStep1Other').hidden     = true;
+}
+
+function goPsStep1() {
+  if (!_psStatus) return;
+  document.getElementById('psStep0').hidden = true;
+  if (_psStatus === 'confirmed') {
+    document.getElementById('psStep1Confirmed').hidden = false;
+  } else {
+    const form      = document.getElementById('psOtherForm');
+    const label     = document.getElementById('psOtherReasonLabel');
+    const submitBtn = document.getElementById('psOtherSubmitBtn');
+    if (_psStatus === 'postponed') {
+      form.action        = `/requests/{{ req.id }}/postpone`;
+      label.textContent  = 'Erteleme Nedeni (isteğe bağlı)';
+      submitBtn.className = 'btn btn-warning btn-sm text-dark';
+      submitBtn.innerHTML = '<i class="bi bi-pause-circle me-1"></i>Ertele';
+    } else {
+      form.action        = `/requests/{{ req.id }}/cancel-job`;
+      label.textContent  = 'İptal Nedeni (isteğe bağlı)';
+      submitBtn.className = 'btn btn-danger btn-sm';
+      submitBtn.innerHTML = '<i class="bi bi-x-lg me-1"></i>İptal Et';
+    }
+    // venue emails sıfırla
+    const cb = document.getElementById('psSendVenueEmailsCb');
+    if (cb) cb.checked = false;
+    const sec = document.getElementById('psVenueEmailSection');
+    if (sec) { sec.hidden = true; delete sec.dataset.built; }
+    document.getElementById('psStep1Other').hidden = false;
+  }
+}
+
+function goPsStep1Confirmed() {
+  document.getElementById('psStep2Confirmed').hidden = true;
+  document.getElementById('psStep1Confirmed').hidden = false;
+}
+
+function goPsStep2Confirmed() {
+  const sel = document.getElementById('psBudgetSelect');
   if (!sel || !sel.value) { alert('Lütfen onaylanan bütçeyi seçin.'); return; }
   const budgetId = sel.value;
-  document.getElementById('confirmedBudgetIdInput').value = budgetId;
+  document.getElementById('psBudgetIdInput').value = budgetId;
 
   const selBudget = budgetsJson.find(b => b.id === budgetId);
-  const others = budgetsJson.filter(b => b.id !== budgetId && b.status === 'approved');
+  const others    = budgetsJson.filter(b => b.id !== budgetId && b.status === 'approved');
 
-  // Seçilen mekana konfirme maili
-  const confirmBody = document.getElementById('confirmEmailBody');
+  const confirmBody = document.getElementById('psConfirmEmailBody');
   if (selBudget) {
-    const subj = _buildConfirmSubject(selBudget.venue_name);
     confirmBody.innerHTML = _emailCard(
       `${selBudget.venue_name || 'Seçilen Mekan'} — Konfirme Bildirimi`,
       '#16a34a', '#d1fae5', '#065f46', 'bi bi-check-circle',
-      subj, _buildConfirmEmailBody(selBudget.venue_name), selBudget.contacts || []
+      _buildConfirmSubject(selBudget.venue_name),
+      _buildConfirmEmailBody(selBudget.venue_name),
+      selBudget.contacts || []
     );
   }
 
-  // Diğer mekanlara iptal maili
-  const cancelCards = document.getElementById('cancelEmailCards');
+  const cancelCards = document.getElementById('psCancelEmailCards');
   if (others.length > 0) {
     let html = `<div class="fw-semibold mb-2" style="font-size:13px; color:#991b1b;"><i class="bi bi-x-circle me-1"></i>Diğer Mekanlara — İptal Bildirimi</div>`;
     others.forEach(b => {
-      const subj = _buildCancelSubject(b.venue_name);
       html += _emailCard(
         b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
-        subj, _buildCancelEmailBody(b.venue_name), b.contacts || []
+        _buildCancelSubject(b.venue_name), _buildCancelEmailBody(b.venue_name), b.contacts || []
       );
     });
     cancelCards.innerHTML = html;
@@ -1743,31 +1794,25 @@ function goConfirmStep2() {
     cancelCards.innerHTML = '<div class="text-muted" style="font-size:12px;"><i class="bi bi-info-circle me-1"></i>Diğer onaylı bütçe yok.</div>';
   }
 
-  document.getElementById('confirmStep1').hidden = true;
-  document.getElementById('confirmStep2').hidden = false;
+  document.getElementById('psStep1Confirmed').hidden = true;
+  document.getElementById('psStep2Confirmed').hidden = false;
 }
 
-function goConfirmStep1() {
-  document.getElementById('confirmStep2').hidden = true;
-  document.getElementById('confirmStep1').hidden = false;
-}
-
-function toggleCancelEmailSection(checked) {
-  const sec = document.getElementById('cancelEmailSection');
+function togglePsVenueEmails(checked) {
+  const sec = document.getElementById('psVenueEmailSection');
   sec.hidden = !checked;
   if (checked && !sec.dataset.built) {
     sec.dataset.built = '1';
-    const cards = document.getElementById('cancelEmailCards2');
+    const cards   = document.getElementById('psVenueEmailCards');
     const targets = budgetsJson.filter(b => ['approved','pending_manager','confirmed'].includes(b.status));
     if (targets.length === 0) {
       cards.innerHTML = '<div class="text-muted" style="font-size:12px;">Bildirim yapılacak mekan bulunamadı.</div>';
     } else {
       let html = '';
       targets.forEach(b => {
-        const subj = _buildCancelSubject(b.venue_name);
         html += _emailCard(
           b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
-          subj, _buildCancelEmailBody(b.venue_name), b.contacts || []
+          _buildCancelSubject(b.venue_name), _buildCancelEmailBody(b.venue_name), b.contacts || []
         );
       });
       cards.innerHTML = html;
@@ -1775,15 +1820,13 @@ function toggleCancelEmailSection(checked) {
   }
 }
 
-// Modal kapanınca adım 1'e sıfırla
-document.getElementById('confirmModal')?.addEventListener('hidden.bs.modal', () => {
-  goConfirmStep1();
-});
-document.getElementById('cancelJobModal')?.addEventListener('hidden.bs.modal', () => {
-  const cb = document.getElementById('sendCancelEmailsCb');
-  if (cb) { cb.checked = false; }
-  const sec = document.getElementById('cancelEmailSection');
-  if (sec) { sec.hidden = true; delete sec.dataset.built; }
+// Modal kapanınca sıfırla
+document.getElementById('projectStatusModal')?.addEventListener('hidden.bs.modal', () => {
+  _psStatus = null;
+  document.querySelectorAll('.ps-choice-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('psStep0NextBtn').disabled = true;
+  document.getElementById('psModalHeader').style.background = '#1e293b';
+  goPsStep0();
 });
 
 function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
@@ -1802,11 +1845,12 @@ function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
 
   // 3) Mail istemcisini aç (müşteri adresi varsa)
   if (customerEmail) {
-    const offerSubjTpl = getTplSubject('offer_customer') || `Etkinlik Teklifi: {event_name} — {request_no}`;
-    const offerBodyTpl = getTplBody('offer_customer') ||
-      `Sayın Yetkili,\n\n{event_name} etkinliğiniz için hazırlanan teklif dosyasını ekte sunmaktayız.\n\nReferans No: {request_no}\n\nTeklifi inceleyip dönüş yapmanızı rica ederiz.\n\n{email_signature}`;
-    const subject = encodeURIComponent(offerSubjTpl);
-    const body    = encodeURIComponent(offerBodyTpl);
+    const offerSubj = getTplSubject('offer_customer')
+      || renderEmailTpl('Etkinlik Teklifi: {event_name} — {request_no}');
+    const offerBody = getTplBody('offer_customer')
+      || renderEmailTpl('Sayın Yetkili,\n\n{event_name} etkinliğiniz için hazırlanan teklif dosyasını ekte sunmaktayız.\n\nReferans No: {request_no}\n\nTeklifi inceleyip dönüş yapmanızı rica ederiz.\n\n{email_signature}');
+    const subject = encodeURIComponent(offerSubj);
+    const body    = encodeURIComponent(offerBody);
     setTimeout(() => {
       window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank');
     }, 800);
@@ -2302,22 +2346,53 @@ function applyVenuePickerSelection(section, emailFilterSection) {
 </div>
 
 {# ══════════════════════════════
-   MODAL: Müşteri Onayı (2 adımlı)
+   MODAL: Proje Durumu (Onaylandı / Ertelendi / İptal)
    ══════════════════════════════ #}
-<div class="modal fade" id="confirmModal" tabindex="-1">
+<div class="modal fade" id="projectStatusModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header" style="background:#166534; color:white;">
-        <h5 class="modal-title"><i class="bi bi-check-circle me-2"></i>Müşteri Onayladı</h5>
+      <div class="modal-header" id="psModalHeader" style="background:#1e293b; color:white;">
+        <h5 class="modal-title"><i class="bi bi-flag me-2"></i>Proje Durumu</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
 
-      {# Adım 1: Bütçe seçimi #}
-      <div id="confirmStep1">
+      {# Adım 0: Durum seçimi #}
+      <div id="psStep0">
         <div class="modal-body">
-          <p class="text-muted" style="font-size:13px;">Müşterinin onayladığı mekanı/bütçeyi seçin.</p>
+          <p class="text-muted mb-3" style="font-size:13px;">Projenin güncel durumunu seçin:</p>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-success flex-fill ps-choice-btn py-3"
+                    onclick="choosePsStatus('confirmed')" data-value="confirmed">
+              <i class="bi bi-check-circle fs-4 d-block mb-1"></i>
+              <span style="font-size:13px; font-weight:600;">Onaylandı</span>
+            </button>
+            <button type="button" class="btn btn-outline-warning flex-fill ps-choice-btn py-3"
+                    onclick="choosePsStatus('postponed')" data-value="postponed">
+              <i class="bi bi-pause-circle fs-4 d-block mb-1"></i>
+              <span style="font-size:13px; font-weight:600;">Ertelendi</span>
+            </button>
+            <button type="button" class="btn btn-outline-danger flex-fill ps-choice-btn py-3"
+                    onclick="choosePsStatus('cancelled')" data-value="cancelled">
+              <i class="bi bi-x-circle fs-4 d-block mb-1"></i>
+              <span style="font-size:13px; font-weight:600;">İptal Oldu</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+          <button type="button" class="btn btn-primary btn-sm" id="psStep0NextBtn"
+                  onclick="goPsStep1()" disabled>
+            Devam Et <i class="bi bi-arrow-right ms-1"></i>
+          </button>
+        </div>
+      </div>
+
+      {# Adım 1a: Onaylandı — Bütçe seçimi #}
+      <div id="psStep1Confirmed" hidden>
+        <div class="modal-body">
+          <p class="text-muted" style="font-size:13px;">Müşterinin onayladığı mekanı / bütçeyi seçin.</p>
           <label class="form-label fw-semibold">Onaylanan Bütçe / Mekan</label>
-          <select id="confirmBudgetSelect" class="form-select">
+          <select id="psBudgetSelect" class="form-select">
             <option value="">— Seçiniz —</option>
             {% for b in req.budgets %}
             {% if b.budget_status in ('approved', 'confirmed') %}
@@ -2327,37 +2402,43 @@ function applyVenuePickerSelection(section, emailFilterSection) {
             {% endif %}
             {% endfor %}
           </select>
+          {% set ns_any = namespace(found=false) %}
+          {% for b in req.budgets %}{% if b.budget_status in ('approved','confirmed') %}{% set ns_any.found = true %}{% endif %}{% endfor %}
+          {% if not ns_any.found %}
+          <div class="alert alert-warning mt-3 mb-0" style="font-size:13px;">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Onaylı / konfirmeli bütçe bulunamadı. Önce bir bütçeyi <strong>Onayla</strong>.
+          </div>
+          {% endif %}
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
-          <button type="button" class="btn btn-success btn-sm" onclick="goConfirmStep2()">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="goPsStep0()">
+            <i class="bi bi-arrow-left me-1"></i>Geri
+          </button>
+          <button type="button" class="btn btn-success btn-sm" onclick="goPsStep2Confirmed()">
             Devam Et <i class="bi bi-arrow-right ms-1"></i>
           </button>
         </div>
       </div>
 
-      {# Adım 2: Email taslakları + onay #}
-      <div id="confirmStep2" hidden>
+      {# Adım 2: Onaylandı — Email taslakları #}
+      <div id="psStep2Confirmed" hidden>
         <form method="post" action="/requests/{{ req.id }}/confirm">
-          <input type="hidden" name="budget_id" id="confirmedBudgetIdInput">
+          <input type="hidden" name="budget_id" id="psBudgetIdInput">
           <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
-            <p class="text-muted mb-3" style="font-size:13px;">Aşağıdaki mail taslakları hazırlandı. Göndermek istediklerinizi gönderin, ardından <strong>Onayı Kaydet</strong>'e tıklayın.</p>
-
-            {# Seçilen mekana konfirme maili #}
-            <div id="confirmEmailCard" class="card mb-3 border-success">
+            <p class="text-muted mb-3" style="font-size:13px;">Mail taslakları hazırlandı. Göndermek istediklerinizi gönderin, ardından <strong>Onayı Kaydet</strong>'e tıklayın.</p>
+            <div class="card mb-3 border-success">
               <div class="card-header fw-semibold" style="background:#d1fae5; color:#065f46; font-size:13px;">
                 <i class="bi bi-check-circle me-1"></i>Seçilen Mekana — Konfirme &amp; Revize Fiyat Talebi
               </div>
-              <div class="card-body py-2" id="confirmEmailBody">
+              <div class="card-body py-2" id="psConfirmEmailBody">
                 <div class="text-muted" style="font-size:12px;">Bütçe seçildikten sonra hazırlanacak…</div>
               </div>
             </div>
-
-            {# Diğer mekanlara iptal maili #}
-            <div id="cancelEmailCards"></div>
+            <div id="psCancelEmailCards"></div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="goConfirmStep1()">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="goPsStep1Confirmed()">
               <i class="bi bi-arrow-left me-1"></i>Geri
             </button>
             <button type="submit" class="btn btn-success btn-sm">
@@ -2367,46 +2448,35 @@ function applyVenuePickerSelection(section, emailFilterSection) {
         </form>
       </div>
 
-    </div>
-  </div>
-</div>
-
-{# ══════════════════════════════
-   MODAL: İşi İptal Et
-   ══════════════════════════════ #}
-<div class="modal fade" id="cancelJobModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header" style="background:#991b1b; color:white;">
-        <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>İşi İptal Et</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      {# Adım 1b: Ertelendi / İptal — Neden + opsiyonel venue e-postaları #}
+      <div id="psStep1Other" hidden>
+        <form id="psOtherForm" method="post" action="">
+          <div class="modal-body">
+            <label class="form-label fw-semibold" id="psOtherReasonLabel">Neden / Açıklama</label>
+            <textarea name="reason" class="form-control" rows="2"
+                      placeholder="Erteleme / iptal nedeni, müşteriden gelen mesaj…">{% if req.cancellation_reason %}{{ req.cancellation_reason }}{% endif %}</textarea>
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" id="psSendVenueEmailsCb"
+                     onchange="togglePsVenueEmails(this.checked)">
+              <label class="form-check-label fw-semibold" for="psSendVenueEmailsCb" style="font-size:13px;">
+                Mekanlara bildirim e-postası gönder
+              </label>
+            </div>
+            <div id="psVenueEmailSection" hidden class="mt-2">
+              <div id="psVenueEmailCards"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="goPsStep0()">
+              <i class="bi bi-arrow-left me-1"></i>Geri
+            </button>
+            <button type="submit" id="psOtherSubmitBtn" class="btn btn-danger btn-sm">
+              <i class="bi bi-check-lg me-1"></i>Kaydet
+            </button>
+          </div>
+        </form>
       </div>
-      <form method="post" action="/requests/{{ req.id }}/cancel-job">
-        <div class="modal-body">
-          <p class="text-muted" style="font-size:13px;">Bu işlem talebi ve tüm onaylı bütçeleri <strong>İptal Edildi</strong> olarak işaretleyecek.</p>
-          <label class="form-label fw-semibold">İptal Nedeni <span class="text-muted fw-normal">(isteğe bağlı)</span></label>
-          <textarea name="reason" class="form-control" rows="2"
-                    placeholder="İptal nedeni, müşteriden gelen mesaj…">{% if req.cancellation_reason %}{{ req.cancellation_reason }}{% endif %}</textarea>
 
-          <div class="form-check mt-3">
-            <input class="form-check-input" type="checkbox" id="sendCancelEmailsCb"
-                   onchange="toggleCancelEmailSection(this.checked)">
-            <label class="form-check-label fw-semibold" for="sendCancelEmailsCb" style="font-size:13px;">
-              Mekanlara iptal bildirimi gönder
-            </label>
-          </div>
-          <div id="cancelEmailSection" hidden class="mt-2">
-            <div id="cancelEmailCards2"></div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
-          <button type="submit" class="btn btn-danger btn-sm"
-                  onclick="return confirm('Talep iptal edilecek. Bu işlem geri alınamaz. Emin misiniz?')">
-            <i class="bi bi-x-lg me-1"></i>İptal Et
-          </button>
-        </div>
-      </form>
     </div>
   </div>
 </div>
