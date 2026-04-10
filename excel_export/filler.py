@@ -124,6 +124,9 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
                   if getattr(req, "cities", None)
                   else getattr(req, "city", ""))
 
+    currency = (budget.offer_currency or "TRY").upper()
+    sf        = _sf_sale(budget, currency)
+
     return {
         "event_name":     (getattr(req, "event_name", None)  or budget.venue_name or ""),
         "ref_no":         (getattr(req, "request_no", None)  or ""),
@@ -142,9 +145,9 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
         "city":           cities,
         # Servis bedeli
         "sf_pct":         float(budget.service_fee_pct or 0),
-        "sf_sale":        _sf_sale(budget, currency),
-        "sf_vat":         round(_sf_sale(budget, currency) * 0.20, 2),
-        "sf_total":       round(_sf_sale(budget, currency) * 1.20, 2),
+        "sf_sale":        sf,
+        "sf_vat":         round(sf * 0.20, 2),
+        "sf_total":       round(sf * 1.20, 2),
         # Müşteri yetkili kişi (ilk kontak)
         "contact_name":  _primary_contact(customer),
         # Teklif son tarihi
