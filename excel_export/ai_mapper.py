@@ -210,7 +210,7 @@ def _gemini_call(api_key: str, model: str, payload: bytes) -> tuple[str, str | N
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=90) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         return text, None
@@ -264,8 +264,9 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
             except json.JSONDecodeError as jex:
                 return {"cell_map": {}, "raw_response": raw,
                         "error": f"JSON parse hatası ({m}): {jex}"}
-        # 404 veya "no longer available" → sonrakini dene
-        if "404" in err or "not found" in err.lower() or "no longer available" in err.lower():
+        # 404 / not-available / timeout → sonrakini dene
+        skip_keywords = ("404", "not found", "no longer available", "timed out", "time out")
+        if any(kw in err.lower() for kw in skip_keywords):
             last_error = err
             continue
         # Başka hata (auth, quota vb.) → dur
