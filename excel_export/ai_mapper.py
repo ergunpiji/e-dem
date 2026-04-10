@@ -228,19 +228,19 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
     404/not-available olanları atlar.
     """
     try:
-        structure = parse_template_structure(template_path, max_rows=30)
+        structure = parse_template_structure(template_path, max_rows=20)
     except Exception as exc:
         return {"cell_map": {}, "raw_response": "", "error": str(exc)}
 
     prompt = (
         f"{_SYSTEM_PROMPT}\n\n"
         "Excel template yapısı:\n\n"
-        f"```json\n{json.dumps(structure, ensure_ascii=False, indent=2)}\n```\n\n"
+        f"```json\n{json.dumps(structure, ensure_ascii=False)}\n```\n\n"
         "Bu template için E-dem cell_map JSON'ını döndür."
     )
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192},
     }).encode("utf-8")
 
     # Model listesini al, her birini dene
@@ -286,13 +286,13 @@ async def _analyze_with_claude(template_path: str, api_key: str, model: str) -> 
         }
 
     try:
-        structure = parse_template_structure(template_path, max_rows=30)
+        structure = parse_template_structure(template_path, max_rows=20)
     except Exception as exc:
         return {"cell_map": {}, "raw_response": "", "error": str(exc)}
 
     user_msg = (
         "Excel template yapısı (satır listesi, her satır hücre değerlerini içerir):\n\n"
-        f"```json\n{json.dumps(structure, ensure_ascii=False, indent=2)}\n```\n\n"
+        f"```json\n{json.dumps(structure, ensure_ascii=False)}\n```\n\n"
         "Bu template için E-dem cell_map JSON'ını döndür."
     )
 
