@@ -914,6 +914,7 @@ def _preview_budget_data(budget, vat_mode: str = "exclusive"):
 @router.get("/{req_id}/preview", response_class=HTMLResponse, name="requests_preview")
 async def requests_preview(
     req_id:    str,
+    request:   Request,
     budget_id: str = "",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -943,7 +944,7 @@ async def requests_preview(
     preview_data_incl = _preview_budget_data(budget, "inclusive")
 
     return templates.TemplateResponse("requests/preview.html", {
-        "request":       req,
+        "request":       request,
         "current_user":  current_user,
         "req":           req,
         "budget":        budget,
