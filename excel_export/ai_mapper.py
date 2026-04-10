@@ -176,48 +176,57 @@ async def analyze_template(
         }
 
 
-def _gemini_pick_model(api_key: str) -> str:
-    """
-    Hesapta mevcut Gemini modellerini çeker, uygun birini döner.
-    generateContent destekleyen ilk flash/pro modeli seçilir.
-    """
-    import urllib.request, urllib.error
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+def _gemini_list_models(api_key: str) -> list[str]:
+    """generateContent destekleyen modelleri döner (flash önce)."""
+    import urllib.request
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}&pageSize=50"
     try:
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        models = data.get("models", [])
-        # generateContent destekleyenler
-        supported = [
+        all_models = [
             m["name"].replace("models/", "")
-            for m in models
+            for m in data.get("models", [])
             if "generateContent" in m.get("supportedGenerationMethods", [])
         ]
-        # Tercih sırası
-        for pref in ("gemini-1.5-flash", "gemini-1.5-flash-latest",
-                     "gemini-1.5-pro", "gemini-2.0-flash-lite",
-                     "gemini-2.0-flash-exp"):
-            if pref in supported:
-                return pref
-        # Tercih bulunamazsa flash içeren ilk model
-        for m in supported:
-            if "flash" in m:
-                return m
-        # Son çare: ilk mevcut model
-        return supported[0] if supported else "gemini-1.5-flash-latest"
+        # flash modelleri öne al
+        flash = [m for m in all_models if "flash" in m]
+        rest  = [m for m in all_models if "flash" not in m]
+        return flash + rest
     except Exception:
-        return "gemini-1.5-flash-latest"
+        return []
+
+
+def _gemini_call(api_key: str, model: str, payload: bytes) -> tuple[str, str | None]:
+    """
+    Tek model denemesi. (raw_text, error) döner.
+    404 hatası → (None, "404") ile ayrıştırılabilir.
+    """
+    import urllib.request, urllib.error
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+           f"{model}:generateContent?key={api_key}")
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return text, None
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return "", f"HTTP{exc.code}:{body[:300]}"
+    except Exception as exc:
+        return "", str(exc)
 
 
 async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> dict:
-    """Gemini REST API (v1beta) ile template analizi — kütüphane bağımlılığı yok."""
-    import urllib.request
-    import urllib.error
-
-    # model parametresi "auto" ise canlı model listesinden seç
-    if model in ("auto", "gemini-1.5-flash", "gemini-2.0-flash"):
-        model = _gemini_pick_model(api_key)
-
+    """
+    Gemini REST API ile template analizi.
+    Çalışan modeli otomatik bulur — ListModels'dan gelen sırayla dener,
+    404/not-available olanları atlar.
+    """
     try:
         structure = parse_template_structure(template_path, max_rows=30)
     except Exception as exc:
@@ -225,40 +234,44 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
 
     prompt = (
         f"{_SYSTEM_PROMPT}\n\n"
-        "Excel template yapısı (satır listesi, her satır hücre değerlerini içerir):\n\n"
+        "Excel template yapısı:\n\n"
         f"```json\n{json.dumps(structure, ensure_ascii=False, indent=2)}\n```\n\n"
         "Bu template için E-dem cell_map JSON'ını döndür."
     )
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
     }).encode("utf-8")
 
-    raw = ""
-    try:
-        req = urllib.request.Request(
-            url, data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+    # Model listesini al, her birini dene
+    candidates = _gemini_list_models(api_key)
+    if not candidates:
+        candidates = [
+            "gemini-2.5-flash-preview-04-17",
+            "gemini-2.5-pro-preview-03-25",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash-001",
+            "gemini-1.5-pro-latest",
+        ]
 
-        raw = data["candidates"][0]["content"]["parts"][0]["text"]
-        cell_map = json.loads(_extract_json(raw))
-        return {"cell_map": cell_map, "raw_response": raw, "error": None}
+    last_error = "Uygun model bulunamadı"
+    for m in candidates:
+        raw, err = _gemini_call(api_key, m, payload)
+        if err is None:
+            try:
+                cell_map = json.loads(_extract_json(raw))
+                return {"cell_map": cell_map, "raw_response": raw, "error": None}
+            except json.JSONDecodeError as jex:
+                return {"cell_map": {}, "raw_response": raw,
+                        "error": f"JSON parse hatası ({m}): {jex}"}
+        # 404 veya "no longer available" → sonrakini dene
+        if "404" in err or "not found" in err.lower() or "no longer available" in err.lower():
+            last_error = err
+            continue
+        # Başka hata (auth, quota vb.) → dur
+        return {"cell_map": {}, "raw_response": "", "error": err}
 
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        return {"cell_map": {}, "raw_response": raw,
-                "error": f"Gemini HTTP {exc.code}: {body[:400]}"}
-    except json.JSONDecodeError as exc:
-        return {"cell_map": {}, "raw_response": raw,
-                "error": f"Gemini yanıtı JSON parse hatası: {exc}"}
-    except Exception as exc:
-        return {"cell_map": {}, "raw_response": raw, "error": str(exc)}
+    return {"cell_map": {}, "raw_response": "", "error": last_error}
 
 
 async def _analyze_with_claude(template_path: str, api_key: str, model: str) -> dict:
