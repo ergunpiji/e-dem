@@ -189,9 +189,15 @@
       {# Formül sütunları #}
       <div>
         <div class="panel-section-title"><i class="bi bi-calculator me-1"></i>Formül Sütunları</div>
-        <div style="font-size:10px; color:#94a3b8; margin-bottom:6px;">
-          Sütun → Excel formülü. <code style="color:#fbbf24;">{row}</code> = satır no
+        <div style="font-size:10px; color:#94a3b8; margin-bottom:4px;">
+          <code style="color:#fbbf24;">{row}</code> = satır no &nbsp;·&nbsp; örn: <code style="color:#94a3b8;">=F{row}*G{row}</code>
         </div>
+        {% if detected_formulas != '{}' %}
+        <button onclick="loadDetectedFormulas()" class="btn btn-sm w-100 mb-1"
+                style="background:#0369a1; color:white; font-size:10px; padding:2px 6px;">
+          <i class="bi bi-magic me-1"></i>Şablondaki Formülleri Al
+        </button>
+        {% endif %}
         <div id="formulaList" style="margin-bottom:6px;"></div>
         <div style="display:flex; gap:4px; align-items:center;">
           <input id="fColInput" type="text" placeholder="Sütun" maxlength="3"
@@ -312,6 +318,8 @@ let columnMap    = {};     // { "B": "service_name" }
 let formulaCols  = {};     // { "G": "=F{row}*40.5" }
 let startRow     = null;
 let vatMode      = "exclusive";
+
+const DETECTED_FORMULAS = {{ detected_formulas | safe }};
 
 // ── Mevcut config yükle ──────────────────────────────────────────────────────
 (function loadExisting() {
@@ -461,6 +469,19 @@ function unassignCol(col) {
 }
 
 // ── Formül yönetimi ──────────────────────────────────────────────────────────
+function loadDetectedFormulas() {
+  if (!Object.keys(DETECTED_FORMULAS).length) return;
+  let added = 0;
+  for (const [col, fml] of Object.entries(DETECTED_FORMULAS)) {
+    if (!formulaCols[col.toUpperCase()]) {
+      formulaCols[col.toUpperCase()] = fml;
+      added++;
+    }
+  }
+  renderFormulaList();
+  if (added) alert(`${added} formül eklendi. Kaydetmeyi unutmayın.`);
+}
+
 function addFormula() {
   const col = document.getElementById("fColInput").value.trim().toUpperCase();
   const fml = document.getElementById("fFmlInput").value.trim();

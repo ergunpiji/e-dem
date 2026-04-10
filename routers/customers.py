@@ -483,9 +483,34 @@ def _read_excel_for_editor(path: str, max_rows: int = 50, max_cols: int = 20) ->
                 })
             rows.append(row_cells)
 
-        return {"rows": rows, "col_letters": col_letters, "error": None}
+        # Formül sütunlarını tespit et (data_only=False ile yeniden yükle)
+        detected_formulas = {}
+        try:
+            import re as _re
+            wb2 = openpyxl.load_workbook(path, data_only=False)
+            ws2 = wb2.active
+            for scan_row in range(1, min(real_max_row + 1, ws2.max_row + 1)):
+                row_has_formula = False
+                for ci in range(1, real_max_col + 1):
+                    cell2 = ws2.cell(row=scan_row, column=ci)
+                    if isinstance(cell2.value, str) and cell2.value.startswith("="):
+                        col_letter = get_column_letter(ci)
+                        # Satır numarasını {row} ile değiştir
+                        tpl = _re.sub(
+                            r'(?<=[A-Za-z\$])(' + str(scan_row) + r')(?=[^0-9]|$)',
+                            '{row}', cell2.value
+                        )
+                        detected_formulas[col_letter] = tpl
+                        row_has_formula = True
+                if row_has_formula:
+                    break   # ilk formül satırından al
+        except Exception:
+            pass
+
+        return {"rows": rows, "col_letters": col_letters,
+                "detected_formulas": detected_formulas, "error": None}
     except Exception as exc:
-        return {"rows": [], "col_letters": [], "error": str(exc)}
+        return {"rows": [], "col_letters": [], "detected_formulas": {}, "error": str(exc)}
 
 
 @router.get("/{customer_id}/template-editor", response_class=HTMLResponse, name="customers_template_editor")
@@ -522,12 +547,13 @@ async def customers_template_editor(
     cfg = customer.excel_config
 
     return templates.TemplateResponse("customers/template_editor.html", {
-        "request":         request,
-        "current_user":    current_user,
-        "customer":        customer,
-        "excel_data":      excel_data,
-        "existing_config": json.dumps(cfg, ensure_ascii=False),
-        "page_title":      f"{customer.name} — Şablon Eşleştirme",
+        "request":           request,
+        "current_user":      current_user,
+        "customer":          customer,
+        "excel_data":        excel_data,
+        "existing_config":   json.dumps(cfg, ensure_ascii=False),
+        "detected_formulas": json.dumps(excel_data.get("detected_formulas", {}), ensure_ascii=False),
+        "page_title":        f"{customer.name} — Şablon Eşleştirme",
     })
 
 
