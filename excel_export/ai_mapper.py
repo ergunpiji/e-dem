@@ -165,7 +165,7 @@ async def analyze_template(
     anthropic_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
 
     if gemini_key:
-        return await _analyze_with_gemini(template_path, gemini_key, model or "gemini-2.0-flash")
+        return await _analyze_with_gemini(template_path, gemini_key, model or "gemini-2.5-flash-preview-04-17")
     elif anthropic_key:
         return await _analyze_with_claude(template_path, anthropic_key, model or "claude-haiku-4-5-20251001")
     else:
