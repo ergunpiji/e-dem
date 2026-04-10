@@ -943,6 +943,14 @@ async def requests_preview(
     preview_data_excl = _preview_budget_data(budget, "exclusive")
     preview_data_incl = _preview_budget_data(budget, "inclusive")
 
+    # Müşteri template bilgisi (export butonu için)
+    cust_cfg          = customer.excel_config if customer else {}
+    has_cust_template = bool(
+        cust_cfg.get("cell_map") and
+        (getattr(customer, "excel_template_b64", "") or getattr(customer, "excel_template_path", ""))
+    )
+    cust_vat_mode     = cust_cfg.get("vat_mode", "exclusive")
+
     return templates.TemplateResponse("requests/preview.html", {
         "request":       request,
         "current_user":  current_user,
@@ -954,6 +962,8 @@ async def requests_preview(
         "approved_budgets": approved_budgets,
         "data_excl":     preview_data_excl,
         "data_incl":     preview_data_incl,
+        "has_cust_template": has_cust_template,
+        "cust_vat_mode":     cust_vat_mode,
         "page_title":    f"Teklif Önizleme — {req.request_no}",
     })
 

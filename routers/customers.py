@@ -293,8 +293,21 @@ async def customers_analyze_template(
         return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
 
     template_path = customer.excel_template_path or ""
+    b64_data = getattr(customer, "excel_template_b64", "") or ""
+
+    # Railway'de dosya uçmuş olabilir — b64'ten restore et
+    if b64_data and (not template_path or not os.path.exists(template_path)):
+        import base64 as _b64
+        _upload_dir = "static/uploads/customer_templates"
+        os.makedirs(_upload_dir, exist_ok=True)
+        template_path = os.path.join(_upload_dir, f"{customer_id}.xlsx")
+        with open(template_path, "wb") as _f:
+            _f.write(_b64.b64decode(b64_data))
+        customer.excel_template_path = template_path
+        db.commit()
+
     if not template_path or not os.path.exists(template_path):
-        return JSONResponse({"error": "Template dosyası yüklenmemiş"}, status_code=400)
+        return JSONResponse({"error": "Template dosyası yüklenmemiş veya bulunamadı"}, status_code=400)
 
     try:
         from excel_export import analyze_template

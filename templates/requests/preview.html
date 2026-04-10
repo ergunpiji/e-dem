@@ -154,9 +154,17 @@
     <button class="vat-btn"        id="btnIncl" onclick="setVat('inclusive')">Dahil</button>
   </div>
 
-  <a href="/requests/{{ req.id }}/export?vat=exclusive" class="btn btn-sm btn-light py-1" style="font-size:12px;">
+  {% if has_cust_template %}
+  <a href="/requests/{{ req.id }}/export?vat={{ cust_vat_mode }}" class="btn btn-sm btn-light py-1" style="font-size:12px;"
+     title="Müşteriye özel şablonla doldurulacak">
+    <i class="bi bi-file-earmark-excel me-1 text-success"></i>Müşteri Şablonu ile İndir
+  </a>
+  {% else %}
+  <a href="/requests/{{ req.id }}/export?vat=exclusive" class="btn btn-sm btn-light py-1" style="font-size:12px;"
+     title="Standart E-dem format">
     <i class="bi bi-file-earmark-excel me-1 text-success"></i>Excel İndir
   </a>
+  {% endif %}
   <button onclick="window.print()" class="btn btn-sm btn-outline-light py-1" style="font-size:12px;">
     <i class="bi bi-printer me-1"></i>Yazdır
   </button>
