@@ -186,6 +186,25 @@
         </div>
       </div>
 
+      {# Formül sütunları #}
+      <div>
+        <div class="panel-section-title"><i class="bi bi-calculator me-1"></i>Formül Sütunları</div>
+        <div style="font-size:10px; color:#94a3b8; margin-bottom:6px;">
+          Sütun → Excel formülü. <code style="color:#fbbf24;">{row}</code> = satır no
+        </div>
+        <div id="formulaList" style="margin-bottom:6px;"></div>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <input id="fColInput" type="text" placeholder="Sütun" maxlength="3"
+                 style="width:44px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
+                        border-radius:4px; padding:3px 5px; color:white; font-size:11px; text-transform:uppercase;">
+          <input id="fFmlInput" type="text" placeholder="=A{row}*B{row}"
+                 style="flex:1; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
+                        border-radius:4px; padding:3px 5px; color:white; font-size:11px; font-family:monospace;">
+          <button class="btn btn-sm py-0" onclick="addFormula()"
+                  style="background:#0ea5e9; color:white; font-size:11px; padding:3px 7px;">+</button>
+        </div>
+      </div>
+
       {# Temizle #}
       <button class="btn btn-sm btn-outline-danger w-100" onclick="clearAll()" style="font-size:11px;">
         <i class="bi bi-x-circle me-1"></i>Tümünü Temizle
@@ -256,29 +275,43 @@ const HEADER_FIELDS = {
 };
 
 const ROW_FIELDS = {
-  service_name:    "Hizmet Adı",
-  notes:           "Açıklama",
-  unit:            "Birim",
-  qty:             "Miktar",
-  nights:          "Gece",
-  sale_price:      "Birim Fiyat (Hariç KDV)",
-  sale_price_inc:  "Birim Fiyat (Dahil KDV)",
-  vat_rate:        "KDV %",
-  vat_pct:         "KDV Oranı",
-  total_excl:      "Toplam (KDV Hariç)",
-  total_incl:      "Toplam (KDV Dahil)",
-  sale_price_eur:  "EUR Birim Fiyat",
-  total_eur:       "EUR Toplam",
-  sale_price_usd:  "USD Birim Fiyat",
-  total_usd:       "USD Toplam",
+  service_name:          "Hizmet Adı",
+  notes:                 "Açıklama",
+  unit:                  "Birim",
+  qty:                   "Kişi / Adet",
+  nights:                "Gün / Gece",
+  vat_rate:              "KDV %",
+  vat_pct:               "KDV Oranı",
+  // Offer currency
+  sale_price:            "Birim Fiyat (Teklif Para Birimi, KDV Hariç)",
+  sale_price_inc:        "Birim Fiyat (Teklif, KDV Dahil)",
+  total_excl:            "Toplam (Teklif, KDV Hariç)",
+  total_incl:            "Toplam (Teklif, KDV Dahil)",
+  // Kur
+  kur:                   "Kur (TRY karşılığı)",
+  // TRY — servis bedeli hariç
+  sale_price_try:        "Birim Fiyat TL (SB Hariç)",
+  total_excl_try:        "Toplam TL (SB Hariç, KDV Hariç)",
+  total_incl_try:        "Toplam TL (SB Hariç, KDV Dahil)",
+  // Servis bedeli dahil
+  sale_price_sf:         "Birim Fiyat (SB Dahil, Teklif Birimi)",
+  sale_price_sf_try:     "Birim Fiyat TL (SB Dahil)",
+  total_incl_sf_try:     "Toplam TL (SB Dahil, KDV Hariç)",
+  total_incl_sf_vat_try: "Toplam TL (SB Dahil, KDV Dahil)",
+  // EUR / USD
+  sale_price_eur:        "EUR Birim Fiyat",
+  total_eur:             "EUR Toplam",
+  sale_price_usd:        "USD Birim Fiyat",
+  total_usd:             "USD Toplam",
 };
 
 // ── Durum ───────────────────────────────────────────────────────────────────
-let activeField = null;   // { key, type: 'header'|'row' }
-let headerMap   = {};     // { "B3": "event_name" }
-let columnMap   = {};     // { "B": "service_name" }
-let startRow    = null;
-let vatMode     = "exclusive";
+let activeField  = null;   // { key, type: 'header'|'row' }
+let headerMap    = {};     // { "B3": "event_name" }
+let columnMap    = {};     // { "B": "service_name" }
+let formulaCols  = {};     // { "G": "=F{row}*40.5" }
+let startRow     = null;
+let vatMode      = "exclusive";
 
 // ── Mevcut config yükle ──────────────────────────────────────────────────────
 (function loadExisting() {
@@ -290,9 +323,10 @@ let vatMode     = "exclusive";
   if (cm.header)      headerMap = Object.assign({}, cm.header);
   if (cm.data_block) {
     const db = cm.data_block;
-    if (db.columns)    columnMap = Object.assign({}, db.columns);
-    if (db.start_row)  startRow  = db.start_row;
-    if (db.end_anchor_text) document.getElementById("endAnchorInput").value = db.end_anchor_text || "";
+    if (db.columns)          columnMap  = Object.assign({}, db.columns);
+    if (db.formula_columns)  formulaCols = Object.assign({}, db.formula_columns);
+    if (db.start_row)        startRow   = db.start_row;
+    if (db.end_anchor_text)  document.getElementById("endAnchorInput").value = db.end_anchor_text || "";
     if (db.section_header_col) document.getElementById("sectionColInput").value = db.section_header_col || "";
     if (startRow) document.getElementById("startRowInput").value = startRow;
   }
@@ -426,9 +460,37 @@ function unassignCol(col) {
   renderTable();
 }
 
+// ── Formül yönetimi ──────────────────────────────────────────────────────────
+function addFormula() {
+  const col = document.getElementById("fColInput").value.trim().toUpperCase();
+  const fml = document.getElementById("fFmlInput").value.trim();
+  if (!col || !fml) return;
+  formulaCols[col] = fml;
+  document.getElementById("fColInput").value = "";
+  document.getElementById("fFmlInput").value = "";
+  renderFormulaList();
+}
+
+function removeFormula(col) {
+  delete formulaCols[col];
+  renderFormulaList();
+}
+
+function renderFormulaList() {
+  const el = document.getElementById("formulaList");
+  if (!Object.keys(formulaCols).length) { el.innerHTML = ""; return; }
+  el.innerHTML = Object.entries(formulaCols).map(([col, fml]) =>
+    `<div style="display:flex; align-items:center; gap:4px; margin-bottom:3px;">
+       <span style="background:#0ea5e9; color:white; border-radius:3px; padding:1px 5px; font-size:11px; font-weight:700; min-width:22px; text-align:center;">${col}</span>
+       <code style="flex:1; font-size:10px; color:#fbbf24; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${fml}">${fml}</code>
+       <span style="cursor:pointer; color:#f87171; font-size:12px;" onclick="removeFormula('${col}')">×</span>
+     </div>`
+  ).join("");
+}
+
 function clearAll() {
   if (!confirm("Tüm eşleştirmeleri temizle?")) return;
-  headerMap = {}; columnMap = {}; startRow = null;
+  headerMap = {}; columnMap = {}; formulaCols = {}; startRow = null;
   document.getElementById("startRowInput").value = "";
   document.getElementById("endAnchorInput").value = "";
   document.getElementById("sectionColInput").value = "";
@@ -436,6 +498,7 @@ function clearAll() {
   document.getElementById("modeHint").classList.remove("visible");
   renderChips();
   renderTable();
+  renderFormulaList();
 }
 
 // startRow input manuel giriş
@@ -463,6 +526,7 @@ function buildConfig() {
         end_anchor_text:    endAnchor,
         sheet:              null,
         columns:            columnMap,
+        formula_columns:    Object.keys(formulaCols).length ? formulaCols : undefined,
         section_header_col: secCol,
       },
     },
@@ -493,6 +557,7 @@ async function saveConfig() {
 // ── İlk render ───────────────────────────────────────────────────────────────
 renderChips();
 renderTable();
+renderFormulaList();
 </script>
 </body>
 </html>

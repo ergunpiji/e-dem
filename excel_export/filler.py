@@ -156,37 +156,56 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
 def _row_value(field: str, row: dict, budget, currency: str) -> float | str:
     qty    = float(row.get("qty",    1) or 1)
     nights = float(row.get("nights", 1) or 1)
-    sale   = float(row.get("sale_price", 0) or 0)
+    sale0  = float(row.get("sale_price", 0) or 0)   # ham (row_cur cinsinden)
     vat    = float(row.get("vat_rate",   0) or 0)
+    sf_pct = float(budget.service_fee_pct or 0)
 
-    row_cur = (row.get("currency") or "TRY").upper()
-    if row_cur != currency:
-        row_rate   = budget.rate_to_try(row_cur) or 1.0
-        offer_rate = budget.rate_to_try(currency) or 1.0
-        sale = sale * row_rate / offer_rate
+    row_cur    = (row.get("currency") or "TRY").upper()
+    row_rate   = budget.rate_to_try(row_cur) or 1.0   # 1 row_cur = ? TRY
+    offer_rate = budget.rate_to_try(currency) or 1.0  # 1 offer_cur = ? TRY
+
+    # offer_currency cinsinden birim fiyat
+    sale = sale0 * row_rate / offer_rate if row_cur != currency else sale0
+
+    # TRY cinsinden yardımcı değerler
+    sale_try = sale0 * row_rate           # birim fiyat TRY
+    sf_mul   = 1 + sf_pct / 100          # servis bedeli çarpanı
 
     def _to_cur(target: str) -> float:
-        try_val = float(row.get("sale_price", 0) or 0) * (budget.rate_to_try(row_cur) or 1.0)
-        t_rate  = budget.rate_to_try(target) or 1.0
-        return try_val / t_rate
+        t_rate = budget.rate_to_try(target) or 1.0
+        return (sale0 * row_rate) / t_rate
 
     match field:
-        case "service_name":   return row.get("service_name", "")
-        case "notes":          return row.get("notes", "")
-        case "unit":           return row.get("unit", "Adet")
-        case "qty":            return qty
-        case "nights":         return nights
-        case "vat_rate":       return vat
-        case "vat_pct":        return vat / 100
-        case "sale_price":     return round(sale, 2)
-        case "sale_price_inc": return round(sale * (1 + vat / 100), 2)
-        case "total_excl":     return round(sale * qty * nights, 2)
-        case "total_incl":     return round(sale * (1 + vat / 100) * qty * nights, 2)
-        case "sale_price_eur": return round(_to_cur("EUR"), 2)
-        case "sale_price_usd": return round(_to_cur("USD"), 2)
-        case "total_eur":      return round(_to_cur("EUR") * qty * nights, 2)
-        case "total_usd":      return round(_to_cur("USD") * qty * nights, 2)
-        case _:                return ""
+        case "service_name":         return row.get("service_name", "")
+        case "notes":                return row.get("notes", "")
+        case "unit":                 return row.get("unit", "Adet")
+        case "qty":                  return qty
+        case "nights":               return nights
+        case "vat_rate":             return vat
+        case "vat_pct":              return vat / 100
+        # Offer currency
+        case "sale_price":           return round(sale, 2)
+        case "sale_price_inc":       return round(sale * (1 + vat / 100), 2)
+        case "total_excl":           return round(sale * qty * nights, 2)
+        case "total_incl":           return round(sale * (1 + vat / 100) * qty * nights, 2)
+        # EUR / USD
+        case "sale_price_eur":       return round(_to_cur("EUR"), 2)
+        case "sale_price_usd":       return round(_to_cur("USD"), 2)
+        case "total_eur":            return round(_to_cur("EUR") * qty * nights, 2)
+        case "total_usd":            return round(_to_cur("USD") * qty * nights, 2)
+        # Kur (satırın para biriminin TRY değeri)
+        case "kur":                  return round(row_rate, 4)
+        # TRY bazlı (servis bedeli hariç)
+        case "sale_price_try":       return round(sale_try, 2)
+        case "total_excl_try":       return round(sale_try * qty * nights, 2)
+        case "total_incl_try":       return round(sale_try * (1 + vat / 100) * qty * nights, 2)
+        # TRY bazlı (servis bedeli dahil, KDV hariç)
+        case "sale_price_sf":        return round(sale * sf_mul, 2)
+        case "sale_price_sf_try":    return round(sale_try * sf_mul, 2)
+        case "total_incl_sf_try":    return round(sale_try * sf_mul * qty * nights, 2)
+        # TRY bazlı (servis bedeli dahil, KDV dahil)
+        case "total_incl_sf_vat_try":return round(sale_try * sf_mul * (1 + vat / 100) * qty * nights, 2)
+        case _:                      return ""
 
 
 # ── Formül şablonu çıkarıcı ────────────────────────────────────────────────────
@@ -273,10 +292,17 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
                 break
 
     # 3. Formül şablonlarını temizlemeden önce çıkar
-    written_cols = {c.upper() for c in col_defs}
-    formula_cols = _extract_formula_templates(
+    #    Önce cell_map'ten kullanıcı tanımlı formüller al, sonra template'den otomatik bul
+    user_formula_cols: dict[str, str] = {
+        c.upper(): tpl
+        for c, tpl in (data_block.get("formula_columns") or {}).items()
+    }
+    written_cols = {c.upper() for c in col_defs} | set(user_formula_cols.keys())
+    auto_formula_cols = _extract_formula_templates(
         ws, start_row, written_cols, ws.max_column
     )
+    # Kullanıcı tanımlı formüller template'den çıkarılanlara göre önceliklidir
+    formula_cols = {**auto_formula_cols, **user_formula_cols}
     print(f"[FILLER] start_row={start_row} anchor={anchor_row} written={sorted(written_cols)} formula_cols={dict(formula_cols)}", flush=True)
 
     # 4. Veri alanını temizle (start_row → anchor+10 arası)
