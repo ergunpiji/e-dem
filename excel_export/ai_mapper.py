@@ -240,7 +240,7 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
     )
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
     }).encode("utf-8")
 
     # Model listesini al, her birini dene
@@ -301,7 +301,7 @@ async def _analyze_with_claude(template_path: str, api_key: str, model: str) -> 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=1024,
+            max_tokens=4096,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
         )
