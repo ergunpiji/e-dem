@@ -152,18 +152,73 @@ def _extract_json(text: str) -> str:
 async def analyze_template(
     template_path: str,
     api_key: str | None = None,
-    model: str = "claude-opus-4-6",
+    model: str | None = None,
 ) -> dict:
     """
-    Claude API kullanarak template yapısını analiz eder.
+    AI ile template analizi.
+    Önce GEMINI_API_KEY, yoksa ANTHROPIC_API_KEY kullanır.
 
     Returns:
-        {
-            "cell_map": dict,       # başarılıysa dolu
-            "raw_response": str,    # ham Claude yanıtı
-            "error": str | None,    # hata mesajı
-        }
+        {"cell_map": dict, "raw_response": str, "error": str | None}
     """
+    gemini_key    = os.environ.get("GEMINI_API_KEY", "")
+    anthropic_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+
+    if gemini_key:
+        return await _analyze_with_gemini(template_path, gemini_key, model or "gemini-2.0-flash")
+    elif anthropic_key:
+        return await _analyze_with_claude(template_path, anthropic_key, model or "claude-haiku-4-5-20251001")
+    else:
+        return {
+            "cell_map": {},
+            "raw_response": "",
+            "error": "API anahtarı bulunamadı. GEMINI_API_KEY veya ANTHROPIC_API_KEY set edin.",
+        }
+
+
+async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> dict:
+    """Gemini API ile template analizi."""
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        return {
+            "cell_map": {},
+            "raw_response": "",
+            "error": "google-generativeai paketi kurulu değil. pip install google-generativeai",
+        }
+
+    try:
+        structure = parse_template_structure(template_path, max_rows=30)
+    except Exception as exc:
+        return {"cell_map": {}, "raw_response": "", "error": str(exc)}
+
+    prompt = (
+        f"{_SYSTEM_PROMPT}\n\n"
+        "Excel template yapısı (satır listesi, her satır hücre değerlerini içerir):\n\n"
+        f"```json\n{json.dumps(structure, ensure_ascii=False, indent=2)}\n```\n\n"
+        "Bu template için E-dem cell_map JSON'ını döndür."
+    )
+
+    raw = ""
+    try:
+        genai.configure(api_key=api_key)
+        gemini = genai.GenerativeModel(model)
+        response = gemini.generate_content(prompt)
+        raw = response.text
+        cell_map = json.loads(_extract_json(raw))
+        return {"cell_map": cell_map, "raw_response": raw, "error": None}
+    except json.JSONDecodeError as exc:
+        return {
+            "cell_map": {},
+            "raw_response": raw,
+            "error": f"Gemini yanıtı JSON parse hatası: {exc}",
+        }
+    except Exception as exc:
+        return {"cell_map": {}, "raw_response": raw, "error": str(exc)}
+
+
+async def _analyze_with_claude(template_path: str, api_key: str, model: str) -> dict:
+    """Claude (Anthropic) API ile template analizi."""
     try:
         import anthropic
     except ImportError:
@@ -171,14 +226,6 @@ async def analyze_template(
             "cell_map": {},
             "raw_response": "",
             "error": "anthropic paketi kurulu değil. pip install anthropic",
-        }
-
-    key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key:
-        return {
-            "cell_map": {},
-            "raw_response": "",
-            "error": "ANTHROPIC_API_KEY ortam değişkeni bulunamadı",
         }
 
     try:
@@ -194,7 +241,7 @@ async def analyze_template(
 
     raw = ""
     try:
-        client = anthropic.Anthropic(api_key=key)
+        client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
             max_tokens=1024,
@@ -204,7 +251,6 @@ async def analyze_template(
         raw = response.content[0].text
         cell_map = json.loads(_extract_json(raw))
         return {"cell_map": cell_map, "raw_response": raw, "error": None}
-
     except json.JSONDecodeError as exc:
         return {
             "cell_map": {},
@@ -212,8 +258,4 @@ async def analyze_template(
             "error": f"Claude yanıtı JSON parse hatası: {exc}",
         }
     except Exception as exc:
-        return {
-            "cell_map": {},
-            "raw_response": raw,
-            "error": str(exc),
-        }
+        return {"cell_map": {}, "raw_response": raw, "error": str(exc)}
