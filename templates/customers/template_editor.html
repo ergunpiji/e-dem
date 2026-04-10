@@ -243,9 +243,10 @@
               <input id="summarySourceSheet" type="text" placeholder="Sheet2">
               <div style="font-size:10px; color:#94a3b8; margin-top:3px;">Excel dosyasındaki özet sayfasının adı</div>
 
+              {# ── Header hücreleri ── #}
               <div style="margin-top:8px;">
                 <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8; margin-bottom:4px;">
-                  Hücre Eşleştirmeleri
+                  Header Hücreleri
                 </div>
                 <div id="summaryHdrList" style="margin-bottom:5px;"></div>
                 <div style="display:flex; gap:4px; align-items:center;">
@@ -257,6 +258,41 @@
                   </select>
                   <button class="btn btn-sm py-0" onclick="addSummaryHdr()"
                     style="background:#0ea5e9; color:white; font-size:11px; padding:3px 7px;">+</button>
+                </div>
+              </div>
+
+              {# ── Satır / data block ── #}
+              <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,.1);">
+                <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8; margin-bottom:4px;">
+                  Bütçe Satırları
+                </div>
+                <div style="font-size:10px; color:#94a3b8; margin-bottom:6px;">
+                  Her bütçe için bir satır yazılır. Başlangıç satırını ve hangi sütuna hangi alanın geleceğini belirtin.
+                </div>
+                <label>Başlangıç Satırı</label>
+                <input id="sumStartRow" type="number" min="1" placeholder="örn: 10"
+                  style="width:70px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:4px; padding:3px 5px; color:white; font-size:11px;">
+
+                <div style="margin-top:6px;">
+                  <div id="sumColList" style="margin-bottom:5px;"></div>
+                  <div style="display:flex; gap:4px; align-items:center;">
+                    <input id="sColLetter" type="text" placeholder="Sütun" maxlength="3"
+                      style="width:46px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:4px; padding:3px 5px; color:white; font-size:11px; text-transform:uppercase;">
+                    <select id="sColField"
+                      style="flex:1; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:4px; padding:3px 4px; color:white; font-size:11px;">
+                      <option value="">-- Alan --</option>
+                      <option value="venue_name">Mekan Adı</option>
+                      <option value="currency">Para Birimi</option>
+                      <option value="total_sale_excl">Toplam Satış (KDV Hariç)</option>
+                      <option value="total_sale_incl">Toplam Satış (KDV Dahil)</option>
+                      <option value="total_cost_excl">Toplam Maliyet (KDV Hariç)</option>
+                      <option value="total_cost_incl">Toplam Maliyet (KDV Dahil)</option>
+                      <option value="margin_pct">Kar Marjı %</option>
+                      <option value="budget_index">Sıra No</option>
+                    </select>
+                    <button class="btn btn-sm py-0" onclick="addSumCol()"
+                      style="background:#0ea5e9; color:white; font-size:11px; padding:3px 7px;">+</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -373,7 +409,8 @@ let startRow     = null;
 let vatMode      = "exclusive";
 
 // Özet sayfa durumu
-let summaryHeaderMap = {};  // { "B3": "event_name" } — template modu için
+let summaryHeaderMap = {};  // { "B3": "event_name" } — template modu header
+let summaryColMap    = {};  // { "B": "venue_name" }  — template modu satır sütunları
 
 const DETECTED_FORMULAS = {{ detected_formulas | safe }};
 
@@ -397,10 +434,14 @@ const DETECTED_FORMULAS = {{ detected_formulas | safe }};
   if (cm.summary) {
     const s = cm.summary;
     document.getElementById("summaryEnabled").checked = !!s.enabled;
-    if (s.sheet_name) document.getElementById("summarySheetName").value = s.sheet_name;
-    if (s.mode)       document.getElementById("summaryMode").value = s.mode;
+    if (s.sheet_name)   document.getElementById("summarySheetName").value = s.sheet_name;
+    if (s.mode)         document.getElementById("summaryMode").value = s.mode;
     if (s.source_sheet) document.getElementById("summarySourceSheet").value = s.source_sheet;
-    if (s.header)     summaryHeaderMap = Object.assign({}, s.header);
+    if (s.header)       summaryHeaderMap = Object.assign({}, s.header);
+    if (s.data_block) {
+      if (s.data_block.start_row) document.getElementById("sumStartRow").value = s.data_block.start_row;
+      if (s.data_block.columns)   summaryColMap = Object.assign({}, s.data_block.columns);
+    }
     updateSummaryUI();
   }
 })();
@@ -604,9 +645,9 @@ function updateSummaryUI() {
 
 function updateSummaryModeUI() {
   const mode = document.getElementById("summaryMode").value;
-  document.getElementById("summaryAutoNote").style.display    = mode === "auto"     ? "" : "none";
+  document.getElementById("summaryAutoNote").style.display     = mode === "auto"     ? "" : "none";
   document.getElementById("summaryTemplateOpts").style.display = mode === "template" ? "" : "none";
-  if (mode === "template") renderSummaryHdrList();
+  if (mode === "template") { renderSummaryHdrList(); renderSumColList(); }
 }
 
 document.getElementById("summaryEnabled").addEventListener("change", updateSummaryUI);
@@ -648,6 +689,46 @@ function renderSummaryHdrList() {
   ).join("");
 }
 
+// Özet satır sütun yönetimi
+const SUMMARY_ROW_FIELDS = {
+  venue_name:      "Mekan Adı",
+  currency:        "Para Birimi",
+  total_sale_excl: "Toplam Satış (KDV Hariç)",
+  total_sale_incl: "Toplam Satış (KDV Dahil)",
+  total_cost_excl: "Toplam Maliyet (KDV Hariç)",
+  total_cost_incl: "Toplam Maliyet (KDV Dahil)",
+  margin_pct:      "Kar Marjı %",
+  budget_index:    "Sıra No",
+};
+
+function addSumCol() {
+  const col   = document.getElementById("sColLetter").value.trim().toUpperCase();
+  const field = document.getElementById("sColField").value;
+  if (!col || !field) return;
+  summaryColMap[col] = field;
+  document.getElementById("sColLetter").value = "";
+  document.getElementById("sColField").value  = "";
+  renderSumColList();
+}
+
+function removeSumCol(col) {
+  delete summaryColMap[col];
+  renderSumColList();
+}
+
+function renderSumColList() {
+  const el = document.getElementById("sumColList");
+  if (!el) return;
+  if (!Object.keys(summaryColMap).length) { el.innerHTML = ""; return; }
+  el.innerHTML = Object.entries(summaryColMap).map(([col, field]) =>
+    `<div style="display:flex; align-items:center; gap:4px; margin-bottom:3px;">
+       <span style="background:#0ea5e9; color:white; border-radius:3px; padding:1px 5px; font-size:11px; font-weight:700; min-width:22px; text-align:center;">${col}</span>
+       <span style="flex:1; font-size:10px; color:#fbbf24; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${SUMMARY_ROW_FIELDS[field] || field}</span>
+       <span style="cursor:pointer; color:#f87171; font-size:12px;" onclick="removeSumCol('${col}')">×</span>
+     </div>`
+  ).join("");
+}
+
 function buildSummaryConfig() {
   const enabled = document.getElementById("summaryEnabled").checked;
   if (!enabled) return { enabled: false };
@@ -657,6 +738,12 @@ function buildSummaryConfig() {
   if (mode === "template") {
     cfg.source_sheet = document.getElementById("summarySourceSheet").value.trim() || null;
     if (Object.keys(summaryHeaderMap).length) cfg.header = summaryHeaderMap;
+    const startRow = parseInt(document.getElementById("sumStartRow").value);
+    if (!isNaN(startRow) || Object.keys(summaryColMap).length) {
+      cfg.data_block = {};
+      if (!isNaN(startRow))               cfg.data_block.start_row = startRow;
+      if (Object.keys(summaryColMap).length) cfg.data_block.columns = summaryColMap;
+    }
   }
   return cfg;
 }

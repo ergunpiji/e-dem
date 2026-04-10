@@ -570,6 +570,7 @@ def _fill_summary_template(wb, entries: list, summary_cfg: dict) -> None:
     source_sheet = summary_cfg.get("source_sheet")
     sheet_name   = summary_cfg.get("sheet_name") or "Teklif Özeti"
     header_map   = summary_cfg.get("header") or {}
+    data_block   = summary_cfg.get("data_block") or {}
 
     if not source_sheet or source_sheet not in wb.sheetnames:
         _add_summary_sheet_auto(wb, entries, sheet_name)
@@ -588,6 +589,7 @@ def _fill_summary_template(wb, entries: list, summary_cfg: dict) -> None:
         first.get("customer"), first.get("creator"),
     )
 
+    # Header hücreleri
     for cell_addr, field_name in header_map.items():
         val = hdr_vals.get(field_name)
         if val is not None:
@@ -596,6 +598,26 @@ def _fill_summary_template(wb, entries: list, summary_cfg: dict) -> None:
                 ws[cell_addr.upper()].font = Font(color="000000")
             except Exception:
                 pass
+
+    # Veri satırları (her bütçe → bir satır)
+    if data_block:
+        start_row = int(data_block.get("start_row") or 1)
+        col_defs  = data_block.get("columns") or {}
+
+        for i, entry in enumerate(entries):
+            totals = _budget_totals(entry["budget"])
+            if totals["total_sale_excl"] and totals["total_cost_excl"]:
+                m = (totals["total_sale_excl"] - totals["total_cost_excl"]) \
+                    / totals["total_sale_excl"] * 100
+                totals["margin_pct"] = round(m, 1)
+            else:
+                totals["margin_pct"] = 0.0
+            totals["budget_index"] = i + 1
+
+            row_num = start_row + i
+            for col_letter, field_name in col_defs.items():
+                val = totals.get(field_name, "")
+                _safe_set(ws, row_num, col_letter, val, font=_DAT_FONT())
 
 
 # ── Tek bütçe export ──────────────────────────────────────────────────────────
