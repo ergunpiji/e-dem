@@ -66,6 +66,26 @@ def _TOT_FILL(): return PatternFill(fill_type="solid", fgColor="1A3A5C")
 def _DAT_FONT(): return Font(color="000000", size=10)
 
 
+def _sf_sale(budget, currency: str) -> float:
+    """Hizmet bedeli tutarını offer_currency cinsinden hesaplar."""
+    pct = float(budget.service_fee_pct or 0)
+    if not pct:
+        return 0.0
+    offer_rate = budget.rate_to_try(currency) or 1.0
+    base = 0.0
+    for r in budget.rows:
+        if r.get("is_service_fee") or r.get("is_accommodation_tax"):
+            continue
+        sale      = float(r.get("sale_price", 0) or 0)
+        qty       = float(r.get("qty",    1) or 1)
+        nights    = float(r.get("nights", 1) or 1)
+        row_cur   = (r.get("currency") or "TRY").upper()
+        row_rate  = budget.rate_to_try(row_cur) or 1.0
+        conv      = row_rate / offer_rate
+        base     += sale * qty * nights * conv
+    return round(base * pct / 100, 2)
+
+
 # ── Header alan çözücüleri ─────────────────────────────────────────────────────
 def _header_resolvers(budget, request, customer, creator) -> dict:
     req = request
@@ -103,6 +123,11 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
         "usd_rate":       budget.rate_to_try("USD"),
         "attendee_count": (getattr(req, "attendee_count", None) or ""),
         "city":           cities,
+        # Servis bedeli
+        "sf_pct":         float(budget.service_fee_pct or 0),
+        "sf_sale":        _sf_sale(budget, currency),
+        "sf_vat":         round(_sf_sale(budget, currency) * 0.20, 2),
+        "sf_total":       round(_sf_sale(budget, currency) * 1.20, 2),
     }
 
 
