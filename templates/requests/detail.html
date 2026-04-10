@@ -1215,6 +1215,42 @@ const REQ_DATA = {
   quote_deadline:  {{ (req.quote_deadline or '') | tojson }},
 };
 
+// ─── E-posta Şablonları (Admin tarafından yönetilir) ───
+const EMAIL_TEMPLATES = {{ email_templates_json | tojson }};
+const SETTINGS_CTX    = {{ settings_ctx | tojson }};
+
+// Şablon render: {variable} → değer (eksik key'lerde olduğu gibi bırak)
+function renderEmailTpl(tpl, extra) {
+  const ctx = Object.assign({
+    event_name:      REQ_DATA.event_name,
+    request_no:      REQ_DATA.request_no,
+    client_name:     REQ_DATA.client_name,
+    check_in:        fmtDate(REQ_DATA.check_in),
+    check_out:       fmtDate(REQ_DATA.check_out),
+    accom_check_in:  fmtDate(REQ_DATA.accom_check_in),
+    accom_check_out: fmtDate(REQ_DATA.accom_check_out),
+    attendee_count:  REQ_DATA.attendee_count,
+    quote_deadline:  deadlineDate(),
+    company_name:    SETTINGS_CTX.company_name,
+    company_email:   SETTINGS_CTX.company_email,
+    company_phone:   SETTINGS_CTX.company_phone,
+    email_signature: SETTINGS_CTX.email_signature,
+  }, extra || {});
+  return tpl.replace(/\{(\w+)\}/g, (_, key) => (ctx[key] !== undefined ? ctx[key] : `{${key}}`));
+}
+
+function getTplSubject(slug, extra) {
+  const t = EMAIL_TEMPLATES[slug];
+  if (!t) return '';
+  return renderEmailTpl(t.subject_tpl, extra);
+}
+
+function getTplBody(slug, extra) {
+  const t = EMAIL_TEMPLATES[slug];
+  if (!t) return '';
+  return renderEmailTpl(t.body_tpl, extra);
+}
+
 // Seçili tüm tedarikçiler (supplier_type bilgisi dahil)
 const PREF_VENUES = [
   {% for venue in venues %}{% if venue.id in req.preferred_venues %}
@@ -1648,11 +1684,27 @@ function escHtml(s) {
 }
 
 function _buildConfirmEmailBody(venueName) {
+  const body = getTplBody('confirm_venue', { venue_name: venueName || '' });
+  if (body) return body;
+  // fallback (şablon tanımlı değilse)
   return `Sayın Yetkili,\n\n${REQ_EVENT_NAME} etkinliğimiz için hazırladığınız teklif değerlendirmemiz tamamlanmış olup mekanınız konfirme edilmiştir.\n\nReferans No: ${REQ_REF_NO}\nEtkinlik Tarihleri: ${REQ_CHECK_IN} – ${REQ_CHECK_OUT}\n\nKesin maliyet fiyatlarınızı iletmenizi rica ederiz.\n\nSaygılarımızla`;
 }
 
+function _buildConfirmSubject(venueName) {
+  const subj = getTplSubject('confirm_venue', { venue_name: venueName || '' });
+  return subj || `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Konfirme Bildirimi`;
+}
+
 function _buildCancelEmailBody(venueName) {
+  const body = getTplBody('cancel_venue', { venue_name: venueName || 'mekanınız' });
+  if (body) return body;
+  // fallback
   return `Sayın Yetkili,\n\n${REQ_EVENT_NAME} etkinliğimiz kapsamında ${venueName || 'mekanınız'} için tarafınıza ilettiğimiz teklif talebini iptal etmek zorunda kaldık.\n\nReferans No: ${REQ_REF_NO}\nEtkinlik Tarihleri: ${REQ_CHECK_IN} – ${REQ_CHECK_OUT}\n\nGösterdiğiniz ilgi için teşekkür eder, ilerleyen projelerde tekrar bir araya gelmeyi umuyoruz.\n\nSaygılarımızla`;
+}
+
+function _buildCancelSubject(venueName) {
+  const subj = getTplSubject('cancel_venue', { venue_name: venueName || '' });
+  return subj || `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Teklif Talebi İptali`;
 }
 
 function goConfirmStep2() {
@@ -1667,7 +1719,7 @@ function goConfirmStep2() {
   // Seçilen mekana konfirme maili
   const confirmBody = document.getElementById('confirmEmailBody');
   if (selBudget) {
-    const subj = `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Konfirme Bildirimi`;
+    const subj = _buildConfirmSubject(selBudget.venue_name);
     confirmBody.innerHTML = _emailCard(
       `${selBudget.venue_name || 'Seçilen Mekan'} — Konfirme Bildirimi`,
       '#16a34a', '#d1fae5', '#065f46', 'bi bi-check-circle',
@@ -1680,7 +1732,7 @@ function goConfirmStep2() {
   if (others.length > 0) {
     let html = `<div class="fw-semibold mb-2" style="font-size:13px; color:#991b1b;"><i class="bi bi-x-circle me-1"></i>Diğer Mekanlara — İptal Bildirimi</div>`;
     others.forEach(b => {
-      const subj = `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Teklif Talebi İptali`;
+      const subj = _buildCancelSubject(b.venue_name);
       html += _emailCard(
         b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
         subj, _buildCancelEmailBody(b.venue_name), b.contacts || []
@@ -1712,7 +1764,7 @@ function toggleCancelEmailSection(checked) {
     } else {
       let html = '';
       targets.forEach(b => {
-        const subj = `${REQ_EVENT_NAME} - ${REQ_REF_NO} - Teklif Talebi İptali`;
+        const subj = _buildCancelSubject(b.venue_name);
         html += _emailCard(
           b.venue_name || 'Mekan', '#dc2626', '#fee2e2', '#991b1b', 'bi bi-x-circle',
           subj, _buildCancelEmailBody(b.venue_name), b.contacts || []
@@ -1750,13 +1802,11 @@ function sendOfferEmail(reqId, customerEmail, eventName, refNo) {
 
   // 3) Mail istemcisini aç (müşteri adresi varsa)
   if (customerEmail) {
-    const subject = encodeURIComponent(`Etkinlik Teklifi: ${eventName} — ${refNo}`);
-    const body    = encodeURIComponent(
-      `Sayın Yetkili,\n\n` +
-      `${eventName} etkinliğiniz için hazırlanan teklif dosyasını ekte sunmaktayız.\n\n` +
-      `Referans No: ${refNo}\n\n` +
-      `Teklifi inceleyip dönüş yapmanızı rica ederiz.\n\nSaygılarımızla`
-    );
+    const offerSubjTpl = getTplSubject('offer_customer') || `Etkinlik Teklifi: {event_name} — {request_no}`;
+    const offerBodyTpl = getTplBody('offer_customer') ||
+      `Sayın Yetkili,\n\n{event_name} etkinliğiniz için hazırlanan teklif dosyasını ekte sunmaktayız.\n\nReferans No: {request_no}\n\nTeklifi inceleyip dönüş yapmanızı rica ederiz.\n\n{email_signature}`;
+    const subject = encodeURIComponent(offerSubjTpl);
+    const body    = encodeURIComponent(offerBodyTpl);
     setTimeout(() => {
       window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank');
     }, 800);

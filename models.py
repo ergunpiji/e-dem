@@ -773,6 +773,141 @@ class CustomCategory(Base):
         }
 
 
+class EmailTemplate(Base):
+    """Admin tarafından yönetilen e-posta şablonları"""
+    __tablename__ = "email_templates"
+
+    id          = Column(String(36), primary_key=True, default=_uuid)
+    slug        = Column(String(64), unique=True, nullable=False)   # rfq | confirm_venue | cancel_venue | ...
+    name        = Column(String(200), nullable=False)
+    description = Column(String(400), default="")
+    subject_tpl = Column(String(400), nullable=False)               # {event_name}, {request_no}, ...
+    body_tpl    = Column(Text, nullable=False)                       # plain text, {variable} placeholders
+    active      = Column(Boolean, default=True, nullable=False)
+    created_at  = Column(DateTime, default=_now, nullable=False)
+    updated_at  = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    def render(self, ctx: dict) -> tuple[str, str]:
+        """subject, body döner — eksik key'lerde boş string"""
+        class _Safe(dict):
+            def __missing__(self, key):
+                return f"{{{key}}}"
+        safe = _Safe(ctx)
+        return self.subject_tpl.format_map(safe), self.body_tpl.format_map(safe)
+
+    def to_dict(self) -> dict:
+        return {
+            "id":          self.id,
+            "slug":        self.slug,
+            "name":        self.name,
+            "description": self.description,
+            "subject_tpl": self.subject_tpl,
+            "body_tpl":    self.body_tpl,
+            "active":      self.active,
+        }
+
+
+# E-posta şablonu değişken referansı (UI'da gösterilir)
+EMAIL_TEMPLATE_VARS = [
+    {"key": "event_name",      "label": "Etkinlik Adı"},
+    {"key": "request_no",      "label": "Referans No"},
+    {"key": "client_name",     "label": "Müşteri Adı"},
+    {"key": "check_in",        "label": "Etkinlik Başlangıç Tarihi"},
+    {"key": "check_out",       "label": "Etkinlik Bitiş Tarihi"},
+    {"key": "accom_check_in",  "label": "Konaklama Giriş Tarihi"},
+    {"key": "accom_check_out", "label": "Konaklama Çıkış Tarihi"},
+    {"key": "attendee_count",  "label": "Katılımcı Sayısı"},
+    {"key": "venue_name",      "label": "Mekan / Tedarikçi Adı"},
+    {"key": "contact_name",    "label": "Kontak Kişi Adı"},
+    {"key": "quote_deadline",  "label": "Teklif Son Tarihi"},
+    {"key": "company_name",    "label": "Şirket Adı"},
+    {"key": "company_email",   "label": "Şirket E-posta"},
+    {"key": "company_phone",   "label": "Şirket Telefonu"},
+    {"key": "email_signature", "label": "E-posta İmzası"},
+]
+
+# Varsayılan şablon içerikleri (seed için)
+_EMAIL_TEMPLATE_DEFAULTS = [
+    {
+        "slug": "rfq",
+        "name": "RFQ — Tedarikçiye Fiyat Teklifi Talebi",
+        "description": "Tedarikçilere gönderilen fiyat teklifi talep e-postası konu satırı.",
+        "subject_tpl": "{event_name} — Fiyat Teklifi Talebi / {request_no}",
+        "body_tpl": (
+            "Sayın {contact_name},\n\n"
+            "{client_name} adına organize ettiğimiz {event_name} etkinliği için fiyat teklifinizi talep etmekteyiz.\n\n"
+            "Referans No : {request_no}\n"
+            "Tarihler    : {check_in} – {check_out}\n"
+            "Katılımcı   : {attendee_count} kişi\n\n"
+            "Detaylı talep listesi aşağıda yer almaktadır. Son teklif tarihi: {quote_deadline}\n\n"
+            "{email_signature}"
+        ),
+    },
+    {
+        "slug": "confirm_venue",
+        "name": "Konfirme Bildirimi — Seçilen Mekan",
+        "description": "Müşteri onayı sonrasında seçilen venue'ya gönderilen konfirme e-postası.",
+        "subject_tpl": "{event_name} — Konfirme Bildirimi / {request_no}",
+        "body_tpl": (
+            "Sayın {contact_name},\n\n"
+            "{event_name} etkinliğimiz için hazırladığınız teklif değerlendirmemiz tamamlanmış olup "
+            "mekanınız / hizmetiniz konfirme edilmiştir.\n\n"
+            "Referans No  : {request_no}\n"
+            "Etkinlik     : {event_name}\n"
+            "Müşteri      : {client_name}\n"
+            "Tarihler     : {check_in} – {check_out}\n"
+            "Katılımcı    : {attendee_count} kişi\n\n"
+            "Kesin maliyet fiyatlarınızı en kısa sürede iletmenizi rica ederiz.\n\n"
+            "{email_signature}"
+        ),
+    },
+    {
+        "slug": "cancel_venue",
+        "name": "İptal Bildirimi — Seçilmeyen Mekan",
+        "description": "Konfirme veya iptal sonrasında seçilmeyen venue'lara gönderilen teşekkür / iptal e-postası.",
+        "subject_tpl": "{event_name} — Teklif Talebi İptali / {request_no}",
+        "body_tpl": (
+            "Sayın {contact_name},\n\n"
+            "{event_name} etkinliğimiz kapsamında {venue_name} için tarafınıza ilettiğimiz "
+            "teklif talebini iptal etmek durumunda kaldık.\n\n"
+            "Referans No  : {request_no}\n"
+            "Etkinlik     : {event_name}\n"
+            "Tarihler     : {check_in} – {check_out}\n\n"
+            "Gösterdiğiniz ilgi ve hazırladığınız teklif için teşekkür eder, "
+            "ilerleyen projelerde tekrar bir araya gelmeyi umuyoruz.\n\n"
+            "{email_signature}"
+        ),
+    },
+    {
+        "slug": "budget_to_manager",
+        "name": "Bütçe Hazır — Manager Bildirimi",
+        "description": "E-dem bütçeyi manager'a gönderdiğinde oluşturulan bildirim e-postası.",
+        "subject_tpl": "Yeni Bütçe Hazır: {request_no} — {event_name}",
+        "body_tpl": (
+            "Merhaba,\n\n"
+            "{request_no} referans numaralı {event_name} talebi için bütçe hazırlanmıştır. "
+            "İnceleyip fiyatlandırma yapmanızı rica ederiz.\n\n"
+            "Müşteri  : {client_name}\n"
+            "Tarihler : {check_in} – {check_out}\n\n"
+            "{email_signature}"
+        ),
+    },
+    {
+        "slug": "new_user_welcome",
+        "name": "Yeni Kullanıcı — Hoşgeldin",
+        "description": "Sisteme yeni eklenen kullanıcıya gönderilen hoşgeldin e-postası.",
+        "subject_tpl": "{company_name} — Hesabınız Oluşturuldu",
+        "body_tpl": (
+            "Merhaba,\n\n"
+            "{company_name} etkinlik yönetim sistemine hoş geldiniz. "
+            "Hesabınız oluşturulmuştur.\n\n"
+            "Sisteme giriş yaparak çalışmaya başlayabilirsiniz.\n\n"
+            "{email_signature}"
+        ),
+    },
+]
+
+
 class Invoice(Base):
     """Fatura modeli — kesilen/gelen/komisyon/iade"""
     __tablename__ = "invoices"

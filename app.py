@@ -102,6 +102,7 @@ from routers import event_types as event_types_router
 from routers import settings as settings_router
 from routers import reports as reports_router
 from routers import invoices as invoices_router
+from routers import email_templates as email_templates_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -115,3 +116,4 @@ app.include_router(event_types_router.router)
 app.include_router(settings_router.router)
 app.include_router(reports_router.router)
 app.include_router(invoices_router.router)
+app.include_router(email_templates_router.router)

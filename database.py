@@ -10,7 +10,8 @@ from sqlalchemy.orm import sessionmaker
 
 from models import (
     Base, User, Venue, Customer, Service, CustomCategory, Request, Budget,
-    EventType, Settings, OrgTitle, Invoice, _uuid, _now,
+    EventType, Settings, OrgTitle, Invoice, EmailTemplate,
+    _EMAIL_TEMPLATE_DEFAULTS, _uuid, _now,
 )
 
 # ---------------------------------------------------------------------------
@@ -423,6 +424,23 @@ def seed_data() -> None:
             db.flush()
             print("  [seed] Sistem ayarları eklendi.")
 
+        # E-posta şablonları
+        for tpl_data in _EMAIL_TEMPLATE_DEFAULTS:
+            if not db.query(EmailTemplate).filter(EmailTemplate.slug == tpl_data["slug"]).first():
+                db.add(EmailTemplate(
+                    id=_uuid(),
+                    slug=tpl_data["slug"],
+                    name=tpl_data["name"],
+                    description=tpl_data["description"],
+                    subject_tpl=tpl_data["subject_tpl"],
+                    body_tpl=tpl_data["body_tpl"],
+                    active=True,
+                    created_at=_now(),
+                    updated_at=_now(),
+                ))
+        db.flush()
+        print("  [seed] E-posta şablonları eklendi.")
+
         db.commit()
         print("  [seed] Tamamlandı.")
 
@@ -493,6 +511,30 @@ def _safe_add_column(conn, table: str, column: str, col_type: str, default: str 
     default_sql = f" DEFAULT {default}" if default is not None else ""
     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}{default_sql}"))
     conn.commit()
+
+
+def _seed_email_templates() -> None:
+    """email_templates tablosuna eksik varsayılan şablonları ekler (idempotent)."""
+    db = SessionLocal()
+    try:
+        for tpl_data in _EMAIL_TEMPLATE_DEFAULTS:
+            if not db.query(EmailTemplate).filter(EmailTemplate.slug == tpl_data["slug"]).first():
+                db.add(EmailTemplate(
+                    id=_uuid(),
+                    slug=tpl_data["slug"],
+                    name=tpl_data["name"],
+                    description=tpl_data["description"],
+                    subject_tpl=tpl_data["subject_tpl"],
+                    body_tpl=tpl_data["body_tpl"],
+                    active=True,
+                    created_at=_now(),
+                    updated_at=_now(),
+                ))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def migrate_db():
@@ -578,7 +620,39 @@ def migrate_db():
             conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_invoices_request_id ON invoices(request_id)"
             ))
+        # email_templates tablosu — yoksa oluştur
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS email_templates (
+                    id          TEXT PRIMARY KEY,
+                    slug        TEXT UNIQUE NOT NULL,
+                    name        TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    subject_tpl TEXT NOT NULL,
+                    body_tpl    TEXT NOT NULL,
+                    active      INTEGER DEFAULT 1,
+                    created_at  TIMESTAMP,
+                    updated_at  TIMESTAMP
+                )
+            """))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS email_templates (
+                    id          VARCHAR(36) PRIMARY KEY,
+                    slug        VARCHAR(64) UNIQUE NOT NULL,
+                    name        VARCHAR(200) NOT NULL,
+                    description VARCHAR(400) DEFAULT '',
+                    subject_tpl VARCHAR(400) NOT NULL,
+                    body_tpl    TEXT NOT NULL,
+                    active      BOOLEAN DEFAULT TRUE,
+                    created_at  TIMESTAMP,
+                    updated_at  TIMESTAMP
+                )
+            """))
         conn.commit()
+
+        # Eksik seed şablonlarını ekle (idempotent)
+        _seed_email_templates()
 
     # Müşterilere kontak kişi ekle — kontak yoksa HER ZAMAN güncelle
     SEED_CONTACTS = {

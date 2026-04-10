@@ -19,8 +19,9 @@ from sqlalchemy.orm import Session, joinedload
 from auth import get_current_user
 from database import generate_ref_no, get_db
 from models import (
-    Budget, Customer, CustomCategory, EventType, REQUEST_STATUSES, REQUEST_TABS, TR_CITIES,
-    SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, User, Venue, _uuid, _now,
+    Budget, Customer, CustomCategory, EmailTemplate, EventType, REQUEST_STATUSES, REQUEST_TABS,
+    TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, User, Venue,
+    _uuid, _now,
 )
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -371,6 +372,22 @@ async def requests_detail(
     customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
                 if req.customer_id else None)
 
+    # E-posta şablonları — JS'e aktarılacak {slug: {subject_tpl, body_tpl}}
+    from models import Settings as SettingsModel
+    settings = db.query(SettingsModel).filter(SettingsModel.id == 1).first()
+    _email_tpls_raw = db.query(EmailTemplate).filter(EmailTemplate.active == True).all()
+    email_templates_json = {
+        t.slug: {"subject_tpl": t.subject_tpl, "body_tpl": t.body_tpl}
+        for t in _email_tpls_raw
+    }
+    # Settings değerleri (imza vb.)
+    settings_ctx = {
+        "company_name":    settings.company_name    if settings else "",
+        "company_email":   settings.company_email   if settings else "",
+        "company_phone":   settings.company_phone   if settings else "",
+        "email_signature": settings.email_signature if settings else "",
+    }
+
     # Email taslakları için bütçe + venue kontakt bilgileri
     budgets_json = []
     for b in req.budgets:
@@ -430,7 +447,9 @@ async def requests_detail(
             "invoice_kar":      round(invoice_kar, 2),
             "budget_sale_excl": budget_sale_excl,
             "budget_cost_excl": budget_cost_excl,
-            "can_manage_invoices": can_manage_invoices,
+            "can_manage_invoices":   can_manage_invoices,
+            "email_templates_json":  email_templates_json,
+            "settings_ctx":          settings_ctx,
         },
     )
 
