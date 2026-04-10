@@ -177,15 +177,9 @@ async def analyze_template(
 
 
 async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> dict:
-    """Gemini API ile template analizi."""
-    try:
-        import google.generativeai as genai
-    except ImportError:
-        return {
-            "cell_map": {},
-            "raw_response": "",
-            "error": "google-generativeai paketi kurulu değil. pip install google-generativeai",
-        }
+    """Gemini REST API ile template analizi (kütüphane bağımlılığı yok)."""
+    import urllib.request
+    import urllib.error
 
     try:
         structure = parse_template_structure(template_path, max_rows=30)
@@ -199,20 +193,32 @@ async def _analyze_with_gemini(template_path: str, api_key: str, model: str) -> 
         "Bu template için E-dem cell_map JSON'ını döndür."
     )
 
+    url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={api_key}"
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+    }).encode("utf-8")
+
     raw = ""
     try:
-        genai.configure(api_key=api_key)
-        gemini = genai.GenerativeModel(model)
-        response = gemini.generate_content(prompt)
-        raw = response.text
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        raw = data["candidates"][0]["content"]["parts"][0]["text"]
         cell_map = json.loads(_extract_json(raw))
         return {"cell_map": cell_map, "raw_response": raw, "error": None}
+
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return {"cell_map": {}, "raw_response": raw, "error": f"Gemini HTTP {exc.code}: {body[:300]}"}
     except json.JSONDecodeError as exc:
-        return {
-            "cell_map": {},
-            "raw_response": raw,
-            "error": f"Gemini yanıtı JSON parse hatası: {exc}",
-        }
+        return {"cell_map": {}, "raw_response": raw, "error": f"Gemini yanıtı JSON parse hatası: {exc}"}
     except Exception as exc:
         return {"cell_map": {}, "raw_response": raw, "error": str(exc)}
 
