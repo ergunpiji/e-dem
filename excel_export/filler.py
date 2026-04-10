@@ -66,6 +66,23 @@ def _TOT_FILL(): return PatternFill(fill_type="solid", fgColor="1A3A5C")
 def _DAT_FONT(): return Font(color="000000", size=10)
 
 
+def _primary_contact(customer) -> str:
+    """Müşterinin ilk yetkili kişisinin adını döner."""
+    if not customer:
+        return ""
+    try:
+        import json as _json
+        contacts = _json.loads(getattr(customer, "contacts_json", None) or "[]")
+        if contacts:
+            c = contacts[0]
+            name  = (c.get("name") or "").strip()
+            title = (c.get("title") or "").strip()
+            return f"{name} ({title})" if title else name
+    except Exception:
+        pass
+    return ""
+
+
 def _sf_sale(budget, currency: str) -> float:
     """Hizmet bedeli tutarını offer_currency cinsinden hesaplar."""
     pct = float(budget.service_fee_pct or 0)
@@ -128,6 +145,10 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
         "sf_sale":        _sf_sale(budget, currency),
         "sf_vat":         round(_sf_sale(budget, currency) * 0.20, 2),
         "sf_total":       round(_sf_sale(budget, currency) * 1.20, 2),
+        # Müşteri yetkili kişi (ilk kontak)
+        "contact_name":  _primary_contact(customer),
+        # Teklif son tarihi
+        "quote_deadline": _date(getattr(req, "quote_deadline", None)),
     }
 
 
