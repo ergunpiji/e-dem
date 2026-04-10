@@ -265,7 +265,7 @@ async def requests_detail(
     db: Session = Depends(get_db),
 ):
     req = (db.query(ReqModel)
-             .options(joinedload(ReqModel.budgets))
+             .options(joinedload(ReqModel.budgets), joinedload(ReqModel.invoices))
              .filter(ReqModel.id == req_id)
              .first())
     if not req:
@@ -385,6 +385,24 @@ async def requests_detail(
             "status":     b.budget_status,
         })
 
+    # ── Finansal veriler ──
+    active_invoices = [inv for inv in (req.invoices or []) if inv.status == "active"]
+    invoice_ciro    = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "kesilen")
+                     - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_kesilen"))
+    invoice_maliyet = (sum(inv.amount for inv in active_invoices if inv.invoice_type in ("gelen", "komisyon"))
+                     - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_gelen"))
+    invoice_kar     = invoice_ciro - invoice_maliyet
+
+    confirmed_budget = None
+    for b in req.budgets:
+        if b.id == req.confirmed_budget_id:
+            confirmed_budget = b
+            break
+    budget_sale_excl = confirmed_budget.grand_sale_excl_vat if confirmed_budget else 0.0
+    budget_cost_excl = confirmed_budget.grand_cost_excl_vat if confirmed_budget else 0.0
+
+    can_manage_invoices = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+
     return templates.TemplateResponse(
         "requests/detail.html",
         {
@@ -405,6 +423,14 @@ async def requests_detail(
             "all_sections":     all_sections_set,
             "customer":         customer,
             "budgets_json":     budgets_json,
+            # Finansal
+            "active_invoices":  active_invoices,
+            "invoice_ciro":     round(invoice_ciro, 2),
+            "invoice_maliyet":  round(invoice_maliyet, 2),
+            "invoice_kar":      round(invoice_kar, 2),
+            "budget_sale_excl": budget_sale_excl,
+            "budget_cost_excl": budget_cost_excl,
+            "can_manage_invoices": can_manage_invoices,
         },
     )
 

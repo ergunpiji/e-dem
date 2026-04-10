@@ -132,12 +132,24 @@ EVENT_TYPE_CODES = {
 
 
 USER_ROLES = [
-    {"value": "admin",           "label": "Admin"},
-    {"value": "project_manager", "label": "Proje Yöneticisi"},
-    {"value": "e_dem",           "label": "E-dem (Satın Alma)"},
+    {"value": "admin",             "label": "Admin"},
+    {"value": "project_manager",   "label": "Proje Yöneticisi"},
+    {"value": "e_dem",             "label": "E-dem (Satın Alma)"},
+    {"value": "muhasebe_muduru",   "label": "Muhasebe Müdürü"},
+    {"value": "muhasebe",          "label": "Muhasebe Yetkilisi"},
 ]
 
 USER_ROLE_LABELS = {r["value"]: r["label"] for r in USER_ROLES}
+
+INVOICE_TYPES = [
+    {"value": "kesilen",       "label": "Kesilen Fatura (Müşteriye)"},
+    {"value": "gelen",         "label": "Gelen Fatura (Tedarikçiden)"},
+    {"value": "komisyon",      "label": "Komisyon Faturası"},
+    {"value": "iade_kesilen",  "label": "İade — Kesilen Fatura"},
+    {"value": "iade_gelen",    "label": "İade — Gelen Fatura"},
+]
+
+INVOICE_TYPE_LABELS = {t["value"]: t["label"] for t in INVOICE_TYPES}
 
 SERVICE_CATEGORIES = [
     {"id": "accommodation", "label": "Konaklama",        "icon": "🛏",  "color": "primary"},
@@ -465,6 +477,8 @@ class Request(Base):
     customer = relationship("Customer", back_populates="requests")
     creator  = relationship("User", back_populates="created_requests", foreign_keys=[created_by])
     budgets  = relationship("Budget", back_populates="request", cascade="all, delete-orphan")
+    invoices = relationship("Invoice", back_populates="request", order_by="Invoice.invoice_date",
+                            cascade="all, delete-orphan")
 
     @property
     def cities(self) -> list:
@@ -666,6 +680,32 @@ class Budget(Base):
         return round(total, 2)
 
     @property
+    def grand_cost_excl_vat(self) -> float:
+        """KDV hariç toplam maliyet — TRY cinsinden"""
+        total = 0.0
+        for row in self.rows:
+            if row.get("is_service_fee") or row.get("is_accommodation_tax"):
+                continue
+            qty    = float(row.get("qty", 1) or 1)
+            nights = float(row.get("nights", 1) or 1)
+            cost   = float(row.get("cost_price", 0) or 0)
+            cur    = row.get("currency", "TRY") or "TRY"
+            total += self.amount_to_try(cost * qty * nights, cur)
+        return round(total, 2)
+
+    @property
+    def grand_sale_excl_vat(self) -> float:
+        """KDV hariç toplam satış — TRY cinsinden"""
+        total = 0.0
+        for row in self.rows:
+            qty    = float(row.get("qty", 1) or 1)
+            nights = float(row.get("nights", 1) or 1)
+            sale   = float(row.get("sale_price", 0) or 0)
+            cur    = row.get("currency", "TRY") or "TRY"
+            total += self.amount_to_try(sale * qty * nights, cur)
+        return round(total, 2)
+
+    @property
     def grand_sale_offer(self) -> float:
         """KDV dahil toplam satış — offer_currency cinsinden"""
         oc = self.offer_currency or "TRY"
@@ -730,6 +770,69 @@ class CustomCategory(Base):
             "icon":      self.icon,
             "bg_color":  self.bg_color,
             "txt_color": self.txt_color,
+        }
+
+
+class Invoice(Base):
+    """Fatura modeli — kesilen/gelen/komisyon/iade"""
+    __tablename__ = "invoices"
+
+    id            = Column(String(36), primary_key=True, default=_uuid)
+    request_id    = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    invoice_type  = Column(String(32), nullable=False)   # kesilen|gelen|komisyon|iade_kesilen|iade_gelen
+    invoice_no    = Column(String(100), default="")
+    invoice_date  = Column(String(10), nullable=True)    # YYYY-MM-DD string
+    due_date      = Column(String(10), nullable=True)    # YYYY-MM-DD string
+    vendor_name   = Column(String(255), default="")      # tedarikçi/müşteri adı
+    description   = Column(Text, default="")
+    amount        = Column(Float, default=0.0)           # KDV hariç, TRY
+    vat_rate      = Column(Float, default=20.0)          # % olarak: 20 = %20
+    vat_amount    = Column(Float, default=0.0)           # KDV tutarı
+    total_amount  = Column(Float, default=0.0)           # KDV dahil
+    document_path = Column(String(500), nullable=True)   # disk path (relative)
+    document_name = Column(String(255), nullable=True)   # orijinal dosya adı
+    status        = Column(String(16), default="active") # active | cancelled
+    created_by    = Column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at    = Column(DateTime, default=_now, nullable=False)
+    updated_at    = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    request = relationship("Request", back_populates="invoices")
+    creator = relationship("User", foreign_keys=[created_by])
+
+    @property
+    def type_label(self) -> str:
+        return INVOICE_TYPE_LABELS.get(self.invoice_type, self.invoice_type)
+
+    @property
+    def is_income(self) -> bool:
+        """Gelir etkisi pozitif mi? (kesilen = +ciro, iade_kesilen = -ciro)"""
+        return self.invoice_type in ("kesilen", "iade_gelen")
+
+    @property
+    def is_cost(self) -> bool:
+        """Maliyet etkisi var mı?"""
+        return self.invoice_type in ("gelen", "komisyon", "iade_kesilen")
+
+    def to_dict(self) -> dict:
+        return {
+            "id":            self.id,
+            "request_id":    self.request_id,
+            "invoice_type":  self.invoice_type,
+            "type_label":    self.type_label,
+            "invoice_no":    self.invoice_no,
+            "invoice_date":  self.invoice_date,
+            "due_date":      self.due_date,
+            "vendor_name":   self.vendor_name,
+            "description":   self.description,
+            "amount":        self.amount,
+            "vat_rate":      self.vat_rate,
+            "vat_amount":    self.vat_amount,
+            "total_amount":  self.total_amount,
+            "document_path": self.document_path,
+            "document_name": self.document_name,
+            "status":        self.status,
+            "created_by":    self.created_by,
+            "created_at":    self.created_at.isoformat() if self.created_at else None,
         }
 
 

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_title_block %}{{ page_title }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="/reports" class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-arrow-left me-1"></i> Raporlar
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Filtreler ── #}
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <form method="get" action="/reports/financial" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label form-label-sm fw-semibold mb-1">Yıl</label>
+        <select name="year" class="form-select form-select-sm" style="min-width:100px;">
+          {% for y in available_years %}
+          <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if current_user.role not in ('project_manager',) %}
+      <div class="col-auto">
+        <label class="form-label form-label-sm fw-semibold mb-1">Proje Yöneticisi</label>
+        <select name="manager_id" class="form-select form-select-sm" style="min-width:200px;">
+          <option value="">— Tümü —</option>
+          {% for u in pm_users %}
+          <option value="{{ u.id }}" {% if u.id == manager_id %}selected{% endif %}>
+            {{ u.full_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-funnel me-1"></i>Filtrele
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Özet Kartlar ── #}
+<div class="row g-3 mb-4">
+  {% macro stat_card(label, val, color, icon) %}
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0" style="background:{{ color }}10;">
+      <div class="card-body py-3 px-3">
+        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">
+          <i class="bi bi-{{ icon }} me-1"></i>{{ label }}
+        </div>
+        <div class="mt-1" style="font-size:22px; font-weight:800; color:{{ color }}; line-height:1.2;">
+          ₺{{ '{:,.0f}'.format(val).replace(',', '.') }}
+        </div>
+        <div style="font-size:11px; color:#94a3b8;">KDV Hariç, TRY</div>
+      </div>
+    </div>
+  </div>
+  {% endmacro %}
+  {{ stat_card('Toplam Ciro',    total_ciro,    '#2563eb', 'graph-up-arrow') }}
+  {{ stat_card('Toplam Maliyet', total_maliyet, '#dc2626', 'graph-down-arrow') }}
+  {{ stat_card('Toplam Kar',     total_kar,     '#16a34a' if total_kar >= 0 else '#dc2626', 'currency-dollar') }}
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0" style="background:#f8fafc;">
+      <div class="card-body py-3 px-3">
+        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">
+          <i class="bi bi-percent me-1"></i>Genel Karlılık
+        </div>
+        <div class="mt-1" style="font-size:22px; font-weight:800; line-height:1.2;
+             color:{% if total_karlilk and total_karlilk >= 15 %}#16a34a{% elif total_karlilk and total_karlilk >= 0 %}#d97706{% else %}#dc2626{% endif %};">
+          {% if total_karlilk is not none %}%{{ '{:.1f}'.format(total_karlilk) }}{% else %}—{% endif %}
+        </div>
+        <div style="font-size:11px; color:#94a3b8;">{{ rows | length }} referans</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Manager Alt Toplamları (Admin/Muhasebe) ── #}
+{% if current_user.role not in ('project_manager',) and mgr_totals | length > 1 %}
+<div class="card mb-4">
+  <div class="card-header py-2" style="background:#f8fafc;">
+    <h6 class="fw-bold mb-0"><i class="bi bi-people me-2 text-primary"></i>Proje Yöneticisi Bazlı Özet</h6>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0" style="font-size:13px;">
+        <thead style="background:#f1f5f9;">
+          <tr>
+            <th class="ps-3">Proje Yöneticisi</th>
+            <th class="text-end">Ciro</th>
+            <th class="text-end">Maliyet</th>
+            <th class="text-end">Kar</th>
+            <th class="text-end pe-3">Karlılık %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mid, mt in mgr_totals.items() %}
+          {% set mkarlilk = (mt.kar / mt.ciro * 100) if mt.ciro > 0 else none %}
+          <tr>
+            <td class="ps-3 fw-semibold">{{ mt.name }}</td>
+            <td class="text-end">₺{{ '{:,.0f}'.format(mt.ciro).replace(',', '.') }}</td>
+            <td class="text-end">₺{{ '{:,.0f}'.format(mt.maliyet).replace(',', '.') }}</td>
+            <td class="text-end fw-semibold" style="color:{% if mt.kar >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+              ₺{{ '{:,.0f}'.format(mt.kar).replace(',', '.') }}
+            </td>
+            <td class="text-end pe-3">
+              {% if mkarlilk is not none %}
+              <span class="badge {% if mkarlilk >= 15 %}bg-success{% elif mkarlilk >= 0 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                %{{ '{:.1f}'.format(mkarlilk) }}
+              </span>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Referans Bazlı Tablo ── #}
+<div class="card">
+  <div class="card-header py-2 d-flex align-items-center justify-content-between"
+       style="background:#f8fafc;">
+    <h6 class="fw-bold mb-0">
+      <i class="bi bi-table me-2 text-success"></i>Referans Bazlı Detay
+      <span class="badge bg-secondary ms-1" style="font-size:11px;">{{ rows | length }}</span>
+    </h6>
+  </div>
+  <div class="card-body p-0">
+    {% if rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" style="font-size:12px;">
+        <thead style="background:#1e293b; color:white;">
+          <tr>
+            <th class="ps-3" style="min-width:130px;">Referans No</th>
+            <th style="min-width:160px;">Müşteri / Etkinlik</th>
+            <th style="white-space:nowrap;">Tarih</th>
+            {% if current_user.role not in ('project_manager',) %}
+            <th>Proje Yöneticisi</th>
+            {% endif %}
+            <th class="text-end" style="white-space:nowrap;">Bütçe Ciro</th>
+            <th class="text-end" style="white-space:nowrap;">Gerçek Ciro</th>
+            <th class="text-end" style="white-space:nowrap;">Bütçe Maliyet</th>
+            <th class="text-end" style="white-space:nowrap;">Gerçek Maliyet</th>
+            <th class="text-end" style="white-space:nowrap;">Kar</th>
+            <th class="text-end pe-3" style="white-space:nowrap;">Karlılık %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr onclick="location.href='/requests/{{ row.req.id }}#tab-financial'" style="cursor:pointer;">
+            <td class="ps-3">
+              <span class="badge bg-primary font-monospace fw-bold" style="font-size:11px; letter-spacing:.3px;">
+                {{ row.req.request_no }}
+              </span>
+            </td>
+            <td>
+              <div class="fw-semibold" style="font-size:12px;">{{ row.req.event_name }}</div>
+              <div class="text-muted" style="font-size:11px;">{{ row.req.client_name }}</div>
+            </td>
+            <td style="white-space:nowrap; color:#64748b;">
+              {{ row.req.check_in | date_tr if row.req.check_in else '—' }}
+            </td>
+            {% if current_user.role not in ('project_manager',) %}
+            <td style="color:#64748b;">{{ row.manager_name }}</td>
+            {% endif %}
+            <td class="text-end text-muted">
+              {% if row.budget_sale > 0 %}₺{{ '{:,.0f}'.format(row.budget_sale).replace(',', '.') }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end fw-semibold">
+              {% if row.ciro != 0 %}₺{{ '{:,.0f}'.format(row.ciro).replace(',', '.') }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end text-muted">
+              {% if row.budget_cost > 0 %}₺{{ '{:,.0f}'.format(row.budget_cost).replace(',', '.') }}{% else %}—{% endif %}
+            </td>
+            <td class="text-end fw-semibold">
+              {% if row.maliyet != 0 %}₺{{ '{:,.0f}'.format(row.maliyet).replace(',', '.') }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end fw-bold"
+                style="color:{% if row.kar > 0 %}#16a34a{% elif row.kar < 0 %}#dc2626{% else %}#94a3b8{% endif %};">
+              {% if row.ciro != 0 or row.maliyet != 0 %}
+                ₺{{ '{:,.0f}'.format(row.kar).replace(',', '.') }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end pe-3">
+              {% if row.karlilk is not none %}
+              <span class="badge {% if row.karlilk >= 15 %}bg-success{% elif row.karlilk >= 0 %}bg-warning text-dark{% else %}bg-danger{% endif %}"
+                    style="font-size:10px;">
+                %{{ '{:.1f}'.format(row.karlilk) }}
+              </span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot style="background:#f8fafc; font-size:12px; border-top:2px solid #e2e8f0;">
+          <tr>
+            <td colspan="{% if current_user.role not in ('project_manager',) %}4{% else %}3{% endif %}"
+                class="ps-3 fw-bold text-end">TOPLAM</td>
+            <td class="text-end text-muted fw-semibold"></td>
+            <td class="text-end fw-bold" style="color:#2563eb;">₺{{ '{:,.0f}'.format(total_ciro).replace(',', '.') }}</td>
+            <td class="text-end text-muted fw-semibold"></td>
+            <td class="text-end fw-bold" style="color:#dc2626;">₺{{ '{:,.0f}'.format(total_maliyet).replace(',', '.') }}</td>
+            <td class="text-end fw-bold"
+                style="color:{% if total_kar >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+              ₺{{ '{:,.0f}'.format(total_kar).replace(',', '.') }}
+            </td>
+            <td class="text-end pe-3">
+              {% if total_karlilk is not none %}
+              <span class="badge {% if total_karlilk >= 15 %}bg-success{% elif total_karlilk >= 0 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                %{{ '{:.1f}'.format(total_karlilk) }}
+              </span>
+              {% endif %}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-receipt" style="font-size:3rem; opacity:.2;"></i>
+      <p class="mt-2 mb-0">{{ selected_year }} yılı için finansal veri bulunamadı.</p>
+      <small>Referanslara fatura girdikçe burada görünecek.</small>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

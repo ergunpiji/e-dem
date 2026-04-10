@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from models import (
     Base, User, Venue, Customer, Service, CustomCategory, Request, Budget,
-    EventType, Settings, OrgTitle, _uuid, _now,
+    EventType, Settings, OrgTitle, Invoice, _uuid, _now,
 )
 
 # ---------------------------------------------------------------------------
@@ -524,6 +524,61 @@ def migrate_db():
         _safe_add_column(conn, "customers", "excel_template_b64",  "TEXT", "''")
         _safe_add_column(conn, "customers", "excel_config_json",   "TEXT", "'{}'")
         _safe_add_column(conn, "customers", "docs_json",           "TEXT", "'[]'")
+
+        # Invoices tablosu — yoksa oluştur
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS invoices (
+                    id            TEXT PRIMARY KEY,
+                    request_id    TEXT NOT NULL REFERENCES requests(id),
+                    invoice_type  TEXT NOT NULL,
+                    invoice_no    TEXT DEFAULT '',
+                    invoice_date  TEXT,
+                    due_date      TEXT,
+                    vendor_name   TEXT DEFAULT '',
+                    description   TEXT DEFAULT '',
+                    amount        REAL DEFAULT 0.0,
+                    vat_rate      REAL DEFAULT 20.0,
+                    vat_amount    REAL DEFAULT 0.0,
+                    total_amount  REAL DEFAULT 0.0,
+                    document_path TEXT,
+                    document_name TEXT,
+                    status        TEXT DEFAULT 'active',
+                    created_by    TEXT NOT NULL REFERENCES users(id),
+                    created_at    TIMESTAMP,
+                    updated_at    TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_invoices_request_id ON invoices(request_id)"
+            ))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS invoices (
+                    id            VARCHAR(36) PRIMARY KEY,
+                    request_id    VARCHAR(36) NOT NULL REFERENCES requests(id),
+                    invoice_type  VARCHAR(32) NOT NULL,
+                    invoice_no    VARCHAR(100) DEFAULT '',
+                    invoice_date  VARCHAR(10),
+                    due_date      VARCHAR(10),
+                    vendor_name   VARCHAR(255) DEFAULT '',
+                    description   TEXT DEFAULT '',
+                    amount        FLOAT DEFAULT 0.0,
+                    vat_rate      FLOAT DEFAULT 20.0,
+                    vat_amount    FLOAT DEFAULT 0.0,
+                    total_amount  FLOAT DEFAULT 0.0,
+                    document_path VARCHAR(500),
+                    document_name VARCHAR(255),
+                    status        VARCHAR(16) DEFAULT 'active',
+                    created_by    VARCHAR(36) NOT NULL REFERENCES users(id),
+                    created_at    TIMESTAMP,
+                    updated_at    TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_invoices_request_id ON invoices(request_id)"
+            ))
+        conn.commit()
 
     # Müşterilere kontak kişi ekle — kontak yoksa HER ZAMAN güncelle
     SEED_CONTACTS = {

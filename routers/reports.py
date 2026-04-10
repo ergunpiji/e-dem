@@ -12,15 +12,23 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Request as ReqModel, User
+from models import Budget, Customer, Invoice, Request as ReqModel, User
 from templates_config import templates
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
+FINANCE_ROLES = {"admin", "muhasebe_muduru", "muhasebe"}
+
+
 def _require_admin(current_user: User):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Bu sayfa yalnızca Admin'e özeldir.")
+
+
+def _require_finance(current_user: User):
+    if current_user.role not in FINANCE_ROLES and current_user.role != "project_manager":
+        raise HTTPException(status_code=403, detail="Bu sayfa için yetkiniz yok.")
 
 
 @router.get("", response_class=HTMLResponse, name="reports")
@@ -147,4 +155,147 @@ async def reports(
         "pipeline_cost":   pipeline_cost,
         "pipeline_sale":   pipeline_sale,
         "pipeline_count":  pipeline_count,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Finansal Rapor
+# ---------------------------------------------------------------------------
+
+@router.get("/financial", response_class=HTMLResponse, name="reports_financial")
+async def reports_financial(
+    request: Request,
+    year:       str = "",
+    manager_id: str = "",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_finance(current_user)
+
+    from collections import defaultdict
+
+    # Yıl filtresi — varsayılan: bu yıl
+    current_year = date.today().year
+    selected_year = int(year) if year.isdigit() else current_year
+    available_years = list(range(current_year, current_year - 5, -1))
+
+    # Manager filtresi
+    # PM: sadece kendi taleplerini görür
+    # Admin / muhasebe: tüm talepler; manager_id ile filtrelenebilir
+    pm_users = db.query(User).filter(User.role == "project_manager", User.active == True).all()
+    if current_user.role == "project_manager":
+        manager_id = current_user.id  # PM kendi ID'sini kullanır
+
+    # Talepleri çek
+    req_query = db.query(ReqModel)
+    if current_user.role == "project_manager":
+        req_query = req_query.filter(ReqModel.created_by == current_user.id)
+    elif manager_id:
+        req_query = req_query.filter(ReqModel.created_by == manager_id)
+
+    all_reqs = req_query.all()
+    req_ids = [r.id for r in all_reqs]
+    req_map = {r.id: r for r in all_reqs}
+
+    # Yıla göre filtrele: req.check_in yılı veya created_at yılı
+    def _req_year(r):
+        if r.check_in:
+            try:
+                return date.fromisoformat(r.check_in).year
+            except Exception:
+                pass
+        return r.created_at.year if r.created_at else current_year
+
+    filtered_req_ids = {r.id for r in all_reqs if _req_year(r) == selected_year}
+
+    # Faturalar
+    invoices = db.query(Invoice).filter(
+        Invoice.request_id.in_(list(filtered_req_ids)),
+        Invoice.status == "active",
+    ).all()
+
+    # Referans bazlı finansal özet
+    ref_fin = defaultdict(lambda: {
+        "ciro": 0.0, "maliyet": 0.0,
+        "budget_sale": 0.0, "budget_cost": 0.0,
+    })
+    for inv in invoices:
+        rid = inv.request_id
+        if inv.invoice_type == "kesilen":
+            ref_fin[rid]["ciro"] += inv.amount
+        elif inv.invoice_type == "iade_kesilen":
+            ref_fin[rid]["ciro"] -= inv.amount
+        elif inv.invoice_type in ("gelen", "komisyon"):
+            ref_fin[rid]["maliyet"] += inv.amount
+        elif inv.invoice_type == "iade_gelen":
+            ref_fin[rid]["maliyet"] -= inv.amount
+
+    # Konfirme bütçe KDV-hariç tutarlarını ekle
+    all_budgets = db.query(Budget).filter(
+        Budget.request_id.in_(list(filtered_req_ids)),
+        Budget.budget_status == "confirmed",
+    ).all()
+    for b in all_budgets:
+        ref_fin[b.request_id]["budget_sale"] = b.grand_sale_excl_vat
+        ref_fin[b.request_id]["budget_cost"] = b.grand_cost_excl_vat
+
+    # Tablo satırları oluştur
+    rows = []
+    for req in all_reqs:
+        if req.id not in filtered_req_ids:
+            continue
+        fin = ref_fin.get(req.id, {})
+        ciro     = fin.get("ciro", 0.0)
+        maliyet  = fin.get("maliyet", 0.0)
+        kar      = ciro - maliyet
+        karlilk  = round(kar / ciro * 100, 1) if ciro > 0 else None
+        rows.append({
+            "req":          req,
+            "manager_name": req.creator.full_name if req.creator else "—",
+            "ciro":         round(ciro, 2),
+            "maliyet":      round(maliyet, 2),
+            "kar":          round(kar, 2),
+            "karlilk":      karlilk,
+            "budget_sale":  fin.get("budget_sale", 0.0),
+            "budget_cost":  fin.get("budget_cost", 0.0),
+        })
+
+    rows.sort(key=lambda x: (x["req"].check_in or ""), reverse=True)
+
+    # Genel toplamlar
+    total_ciro    = sum(r["ciro"]    for r in rows)
+    total_maliyet = sum(r["maliyet"] for r in rows)
+    total_kar     = total_ciro - total_maliyet
+    total_karlilk = round(total_kar / total_ciro * 100, 1) if total_ciro > 0 else None
+
+    # Manager bazlı alt toplamlar (sadece admin/muhasebe için)
+    mgr_totals = defaultdict(lambda: {"name": "", "ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
+    if current_user.role not in ("project_manager",):
+        for r in rows:
+            mid = r["req"].created_by or "_"
+            mgr_totals[mid]["name"]    = r["manager_name"]
+            mgr_totals[mid]["ciro"]    += r["ciro"]
+            mgr_totals[mid]["maliyet"] += r["maliyet"]
+            mgr_totals[mid]["kar"]     += r["ciro"] - r["maliyet"]
+
+    # Seçili manager adı
+    selected_manager = None
+    if manager_id:
+        selected_manager = db.query(User).filter(User.id == manager_id).first()
+
+    return templates.TemplateResponse("reports/financial.html", {
+        "request":          request,
+        "current_user":     current_user,
+        "page_title":       "Finansal Rapor",
+        "rows":             rows,
+        "total_ciro":       round(total_ciro, 2),
+        "total_maliyet":    round(total_maliyet, 2),
+        "total_kar":        round(total_kar, 2),
+        "total_karlilk":    total_karlilk,
+        "mgr_totals":       dict(mgr_totals),
+        "selected_year":    selected_year,
+        "available_years":  available_years,
+        "pm_users":         pm_users,
+        "selected_manager": selected_manager,
+        "manager_id":       manager_id,
     })

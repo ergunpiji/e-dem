@@ -181,9 +181,19 @@
       <span class="nav-icon">🏷</span> Etkinlik Tipleri
     </a>
 
+    <div class="nav-section-label section-main">Finans</div>
+    <a href="/invoices/new"
+       class="sidebar-link {% if cur_path == '/invoices/new' %}active{% endif %}">
+      <span class="nav-icon">🧾</span> Fatura Girişi
+    </a>
+    <a href="/reports/financial"
+       class="sidebar-link {% if '/reports/financial' in cur_path %}active{% endif %}">
+      <span class="nav-icon">💰</span> Finansal Rapor
+    </a>
+
     <div class="nav-section-label section-main">Admin</div>
     <a href="/reports"
-       class="sidebar-link {% if '/reports' in cur_path %}active{% endif %}">
+       class="sidebar-link {% if cur_path == '/reports' %}active{% endif %}">
       <span class="nav-icon">📈</span> Raporlar
     </a>
     <a href="/settings"
@@ -223,6 +233,12 @@
       <span class="nav-icon">🏨</span> Tedarikçi Havuzu
     </a>
 
+    <div class="nav-section-label section-main">Finans</div>
+    <a href="/reports/financial"
+       class="sidebar-link {% if '/reports/financial' in cur_path %}active{% endif %}">
+      <span class="nav-icon">💰</span> Finansal Raporum
+    </a>
+
     <div class="nav-section-label section-main section-cancel">İptal</div>
     <a href="/requests?view=cancelled"
        class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
@@ -255,6 +271,24 @@
     <a href="/requests?view=cancelled"
        class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
       <span class="nav-icon">🚫</span> İptal İşler
+    </a>
+
+    {% elif current_user.role in ('muhasebe_muduru', 'muhasebe') %}
+    <!-- ── MUHASEBE ── -->
+    <div class="nav-section-label section-main">Finans</div>
+    <a href="/invoices/new"
+       class="sidebar-link {% if cur_path == '/invoices/new' %}active{% endif %}">
+      <span class="nav-icon">🧾</span> Fatura Girişi
+    </a>
+    <a href="/reports/financial"
+       class="sidebar-link {% if '/reports/financial' in cur_path %}active{% endif %}">
+      <span class="nav-icon">💰</span> Finansal Rapor
+    </a>
+
+    <div class="nav-section-label section-main">Referanslar</div>
+    <a href="/requests"
+       class="sidebar-link {% if cur_path == '/requests' %}active{% endif %}">
+      <span class="nav-icon">📋</span> Tüm Referanslar
     </a>
     {% endif %}
 

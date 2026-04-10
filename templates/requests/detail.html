@@ -1029,6 +1029,173 @@
   </div>
 </div>
 
+{# ─── FİNANSAL SEKME ─── #}
+<div class="card mb-4" id="tab-financial">
+  <div class="card-header d-flex align-items-center justify-content-between py-2"
+       style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+    <h6 class="fw-bold mb-0">
+      <i class="bi bi-receipt me-2 text-success"></i>Finansal Durum
+      <span class="badge bg-secondary ms-1" style="font-size:11px;">KDV Hariç, TRY</span>
+    </h6>
+    {% if can_manage_invoices %}
+    <a href="/invoices/new?request_id={{ req.id }}"
+       class="btn btn-success btn-sm">
+      <i class="bi bi-plus me-1"></i>Fatura Ekle
+    </a>
+    {% endif %}
+  </div>
+  <div class="card-body">
+
+    {# Özet Kartlar #}
+    <div class="row g-3 mb-4">
+      {% macro fin_card(label, bgt_val, real_val, color) %}
+      <div class="col-sm-6 col-lg-3">
+        <div class="p-3 rounded border" style="background:#f8fafc;">
+          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">{{ label }}</div>
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
+            Bütçe: <span class="fw-semibold text-dark">{{ '₺{:,.0f}'.format(bgt_val).replace(',', '.') }}</span>
+          </div>
+          <div style="font-size:20px; font-weight:800; color:{{ color }}; line-height:1.2;">
+            ₺{{ '{:,.0f}'.format(real_val).replace(',', '.') }}
+          </div>
+          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
+        </div>
+      </div>
+      {% endmacro %}
+      {{ fin_card('Ciro',    budget_sale_excl, invoice_ciro,    '#2563eb') }}
+      {{ fin_card('Maliyet', budget_cost_excl, invoice_maliyet, '#dc2626') }}
+      <div class="col-sm-6 col-lg-3">
+        <div class="p-3 rounded border" style="background:#f8fafc;">
+          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">Kar</div>
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
+            Bütçe: <span class="fw-semibold text-dark">₺{{ '{:,.0f}'.format(budget_sale_excl - budget_cost_excl).replace(',', '.') }}</span>
+          </div>
+          <div style="font-size:20px; font-weight:800; color:{% if invoice_kar >= 0 %}#16a34a{% else %}#dc2626{% endif %}; line-height:1.2;">
+            ₺{{ '{:,.0f}'.format(invoice_kar).replace(',', '.') }}
+          </div>
+          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="p-3 rounded border" style="background:#f8fafc;">
+          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">Karlılık</div>
+          {% if budget_sale_excl > 0 %}
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
+            Bütçe: <span class="fw-semibold text-dark">%{{ '{:.1f}'.format((budget_sale_excl - budget_cost_excl) / budget_sale_excl * 100) }}</span>
+          </div>
+          {% else %}
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;">Bütçe: <span class="text-muted">—</span></div>
+          {% endif %}
+          {% if invoice_ciro > 0 %}
+          <div style="font-size:20px; font-weight:800; color:{% if invoice_kar / invoice_ciro >= 0.15 %}#16a34a{% elif invoice_kar >= 0 %}#d97706{% else %}#dc2626{% endif %}; line-height:1.2;">
+            %{{ '{:.1f}'.format(invoice_kar / invoice_ciro * 100) }}
+          </div>
+          {% else %}
+          <div style="font-size:20px; font-weight:800; color:#94a3b8; line-height:1.2;">—</div>
+          {% endif %}
+          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
+        </div>
+      </div>
+    </div>
+
+    {# Fatura Tablosu #}
+    {% if active_invoices %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" style="font-size:13px;">
+        <thead style="background:#f1f5f9;">
+          <tr>
+            <th>Tip</th>
+            <th>Fatura No</th>
+            <th>Tarih</th>
+            <th>Tedarikçi / Müşteri</th>
+            <th>Açıklama</th>
+            <th class="text-end">Tutar (KDV Hariç)</th>
+            <th class="text-end">KDV</th>
+            <th class="text-end">Toplam</th>
+            <th>Belge</th>
+            {% if can_manage_invoices %}<th class="text-end">İşlem</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in active_invoices %}
+          {% set type_colors = {
+            'kesilen':      ('bg-success', 'text-success'),
+            'gelen':        ('bg-danger',  'text-danger'),
+            'komisyon':     ('bg-warning', 'text-warning'),
+            'iade_kesilen': ('bg-info',    'text-info'),
+            'iade_gelen':   ('bg-secondary','text-secondary')
+          } %}
+          {% set tcls = type_colors.get(inv.invoice_type, ('bg-secondary', 'text-secondary')) %}
+          <tr>
+            <td>
+              <span class="badge {{ tcls[0] }} bg-opacity-10 {{ tcls[1] }}" style="font-size:11px; white-space:nowrap;">
+                {{ inv.type_label }}
+              </span>
+            </td>
+            <td class="text-muted">{{ inv.invoice_no or '—' }}</td>
+            <td style="white-space:nowrap; color:#64748b;">{{ inv.invoice_date | date_tr if inv.invoice_date else '—' }}</td>
+            <td>{{ inv.vendor_name or '—' }}</td>
+            <td style="color:#64748b; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              {{ inv.description or '' }}
+            </td>
+            <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.amount).replace(',', '.') }}</td>
+            <td class="text-end text-muted">
+              %{{ inv.vat_rate | int }}
+              <br><small>₺{{ '{:,.2f}'.format(inv.vat_amount).replace(',', '.') }}</small>
+            </td>
+            <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}</td>
+            <td>
+              {% if inv.document_path %}
+              <a href="/invoices/{{ inv.id }}/document" target="_blank"
+                 class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:11px;">
+                <i class="bi bi-file-earmark me-1"></i>{{ inv.document_name or 'Belge' }}
+              </a>
+              {% else %}
+              <span class="text-muted" style="font-size:11px;">—</span>
+              {% endif %}
+            </td>
+            {% if can_manage_invoices %}
+            <td class="text-end">
+              <a href="/invoices/{{ inv.id }}/edit" class="btn btn-sm btn-outline-secondary py-0 px-1">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form method="post" action="/invoices/{{ inv.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Faturayı iptal etmek istediğinizden emin misiniz?')">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1">
+                  <i class="bi bi-x"></i>
+                </button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot style="background:#f8fafc; font-size:12px;">
+          <tr>
+            <td colspan="5" class="fw-semibold text-end pe-3">Toplam (KDV Hariç):</td>
+            <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(active_invoices | sum(attribute='amount')).replace(',', '.') }}</td>
+            <td></td>
+            <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(active_invoices | sum(attribute='total_amount')).replace(',', '.') }}</td>
+            <td colspan="{% if can_manage_invoices %}2{% else %}1{% endif %}"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-4 text-muted">
+      <i class="bi bi-receipt" style="font-size:2.5rem; opacity:.3;"></i>
+      <p class="mt-2 mb-0" style="font-size:13px;">Henüz fatura girilmemiş.</p>
+      {% if can_manage_invoices %}
+      <a href="/invoices/new?request_id={{ req.id }}" class="btn btn-sm btn-success mt-2">
+        <i class="bi bi-plus me-1"></i>İlk Faturayı Ekle
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}

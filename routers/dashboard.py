@@ -47,8 +47,9 @@ def _build_financial_stats(db: Session, budget_filter=None):
     monthly: dict[str, dict] = defaultdict(lambda: {"sale": 0.0, "cost": 0.0})
 
     for bgt in confirmed_budgets:
-        sale = bgt.grand_sale
-        cost = bgt.grand_cost
+        # KDV hariç tutarlar kullan
+        sale = bgt.grand_sale_excl_vat
+        cost = bgt.grand_cost_excl_vat
         total_sale += sale
         total_cost += cost
 
