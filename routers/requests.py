@@ -1017,10 +1017,10 @@ async def requests_export(
 
     try:
         # Müşteri template'i varsa her bütçe için ayrı sheet olarak doldur
-        cfg          = customer.excel_config if customer else {}
-        cell_map     = cfg.get("cell_map") or {}
-        b64_data     = getattr(customer, "excel_template_b64", "") if customer else ""
-        tpl_path     = (customer.excel_template_path or "") if customer else ""
+        cfg      = customer.excel_config if customer else {}
+        cell_map = cfg.get("cell_map") or {}
+        b64_data = (getattr(customer, "excel_template_b64", None) or "") if customer else ""
+        tpl_path = (customer.excel_template_path or "") if customer else ""
 
         # Dosya yoksa ama DB'de base64 varsa yeniden oluştur (Railway restart)
         if b64_data and (not tpl_path or not os.path.exists(tpl_path)):
@@ -1033,7 +1033,16 @@ async def requests_export(
             customer.excel_template_path = tpl_path
             db.commit()
 
-        use_template = bool(tpl_path and os.path.exists(tpl_path) and cell_map)
+        has_tpl_file = bool(tpl_path and os.path.exists(tpl_path))
+        use_template = bool(has_tpl_file and cell_map)
+
+        # Template var ama eşleştirme yapılmamışsa hata ver
+        if has_tpl_file and not cell_map:
+            raise HTTPException(
+                400,
+                "Müşteri şablonu yüklü ama hücre eşleştirmesi yapılmamış. "
+                "Müşteri sayfasından 'Şablonu Eşleştir' butonunu kullanın."
+            )
         print(
             f"[REQ-EXPORT] req={req_id} tpl_path={tpl_path!r} "
             f"file_exists={os.path.exists(tpl_path) if tpl_path else False} "

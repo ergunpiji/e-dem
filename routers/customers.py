@@ -293,7 +293,7 @@ async def customers_analyze_template(
         return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
 
     template_path = customer.excel_template_path or ""
-    b64_data = getattr(customer, "excel_template_b64", "") or ""
+    b64_data = (getattr(customer, "excel_template_b64", None) or "") or ""
 
     # Railway'de dosya uçmuş olabilir — b64'ten restore et
     if b64_data and (not template_path or not os.path.exists(template_path)):
