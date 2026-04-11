@@ -246,17 +246,27 @@ async function doPreview() {
   fd.append('import_type', selectedType);
   fd.append('file', selectedFile);
 
+  let res, text;
   try {
-    const res  = await fetch('/bulk-import/preview', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (data.error) { alert(data.error); showState('empty'); return; }
-    previewData = data;
-    renderPreview(data);
-    showState('preview');
+    res  = await fetch('/bulk-import/preview', { method: 'POST', body: fd });
+    text = await res.text();
   } catch(e) {
-    alert('Sunucu hatası: ' + e);
+    alert('Bağlantı hatası: ' + e);
     showState('empty');
+    return;
   }
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch(e) {
+    alert('Sunucu hatası (' + (res ? res.status : '?') + '):\n' + text.slice(0, 500));
+    showState('empty');
+    return;
+  }
+  if (data.error) { alert(data.error); showState('empty'); return; }
+  previewData = data;
+  renderPreview(data);
+  showState('preview');
 }
 
 function renderPreview(data) {
@@ -317,10 +327,26 @@ async function doImport() {
   fd.append('import_type', selectedType);
   fd.append('rows_json',   JSON.stringify(previewData.rows));
 
+  let res2, text2;
   try {
-    const res  = await fetch('/bulk-import/import', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (data.error) { alert(data.error); return; }
+    res2  = await fetch('/bulk-import/import', { method: 'POST', body: fd });
+    text2 = await res2.text();
+  } catch(e) {
+    alert('Bağlantı hatası: ' + e);
+    document.getElementById('btnImport').disabled = false;
+    document.getElementById('btnImport').innerHTML = '<i class="bi bi-check-circle me-1"></i> İçe Aktar';
+    return;
+  }
+  let data;
+  try {
+    data = JSON.parse(text2);
+  } catch(e) {
+    alert('Sunucu hatası (' + (res2 ? res2.status : '?') + '):\n' + text2.slice(0, 500));
+    document.getElementById('btnImport').disabled = false;
+    document.getElementById('btnImport').innerHTML = '<i class="bi bi-check-circle me-1"></i> İçe Aktar';
+    return;
+  }
+  if (data.error) { alert(data.error); return; }
 
     const listUrl = selectedType === 'customers' ? '/customers' : '/venues';
     document.getElementById('resultLink').href = listUrl;
@@ -333,11 +359,6 @@ async function doImport() {
         ${data.skipped > 0 ? `<p class="text-muted">${data.skipped} hatalı satır atlandı.</p>` : ''}
       </div>`;
     showState('result');
-  } catch(e) {
-    alert('Sunucu hatası: ' + e);
-    document.getElementById('btnImport').disabled = false;
-    document.getElementById('btnImport').innerHTML = '<i class="bi bi-check-circle me-1"></i> İçe Aktar';
-  }
 }
 
 // ── Yardımcılar ───────────────────────────────────────────────────────────────
