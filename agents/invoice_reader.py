@@ -70,9 +70,10 @@ INVOICE_TOOL = {
                         "vat_rate": {
                             "type": "integer",
                             "description": (
-                                "KDV oranı tam sayı olarak. "
-                                "Türkiye'de geçerli: 0, 1, 8, 10, 18, 20. "
-                                "Başka bir oran görürsen en yakın geçerliye yuvarla."
+                                "KDV oranı tam sayı. Geçerli değerler: 0, 1, 8, 10, 18, 20. "
+                                "ZORUNLU: 'Konaklama Vergisi' satırı için her zaman 0 yaz — "
+                                "bu vergi KDV kanunu kapsamında değildir, üzerine KDV uygulanmaz. "
+                                "Diğer bilinmeyen oranları en yakın geçerli değere yuvarla."
                             )
                         },
                         "vat_amount": {
@@ -107,15 +108,8 @@ Görevin: Sana iletilen fatura görselinden veya PDF'inden yapılandırılmış 
 | %10  | Restoran/kafe/yemek hizmetleri, su ürünleri |
 | %20  | Genel standart oran — akaryakıt, elektronik, tekstil, inşaat, danışmanlık, kira, vs. |
 
-## Konaklama Vergisi (KV) — KDV'den FARKLI bir vergi
-- Konaklama hizmetleri (otel geceleme, pansiyon, tatil köyü vb.) için KDV oranı **%10**'dur.
-- Ancak faturada ayrıca **"Konaklama Vergisi"** satırı görülüyorsa bu satırın vat_rate = **0**'dır.
-  Konaklama Vergisi, KDV kanunu kapsamında değildir; üzerine ayrıca KDV uygulanmaz.
-- Konaklama Vergisi oranı %2'dir ve konaklama bedelinin (KDV hariç) %2'si olarak hesaplanır.
-- Örnek otel faturası:
-  - Geceleme hizmeti: matrah 1.000 TL → KDV %10 → 100 TL KDV
-  - Konaklama Vergisi: matrah 20 TL → KDV %0 → 0 TL KDV
-- Bu iki satırı **ayrı kalemler** olarak çıkar.
+## Konaklama hizmetleri KDV oranı
+- Otel/pansiyon geceleme hizmeti → KDV **%10**
 
 **DİKKAT**: %8, %13, %15, %18, %25 gibi oranlar Türkiye'de GÜNCEL DEĞİLDİR.
 - Faturada %18 görürsen → %20 olarak yuvarla (2023 öncesi fatura olabilir)
@@ -136,6 +130,21 @@ Görevin: Sana iletilen fatura görselinden veya PDF'inden yapılandırılmış 
 3. Hiçbiri yoksa → matrah = kdv_dahil_toplam ÷ (1 + kdv_oranı/100)
    - Örnek %10: 1.100 ÷ 1.10 = 1.000,00
    - Örnek %20: 1.200 ÷ 1.20 = 1.000,00
+
+## ⚠️ KONAKLAMAVERGİSİ — EN ÖNEMLİ KURAL
+Faturada "Konaklama Vergisi" satırı varsa:
+- Bu satır için **vat_rate = 0** yaz. Kesinlikle 2, 10 veya başka bir sayı YAZMA.
+- Konaklama Vergisi, KDV kanunu kapsamında DEĞİLDİR. Üzerine KDV uygulanmaz.
+- vat_amount = 0, total_incl = amount (tutarın kendisi)
+- Geceleme satırından AYRI bir kalem olarak çıkar.
+
+Doğru örnek — otel faturası:
+  lines[0]: description="Konaklama Hizmeti", amount=10000, vat_rate=10, vat_amount=1000
+  lines[1]: description="Konaklama Vergisi", amount=200, vat_rate=0, vat_amount=0
+
+Yanlış örnek (YAPMA):
+  lines[1]: description="Konaklama Vergisi", amount=200, vat_rate=2, vat_amount=4  ← YANLIŞ
+  lines[1]: description="Konaklama Vergisi", amount=200, vat_rate=10, vat_amount=20 ← YANLIŞ
 
 ## Çıkarma Kuralları
 - Her **farklı KDV oranı** için ayrı satır oluştur
