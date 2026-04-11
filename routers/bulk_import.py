@@ -65,9 +65,9 @@ VENUE_COLS = [
     ("Website",                 "website",       False),
     ("Ödeme Vadesi",            "payment_term",  False),
     ("Notlar",                  "notes",         False),
-    ("Yetkili Adı *",           "c_name",        True),
+    ("Yetkili Adı",             "c_name",        False),
     ("Yetkili Ünvanı",          "c_title",       False),
-    ("Yetkili E-posta *",       "c_email",       True),
+    ("Yetkili E-posta",         "c_email",       False),
     ("Yetkili Telefon",         "c_phone",       False),
 ]
 
@@ -186,9 +186,9 @@ def _validate_venues(rows: list[dict], db: Session) -> list[dict]:
             errors.append(f"Geçersiz tip: {stype} (otel/etkinlik/teknik/...)")
         r["supplier_type"] = stype
         if not r.get("c_name"):
-            errors.append("Yetkili Adı boş")
+            r["c_name"] = "Yetkili"
         if not r.get("c_email"):
-            errors.append("Yetkili E-posta boş")
+            r["c_email"] = "eposta yok"
         out.append({**r, "_row": i + 2, "_errors": errors, "_valid": len(errors) == 0})
     return out
 
