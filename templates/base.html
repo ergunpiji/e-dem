@@ -69,6 +69,32 @@
     .nav-section-label.section-cancel { color: #fca5a5; }
     .sidebar-link .nav-badge { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,255,255,.15); color: rgba(255,255,255,.7); }
 
+    /* ── Tree Nav ── */
+    .tree-group { border-top: 1px solid rgba(255,255,255,.06); margin-top: 2px; }
+    .tree-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 20px; cursor: pointer;
+      color: rgba(255,255,255,.45);
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+      user-select: none; transition: color .15s;
+    }
+    .tree-header:hover { color: rgba(255,255,255,.75); }
+    .tree-header .tree-icon { font-size: 14px; width: 20px; text-align: center; }
+    .tree-header .tree-arrow {
+      margin-left: auto; font-size: 10px;
+      transition: transform .2s;
+      color: rgba(255,255,255,.25);
+    }
+    .tree-group.open > .tree-header .tree-arrow { transform: rotate(90deg); }
+    .tree-group.open > .tree-header { color: rgba(255,255,255,.7); }
+    .tree-children {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height .25s ease;
+    }
+    .tree-group.open > .tree-children { max-height: 600px; }
+    .tree-children .sidebar-link { padding-left: 32px; font-size: 13px; }
+
     /* ── Main ── */
     .main-content { margin-left: var(--sidebar-width); min-height: 100vh; }
     .topbar {
@@ -191,185 +217,269 @@
     </div>
   </div>
 
-  <nav class="sidebar-nav">
-    {% set cur_path = request.url.path %}
-    {% set cur_query = request.url.query %}
+  <nav class="sidebar-nav" id="sidebarNav">
+    {% set cp = request.url.path %}
+    {% set cq = request.url.query %}
 
-    <!-- Dashboard — tüm roller -->
+    {# ── Her rol için ortak: Dashboard ── #}
     <a href="/dashboard"
-       class="sidebar-link {% if cur_path == '/dashboard' %}active{% endif %}">
-      <span class="nav-icon">📊</span> Dashboard
+       class="sidebar-link {% if cp == '/dashboard' %}active{% endif %}">
+      <i class="bi bi-speedometer2 nav-icon"></i> Dashboard
     </a>
 
+    {# ── ADMIN ── #}
     {% if current_user.role == 'admin' %}
-    <!-- ── ADMIN ── -->
-    <div class="nav-section-label section-main">Talepler</div>
-    <a href="/requests"
-       class="sidebar-link {% if cur_path == '/requests' and 'view=' not in cur_query %}active{% endif %}">
-      <span class="nav-icon">📋</span> Tüm Referanslar
-    </a>
-    <a href="/requests?view=ongoing"
-       class="sidebar-link {% if 'view=ongoing' in cur_query %}active{% endif %}">
-      <span class="nav-icon">🔄</span> Devam Eden İşler
-    </a>
 
-    <div class="nav-section-label section-main">Yönetim</div>
-    <a href="/venues"
-       class="sidebar-link {% if '/venues' in cur_path %}active{% endif %}">
-      <span class="nav-icon">🏨</span> Tedarikçi Havuzu
-    </a>
-    <a href="/services"
-       class="sidebar-link {% if '/services' in cur_path %}active{% endif %}">
-      <span class="nav-icon">🗂</span> Hizmet Kataloğu
-    </a>
-    <a href="/customers"
-       class="sidebar-link {% if '/customers' in cur_path %}active{% endif %}">
-      <span class="nav-icon">🏢</span> Müşteri Yönetimi
-    </a>
-    <a href="/bulk-import"
-       class="sidebar-link {% if '/bulk-import' in cur_path %}active{% endif %}">
-      <span class="nav-icon">📥</span> Toplu İçe Aktarma
-    </a>
-    <a href="/users"
-       class="sidebar-link {% if cur_path == '/users' or (('/users' in cur_path) and ('/org-titles' not in cur_path)) %}active{% endif %}">
-      <span class="nav-icon">👥</span> Kullanıcı Yönetimi
-    </a>
-    <a href="/users/org-titles"
-       class="sidebar-link {% if '/users/org-titles' in cur_path %}active{% endif %}">
-      <span class="nav-icon">🏛</span> Org Yapısı
-    </a>
-    <a href="/event-types"
-       class="sidebar-link {% if '/event-types' in cur_path %}active{% endif %}">
-      <span class="nav-icon">🏷</span> Etkinlik Tipleri
-    </a>
+      <a href="/reports"
+         class="sidebar-link {% if cp == '/reports' %}active{% endif %}">
+        <i class="bi bi-bar-chart-line nav-icon"></i> Raporlar
+      </a>
 
-    <div class="nav-section-label section-main">Finans</div>
-    <a href="/invoices/new"
-       class="sidebar-link {% if cur_path == '/invoices/new' %}active{% endif %}">
-      <span class="nav-icon">🧾</span> Fatura Girişi
-    </a>
-    <a href="/reports/financial"
-       class="sidebar-link {% if '/reports/financial' in cur_path %}active{% endif %}">
-      <span class="nav-icon">💰</span> Finansal Rapor
-    </a>
-    <a href="/expenses/new"
-       class="sidebar-link {% if '/expenses' in cur_path %}active{% endif %}">
-      <span class="nav-icon">📋</span> Harcama Formu (HBF)
-    </a>
+      <div class="tree-group" id="grp-talepler">
+        <div class="tree-header" onclick="toggleTree('grp-talepler')">
+          <i class="bi bi-folder2 tree-icon"></i> Talepler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Tüm Referanslar
+          </a>
+          <a href="/requests?view=ongoing"
+             class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
+            <i class="bi bi-arrow-repeat nav-icon"></i> Devam Eden İşler
+          </a>
+          <a href="/requests?view=cancelled"
+             class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
+            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+          </a>
+        </div>
+      </div>
 
-    <div class="nav-section-label section-main">Admin</div>
-    <a href="/reports"
-       class="sidebar-link {% if cur_path == '/reports' %}active{% endif %}">
-      <span class="nav-icon">📈</span> Raporlar
-    </a>
-    <a href="/email-templates"
-       class="sidebar-link {% if '/email-templates' in cur_path %}active{% endif %}">
-      <span class="nav-icon">✉️</span> E-posta Şablonları
-    </a>
-    <a href="/settings"
-       class="sidebar-link {% if '/settings' in cur_path %}active{% endif %}">
-      <span class="nav-icon">⚙️</span> Sistem Ayarları
-    </a>
+      <div class="tree-group" id="grp-finans">
+        <div class="tree-header" onclick="toggleTree('grp-finans')">
+          <i class="bi bi-wallet2 tree-icon"></i> Finans
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/invoices/new"
+             class="sidebar-link {% if cp == '/invoices/new' %}active{% endif %}">
+            <i class="bi bi-receipt nav-icon"></i> Fatura Girişi
+          </a>
+          <a href="/reports/financial"
+             class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
+            <i class="bi bi-graph-up nav-icon"></i> Finansal Rapor
+          </a>
+          <a href="/expenses/new"
+             class="sidebar-link {% if '/expenses' in cp %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formu (HBF)
+          </a>
+        </div>
+      </div>
 
-    <div class="nav-section-label section-main section-cancel">İptal</div>
-    <a href="/requests?view=cancelled"
-       class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
-      <span class="nav-icon">🚫</span> İptal İşler
-    </a>
+      <div class="tree-group" id="grp-yonetim">
+        <div class="tree-header" onclick="toggleTree('grp-yonetim')">
+          <i class="bi bi-gear tree-icon"></i> Yönetim
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/venues"
+             class="sidebar-link {% if '/venues' in cp %}active{% endif %}">
+            <i class="bi bi-building nav-icon"></i> Tedarikçi Havuzu
+          </a>
+          <a href="/services"
+             class="sidebar-link {% if '/services' in cp %}active{% endif %}">
+            <i class="bi bi-grid nav-icon"></i> Hizmet Kataloğu
+          </a>
+          <a href="/customers"
+             class="sidebar-link {% if '/customers' in cp %}active{% endif %}">
+            <i class="bi bi-briefcase nav-icon"></i> Müşteri Yönetimi
+          </a>
+          <a href="/users"
+             class="sidebar-link {% if cp == '/users' or ('/users' in cp and '/org-titles' not in cp) %}active{% endif %}">
+            <i class="bi bi-people nav-icon"></i> Kullanıcı Yönetimi
+          </a>
+          <a href="/users/org-titles"
+             class="sidebar-link {% if '/users/org-titles' in cp %}active{% endif %}">
+            <i class="bi bi-diagram-3 nav-icon"></i> Org Yapısı
+          </a>
+          <a href="/event-types"
+             class="sidebar-link {% if '/event-types' in cp %}active{% endif %}">
+            <i class="bi bi-tags nav-icon"></i> Etkinlik Tipleri
+          </a>
+          <a href="/bulk-import"
+             class="sidebar-link {% if '/bulk-import' in cp %}active{% endif %}">
+            <i class="bi bi-cloud-upload nav-icon"></i> Toplu İçe Aktarma
+          </a>
+        </div>
+      </div>
 
+      <div class="tree-group" id="grp-ayarlar">
+        <div class="tree-header" onclick="toggleTree('grp-ayarlar')">
+          <i class="bi bi-sliders tree-icon"></i> Ayarlar
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/email-templates"
+             class="sidebar-link {% if '/email-templates' in cp %}active{% endif %}">
+            <i class="bi bi-envelope nav-icon"></i> E-posta Şablonları
+          </a>
+          <a href="/settings"
+             class="sidebar-link {% if '/settings' in cp %}active{% endif %}">
+            <i class="bi bi-toggles nav-icon"></i> Sistem Ayarları
+          </a>
+        </div>
+      </div>
+
+    {# ── PROJE YÖNETİCİSİ ── #}
     {% elif current_user.role == 'project_manager' %}
-    <!-- ── PROJE YÖNETİCİSİ ── -->
-    <div class="nav-section-label section-main">Talepler</div>
-    <a href="/requests/new"
-       class="sidebar-link {% if cur_path == '/requests/new' %}active{% endif %}">
-      <span class="nav-icon">➕</span> Yeni Talep Oluştur
-    </a>
-    <a href="/requests"
-       class="sidebar-link {% if cur_path == '/requests' and 'view=' not in cur_query %}active{% endif %}">
-      <span class="nav-icon">📋</span> Referanslarım
-    </a>
-    <a href="/requests?view=ongoing"
-       class="sidebar-link {% if 'view=ongoing' in cur_query %}active{% endif %}">
-      <span class="nav-icon">🔄</span> Devam Eden İşler
-    </a>
-    <a href="/budgets"
-       class="sidebar-link {% if '/budgets' in cur_path %}active{% endif %}">
-      <span class="nav-icon">💰</span> Bütçeler
-    </a>
 
-    <div class="nav-section-label section-main">Bilgi</div>
-    <a href="/venues"
-       class="sidebar-link {% if '/venues' in cur_path %}active{% endif %}">
-      <span class="nav-icon">🏨</span> Tedarikçi Havuzu
-    </a>
+      <div class="tree-group" id="grp-talepler">
+        <div class="tree-header" onclick="toggleTree('grp-talepler')">
+          <i class="bi bi-folder2 tree-icon"></i> Talepler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests/new"
+             class="sidebar-link {% if cp == '/requests/new' %}active{% endif %}">
+            <i class="bi bi-plus-circle nav-icon"></i> Yeni Talep Oluştur
+          </a>
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Referanslarım
+          </a>
+          <a href="/requests?view=ongoing"
+             class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
+            <i class="bi bi-arrow-repeat nav-icon"></i> Devam Eden İşler
+          </a>
+          <a href="/budgets"
+             class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
+            <i class="bi bi-calculator nav-icon"></i> Bütçeler
+          </a>
+          <a href="/requests?view=cancelled"
+             class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
+            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+          </a>
+        </div>
+      </div>
 
-    <div class="nav-section-label section-main">Finans</div>
-    <a href="/reports/financial"
-       class="sidebar-link {% if '/reports/financial' in cur_path %}active{% endif %}">
-      <span class="nav-icon">💰</span> Finansal Raporum
-    </a>
-    <a href="/expenses/new"
-       class="sidebar-link {% if '/expenses' in cur_path %}active{% endif %}">
-      <span class="nav-icon">📋</span> Harcama Formu (HBF)
-    </a>
+      <div class="tree-group" id="grp-finans">
+        <div class="tree-header" onclick="toggleTree('grp-finans')">
+          <i class="bi bi-wallet2 tree-icon"></i> Finans
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/reports/financial"
+             class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
+            <i class="bi bi-graph-up nav-icon"></i> Finansal Raporum
+          </a>
+          <a href="/expenses/new"
+             class="sidebar-link {% if '/expenses' in cp %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formu (HBF)
+          </a>
+        </div>
+      </div>
 
-    <div class="nav-section-label section-main section-cancel">İptal</div>
-    <a href="/requests?view=cancelled"
-       class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
-      <span class="nav-icon">🚫</span> İptal İşler
-    </a>
+      <div class="tree-group" id="grp-bilgi">
+        <div class="tree-header" onclick="toggleTree('grp-bilgi')">
+          <i class="bi bi-building tree-icon"></i> Bilgi
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/venues"
+             class="sidebar-link {% if '/venues' in cp %}active{% endif %}">
+            <i class="bi bi-building nav-icon"></i> Tedarikçi Havuzu
+          </a>
+        </div>
+      </div>
 
+    {# ── E-DEM ── #}
     {% elif current_user.role == 'e_dem' %}
-    <!-- ── E-DEM ── -->
-    <div class="nav-section-label section-main">Talepler</div>
-    <a href="/requests"
-       class="sidebar-link {% if cur_path == '/requests' and 'view=' not in cur_query %}active{% endif %}">
-      <span class="nav-icon">📥</span> Gelen Referanslar
-    </a>
-    <a href="/requests?view=ongoing"
-       class="sidebar-link {% if 'view=ongoing' in cur_query %}active{% endif %}">
-      <span class="nav-icon">🔄</span> Devam Eden İşler
-    </a>
-    <a href="/budgets"
-       class="sidebar-link {% if '/budgets' in cur_path %}active{% endif %}">
-      <span class="nav-icon">💰</span> Bütçe Yönetimi
-    </a>
 
-    <div class="nav-section-label section-main">Bilgi</div>
-    <a href="/venues"
-       class="sidebar-link {% if '/venues' in cur_path %}active{% endif %}">
-      <span class="nav-icon">🏨</span> Tedarikçi Havuzu
-    </a>
+      <div class="tree-group" id="grp-talepler">
+        <div class="tree-header" onclick="toggleTree('grp-talepler')">
+          <i class="bi bi-folder2 tree-icon"></i> Talepler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
+            <i class="bi bi-inbox nav-icon"></i> Gelen Referanslar
+          </a>
+          <a href="/requests?view=ongoing"
+             class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
+            <i class="bi bi-arrow-repeat nav-icon"></i> Devam Eden İşler
+          </a>
+          <a href="/budgets"
+             class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
+            <i class="bi bi-calculator nav-icon"></i> Bütçe Yönetimi
+          </a>
+          <a href="/requests?view=cancelled"
+             class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
+            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+          </a>
+        </div>
+      </div>
 
-    <div class="nav-section-label section-main">Finans</div>
-    <a href="/expenses/new"
-       class="sidebar-link {% if '/expenses' in cur_path %}active{% endif %}">
-      <span class="nav-icon">📋</span> Harcama Formu (HBF)
-    </a>
+      <div class="tree-group" id="grp-finans">
+        <div class="tree-header" onclick="toggleTree('grp-finans')">
+          <i class="bi bi-wallet2 tree-icon"></i> Finans
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/expenses/new"
+             class="sidebar-link {% if '/expenses' in cp %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formu (HBF)
+          </a>
+        </div>
+      </div>
 
-    <div class="nav-section-label section-main section-cancel">İptal</div>
-    <a href="/requests?view=cancelled"
-       class="sidebar-link {% if 'view=cancelled' in cur_query %}active{% endif %}">
-      <span class="nav-icon">🚫</span> İptal İşler
-    </a>
+      <div class="tree-group" id="grp-bilgi">
+        <div class="tree-header" onclick="toggleTree('grp-bilgi')">
+          <i class="bi bi-building tree-icon"></i> Bilgi
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/venues"
+             class="sidebar-link {% if '/venues' in cp %}active{% endif %}">
+            <i class="bi bi-building nav-icon"></i> Tedarikçi Havuzu
+          </a>
+        </div>
+      </div>
 
+    {# ── MUHASEBE ── #}
     {% elif current_user.role in ('muhasebe_muduru', 'muhasebe') %}
-    <!-- ── MUHASEBE ── -->
-    <div class="nav-section-label section-main">Finans</div>
-    <a href="/invoices/new"
-       class="sidebar-link {% if cur_path == '/invoices/new' %}active{% endif %}">
-      <span class="nav-icon">🧾</span> Fatura Girişi
-    </a>
-    <a href="/reports/financial"
-       class="sidebar-link {% if '/reports/financial' in cur_path %}active{% endif %}">
-      <span class="nav-icon">💰</span> Finansal Rapor
-    </a>
 
-    <div class="nav-section-label section-main">Referanslar</div>
-    <a href="/requests"
-       class="sidebar-link {% if cur_path == '/requests' %}active{% endif %}">
-      <span class="nav-icon">📋</span> Tüm Referanslar
-    </a>
+      <div class="tree-group" id="grp-finans">
+        <div class="tree-header" onclick="toggleTree('grp-finans')">
+          <i class="bi bi-wallet2 tree-icon"></i> Finans
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/invoices/new"
+             class="sidebar-link {% if cp == '/invoices/new' %}active{% endif %}">
+            <i class="bi bi-receipt nav-icon"></i> Fatura Girişi
+          </a>
+          <a href="/reports/financial"
+             class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
+            <i class="bi bi-graph-up nav-icon"></i> Finansal Rapor
+          </a>
+        </div>
+      </div>
+
+      <div class="tree-group" id="grp-talepler">
+        <div class="tree-header" onclick="toggleTree('grp-talepler')">
+          <i class="bi bi-folder2 tree-icon"></i> Referanslar
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Tüm Referanslar
+          </a>
+        </div>
+      </div>
+
     {% endif %}
 
   </nav>
@@ -538,6 +648,52 @@
       bsAlert.close();
     });
   }, 4000);
+</script>
+
+<!-- ── Tree Nav JS ── -->
+<script>
+(function() {
+  var STORE_KEY = 'edem_nav_open_{{ current_user.role }}';
+
+  function getSaved() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch(e) { return []; }
+  }
+  function save(list) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch(e) {}
+  }
+
+  window.toggleTree = function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var isOpen = el.classList.contains('open');
+    el.classList.toggle('open', !isOpen);
+    // localStorage güncelle
+    var saved = getSaved();
+    if (!isOpen) {
+      if (!saved.includes(id)) saved.push(id);
+    } else {
+      saved = saved.filter(function(x) { return x !== id; });
+    }
+    save(saved);
+  };
+
+  // Sayfa yüklenince: aktif linki içeren grubu aç + kaydedilmiş grupları aç
+  document.addEventListener('DOMContentLoaded', function() {
+    var saved = getSaved();
+    // Aktif link hangi grupta?
+    var activeLink = document.querySelector('#sidebarNav .sidebar-link.active');
+    if (activeLink) {
+      var grp = activeLink.closest('.tree-group');
+      if (grp && !saved.includes(grp.id)) saved.push(grp.id);
+    }
+    // Grupları aç
+    saved.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.add('open');
+    });
+    save(saved);
+  });
+})();
 </script>
 
 <!-- ── Profil Paneli JS ── -->
