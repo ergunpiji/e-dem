@@ -169,14 +169,13 @@ def _validate_customers(rows: list[dict], db: Session) -> list[dict]:
 
 
 def _validate_venues(rows: list[dict], db: Session) -> list[dict]:
-    existing_names = {v.name.lower() for v in db.query(Venue.name).filter(Venue.active == True).all()}
+    # Mevcut isimler — sadece bilgi amaçlı (hata değil, güncelleme yapılır)
+    existing_names = {v.name.lower() for v in db.query(Venue.name).all()}
     out = []
     for i, r in enumerate(rows):
         errors = []
         if not r.get("name"):
             errors.append("Firma Adı boş")
-        if r.get("name", "").lower() in existing_names:
-            errors.append(f"'{r['name']}' zaten kayıtlı")
         if not r.get("city"):
             errors.append("Şehir boş")
         stype = r.get("supplier_type", "").strip().lower()
@@ -189,6 +188,8 @@ def _validate_venues(rows: list[dict], db: Session) -> list[dict]:
             r["c_name"] = "Yetkili"
         if not r.get("c_email"):
             r["c_email"] = "eposta yok"
+        # Mevcut kayıt varsa güncelleme yapılacağını işaretle (uyarı, hata değil)
+        r["_will_update"] = r.get("name", "").lower() in existing_names
         out.append({**r, "_row": i + 2, "_errors": errors, "_valid": len(errors) == 0})
     return out
 
@@ -254,10 +255,8 @@ def _save_venues(rows: list[dict], db: Session) -> tuple[int, int]:
         except (ValueError, TypeError):
             pass
 
-        # Pasif (soft-deleted) aynı isimli kayıt varsa onu yeniden aktif yap
-        existing = db.query(Venue).filter(
-            Venue.name == r["name"], Venue.active == False
-        ).first()
+        # Upsert: aynı isimli kayıt varsa (aktif/pasif) güncelle, yoksa ekle
+        existing = db.query(Venue).filter(Venue.name == r["name"]).first()
         if existing:
             existing.city          = r["city"]
             existing.cities_json   = json.dumps(all_cities)

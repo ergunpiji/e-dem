@@ -17,8 +17,12 @@
   .tbl-preview th { font-size: 10px; background: #f8fafc; position: sticky; top: 0; z-index: 1; }
   .tbl-preview td { padding: 4px 8px; white-space: nowrap; }
   .row-valid   { background: #f0fdf4; }
+  .row-update  { background: #fefce8; }
+  .row-update td:first-child { border-left: 3px solid #eab308; }
   .row-invalid { background: #fef2f2; }
   .row-invalid td:first-child { border-left: 3px solid #ef4444; }
+  .update-badge { font-size: 10px; background: #fef9c3; color: #854d0e;
+                  border-radius: 4px; padding: 1px 5px; display: inline-block; margin: 1px; }
   .error-badge { font-size: 10px; background: #fee2e2; color: #dc2626;
                  border-radius: 4px; padding: 1px 5px; display: inline-block; margin: 1px; }
   .auto-badge  { font-size: 10px; background: #fef9c3; color: #854d0e;
@@ -281,13 +285,15 @@ function renderPreview(data) {
   const tbody = document.getElementById('previewTbody');
   let html = '';
   data.rows.forEach(row => {
-    const cls = row._valid ? 'row-valid' : 'row-invalid';
+    const cls = !row._valid ? 'row-invalid' : (row._will_update ? 'row-update' : 'row-valid');
     html += `<tr class="${cls}">`;
     html += `<td class="text-muted">${row._row}</td>`;
-    if (row._valid) {
-      html += `<td><span class="badge bg-success" style="font-size:10px;">✓ Geçerli</span></td>`;
-    } else {
+    if (!row._valid) {
       html += `<td>${row._errors.map(e => `<span class="error-badge">${escHtml(e)}</span>`).join('')}</td>`;
+    } else if (row._will_update) {
+      html += `<td><span class="update-badge">↻ Güncelleme</span></td>`;
+    } else {
+      html += `<td><span class="badge bg-success" style="font-size:10px;">✓ Yeni</span></td>`;
     }
     data.field_names.forEach(fn => {
       let val = row[fn] || '';
