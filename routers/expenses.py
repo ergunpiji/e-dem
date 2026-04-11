@@ -126,27 +126,54 @@ async def expenses_create(
         refs = []
     if not refs:
         raise HTTPException(400, detail="En az bir referans seçmelisiniz.")
+
+    try:
+        items = json.loads(items_json or "[]")
+    except Exception:
+        items = []
+
     primary_id = refs[0]["id"]
-    req = db.query(ReqModel).filter(ReqModel.id == primary_id).first()
-    if not req:
-        raise HTTPException(404)
+    refs_by_id = {r["id"]: r for r in refs}
 
-    report = ExpenseReport(
-        id=_uuid(),
-        request_id=primary_id,
-        request_ids_json=json.dumps(refs, ensure_ascii=False),
-        title=title.strip() or f"HBF — {req.request_no}",
-        status="draft",
-        submitted_by=current_user.id,
-        created_at=_now(),
-        updated_at=_now(),
-    )
-    db.add(report)
-    db.flush()
+    # Kalemleri assigned_request_id'ye göre grupla
+    # Atanmamış kalemler birincil referansa gider
+    groups: dict[str, list] = {}
+    for item in items:
+        rid = item.get("assigned_request_id") or primary_id
+        if rid not in refs_by_id:
+            rid = primary_id   # geçersiz ref → birincile düş
+        groups.setdefault(rid, []).append(item)
 
-    _save_items_from_json(db, report.id, items_json)
+    if not groups:
+        groups[primary_id] = []
+
+    first_report_id = None
+    for ref_id, group_items in groups.items():
+        req_obj = db.query(ReqModel).filter(ReqModel.id == ref_id).first()
+        if not req_obj:
+            continue
+        ref_no = refs_by_id.get(ref_id, {}).get("request_no", ref_id[:8])
+        report_title = (title.strip() or f"HBF — {req_obj.request_no}")
+        if len(groups) > 1:
+            report_title = f"{report_title} ({ref_no})"
+        report = ExpenseReport(
+            id=_uuid(),
+            request_id=ref_id,
+            request_ids_json=json.dumps(refs, ensure_ascii=False),
+            title=report_title,
+            status="draft",
+            submitted_by=current_user.id,
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        db.add(report)
+        db.flush()
+        _save_items_from_json(db, report.id, json.dumps(group_items))
+        if first_report_id is None:
+            first_report_id = report.id
+
     db.commit()
-    return RedirectResponse(url=f"/expenses/{report.id}/edit", status_code=302)
+    return RedirectResponse(url=f"/expenses/{first_report_id}/edit", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -199,16 +226,14 @@ async def expenses_edit_post(
     report.title = title.strip() or report.title
     report.updated_at = _now()
 
-    # Referans listesini güncelle
     try:
         refs = _json.loads(request_ids_json or "[]")
     except Exception:
         refs = []
     if refs:
         report.request_ids_json = _json.dumps(refs, ensure_ascii=False)
-        report.request_id = refs[0]["id"]   # birincil ref güncelle
 
-    # Eski kalemleri sil, yenilerini ekle
+    # Edit modunda sadece bu raporun kalemlerini güncelle (split yok)
     for item in list(report.items):
         db.delete(item)
     db.flush()
