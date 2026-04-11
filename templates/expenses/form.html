@@ -273,7 +273,7 @@
               <th style="width:80px;">KDV %</th>
               <th class="text-end" style="width:100px;">Toplam</th>
               {% if not readonly %}
-              <th id="thRef" style="width:110px; display:none;">Referans</th>
+              <th id="thRef" style="min-width:170px; display:none;">Referans</th>
               <th style="width:80px;">Belge</th>
               <th style="width:36px;"></th>
               {% else %}
@@ -591,11 +591,11 @@ function renderTable() {
          </label>`;
 
     // Referans dropdown (çok referans varsa)
-    const refOpts = `<option value="">—</option>` + selectedRefs.map(r =>
-      `<option value="${r.id}" ${row.assigned_request_id === r.id ? 'selected' : ''}>${r.request_no}</option>`
+    const refOpts = `<option value="">Tümü</option>` + selectedRefs.map(r =>
+      `<option value="${r.id}" ${row.assigned_request_id === r.id ? 'selected' : ''}>${r.request_no} — ${(r.event_name||'').substring(0,20)}</option>`
     ).join('');
     const refCell = `<td class="tdRef" style="${multi ? '' : 'display:none;'}">
-      <select style="width:100px; font-size:11px;"
+      <select style="min-width:160px; max-width:200px; font-size:11px;"
               onchange="rows[${i}].assigned_request_id=this.value;">
         ${refOpts}
       </select>

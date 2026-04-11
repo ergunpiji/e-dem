@@ -445,8 +445,21 @@ async def requests_detail(
         all_requests = db.query(ReqModel2).order_by(ReqModel2.created_at.desc()).limit(200).all()
 
     # ── HBF & Belgesiz ──
-    from models import UndocumentedEntry
-    expense_reports      = req.expense_reports or []
+    import json as _json
+    from models import UndocumentedEntry, ExpenseReport as ExpenseReportModel
+    # Birincil ref VEYA request_ids_json içinde bu ref olan tüm HBF'ler
+    from sqlalchemy import or_ as _or
+    expense_reports = (
+        db.query(ExpenseReportModel)
+        .filter(
+            _or(
+                ExpenseReportModel.request_id == req.id,
+                ExpenseReportModel.request_ids_json.like(f'%"{req.id}"%'),
+            )
+        )
+        .order_by(ExpenseReportModel.created_at)
+        .all()
+    )
     undocumented_entries = req.undocumented_entries or []
     undoc_gelir_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gelir"), 2)
     undoc_gider_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gider"), 2)
