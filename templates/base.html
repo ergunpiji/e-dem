@@ -168,6 +168,10 @@
        class="sidebar-link {% if '/customers' in cur_path %}active{% endif %}">
       <span class="nav-icon">🏢</span> Müşteri Yönetimi
     </a>
+    <a href="/bulk-import"
+       class="sidebar-link {% if '/bulk-import' in cur_path %}active{% endif %}">
+      <span class="nav-icon">📥</span> Toplu İçe Aktarma
+    </a>
     <a href="/users"
        class="sidebar-link {% if cur_path == '/users' or (('/users' in cur_path) and ('/org-titles' not in cur_path)) %}active{% endif %}">
       <span class="nav-icon">👥</span> Kullanıcı Yönetimi
