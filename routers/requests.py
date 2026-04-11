@@ -427,6 +427,14 @@ async def requests_detail(
     invoice_net_maliyet = invoice_maliyet - invoice_komisyon
     invoice_kar      = invoice_ciro - invoice_net_maliyet
 
+    # Belgesiz gelir/gider → ciro ve kar'a dahil et (HBF öncesi)
+    from models import UndocumentedEntry as _UE
+    _undoc = req.undocumented_entries or []
+    _undoc_gelir = round(sum(e.amount for e in _undoc if e.entry_type == "gelir"), 2)
+    _undoc_gider = round(sum(e.amount for e in _undoc if e.entry_type == "gider"), 2)
+    invoice_ciro = round(invoice_ciro + _undoc_gelir - _undoc_gider, 2)
+    invoice_kar  = round(invoice_kar  + _undoc_gelir - _undoc_gider, 2)
+
     confirmed_budget = None
     for b in req.budgets:
         if b.id == req.confirmed_budget_id:
@@ -446,11 +454,10 @@ async def requests_detail(
         all_requests = db.query(ReqModel2).order_by(ReqModel2.created_at.desc()).limit(200).all()
 
     # ── HBF & Belgesiz ──
-    from models import UndocumentedEntry
     expense_reports      = req.expense_reports or []
-    undocumented_entries = req.undocumented_entries or []
-    undoc_gelir_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gelir"), 2)
-    undoc_gider_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gider"), 2)
+    undocumented_entries = _undoc
+    undoc_gelir_total    = _undoc_gelir
+    undoc_gider_total    = _undoc_gider
 
     # Onaylanmış HBF giderleri → karlılığa eksi etki (KDV hariç)
     hbf_approved_total = round(
