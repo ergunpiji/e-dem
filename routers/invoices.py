@@ -268,28 +268,11 @@ async def invoices_parse_pdf(
     if len(file_bytes) > MAX_FILE_SIZE:
         return JSONResponse({"error": "Dosya 10 MB'ı aşıyor."}, status_code=400)
 
-    ext = os.path.splitext(file.filename or "")[1].lower()
-
-    # ── PDF → kural tabanlı ayrıştırıcı (API masrafı yok) ─────────────────
-    if ext == ".pdf":
-        try:
-            from agents.invoice_parser import parse_pdf
-            data = parse_pdf(file_bytes)
-            return JSONResponse({"ok": True, "data": data})
-        except ValueError as e:
-            # Taranmış PDF gibi metin çıkarılamayan durumlar
-            return JSONResponse({"error": str(e)}, status_code=422)
-        except Exception as e:
-            return JSONResponse({"error": f"PDF okuma hatası: {e}"}, status_code=500)
-
-    # ── Görsel (JPG/PNG) → AI ile analiz ──────────────────────────────────
+    # ── Tüm formatlar → AI ile analiz ──────────────────────────────────────
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return JSONResponse(
-            {"error": (
-                "Görsel faturalar için AI gerekli, ancak ANTHROPIC_API_KEY tanımlı değil. "
-                "PDF formatında yükleyin veya bilgileri manuel girin."
-            )},
+            {"error": "ANTHROPIC_API_KEY sunucuda tanımlı değil. Railway ortam değişkenlerine ekleyin."},
             status_code=500,
         )
 
