@@ -426,17 +426,22 @@ async def customers_delete_doc(
     return RedirectResponse(url=f"/customers/{customer_id}/edit", status_code=status.HTTP_302_FOUND)
 
 
-def _read_excel_for_editor(path: str, max_rows: int = 50, max_cols: int = 20) -> dict:
+def _read_excel_for_editor(path: str, max_rows: int = 50, max_cols: int = 20,
+                           sheet_name: str | None = None) -> dict:
     """Excel dosyasını template editörü için hücre matrisi olarak okur."""
     try:
         import openpyxl
         from openpyxl.utils import get_column_letter
     except ImportError:
-        return {"rows": [], "col_letters": [], "error": "openpyxl kurulu değil"}
+        return {"rows": [], "col_letters": [], "sheet_names": [], "error": "openpyxl kurulu değil"}
 
     try:
         wb = openpyxl.load_workbook(path, data_only=True)
-        ws = wb.active
+        sheet_names = wb.sheetnames
+        if sheet_name and sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+        else:
+            ws = wb.active
 
         # Merged cell bölgeleri
         merged_skip = set()   # (row, col) — ana hücre değil, atla
@@ -488,7 +493,9 @@ def _read_excel_for_editor(path: str, max_rows: int = 50, max_cols: int = 20) ->
         try:
             import re as _re
             wb2 = openpyxl.load_workbook(path, data_only=False)
-            ws2 = wb2.active
+            ws2 = (wb2[sheet_name]
+                   if sheet_name and sheet_name in wb2.sheetnames
+                   else wb2.active)
             for scan_row in range(1, min(real_max_row + 1, ws2.max_row + 1)):
                 row_has_formula = False
                 for ci in range(1, real_max_col + 1):
@@ -508,9 +515,13 @@ def _read_excel_for_editor(path: str, max_rows: int = 50, max_cols: int = 20) ->
             pass
 
         return {"rows": rows, "col_letters": col_letters,
-                "detected_formulas": detected_formulas, "error": None}
+                "detected_formulas": detected_formulas,
+                "sheet_names": sheet_names,
+                "active_sheet": ws.title,
+                "error": None}
     except Exception as exc:
-        return {"rows": [], "col_letters": [], "detected_formulas": {}, "error": str(exc)}
+        return {"rows": [], "col_letters": [], "detected_formulas": {},
+                "sheet_names": [], "error": str(exc)}
 
 
 @router.get("/{customer_id}/template-editor", response_class=HTMLResponse, name="customers_template_editor")
@@ -553,8 +564,41 @@ async def customers_template_editor(
         "excel_data":        excel_data,
         "existing_config":   json.dumps(cfg, ensure_ascii=False),
         "detected_formulas": json.dumps(excel_data.get("detected_formulas", {}), ensure_ascii=False),
+        "sheet_names":       json.dumps(excel_data.get("sheet_names", []), ensure_ascii=False),
         "page_title":        f"{customer.name} — Şablon Eşleştirme",
     })
+
+
+@router.get("/{customer_id}/template-editor/sheet-data", name="customers_template_sheet_data")
+async def customers_template_sheet_data(
+    customer_id: str,
+    sheet: str = "",
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Belirtilen sheet'in hücre verisini JSON olarak döndürür (AJAX)."""
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
+
+    tpl_path = customer.excel_template_path or ""
+    b64 = getattr(customer, "excel_template_b64", "") or ""
+
+    if b64 and (not tpl_path or not os.path.exists(tpl_path)):
+        import base64 as _b64
+        _dir = "static/uploads/customer_templates"
+        os.makedirs(_dir, exist_ok=True)
+        tpl_path = os.path.join(_dir, f"{customer_id}.xlsx")
+        with open(tpl_path, "wb") as f:
+            f.write(_b64.b64decode(b64))
+        customer.excel_template_path = tpl_path
+        db.commit()
+
+    if not tpl_path or not os.path.exists(tpl_path):
+        return JSONResponse({"error": "Template dosyası bulunamadı"}, status_code=404)
+
+    data = _read_excel_for_editor(tpl_path, sheet_name=sheet or None)
+    return JSONResponse(data)
 
 
 @router.post("/{customer_id}/template-editor", name="customers_template_editor_save")

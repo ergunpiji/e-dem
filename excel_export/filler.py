@@ -162,6 +162,8 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
     currency = (budget.offer_currency or "TRY").upper()
     sf        = _sf_sale(budget, currency)
 
+    totals = _budget_totals(budget)
+
     return {
         "event_name":     (getattr(req, "event_name", None)  or budget.venue_name or ""),
         "ref_no":         (getattr(req, "request_no", None)  or ""),
@@ -187,6 +189,11 @@ def _header_resolvers(budget, request, customer, creator) -> dict:
         "contact_name":  _primary_contact(customer),
         # Teklif son tarihi
         "quote_deadline": _date(getattr(req, "quote_deadline", None)),
+        # Bütçe toplamları (özet sayfa için)
+        "total_sale_excl": totals["total_sale_excl"],
+        "total_sale_incl": totals["total_sale_incl"],
+        "total_cost_excl": totals["total_cost_excl"],
+        "total_cost_incl": totals["total_cost_incl"],
     }
 
 
@@ -601,8 +608,9 @@ def _fill_summary_template(wb, entries: list, summary_cfg: dict) -> None:
 
     # Veri satırları (her bütçe → bir satır)
     if data_block:
-        start_row = int(data_block.get("start_row") or 1)
-        col_defs  = data_block.get("columns") or {}
+        start_row    = int(data_block.get("start_row") or 1)
+        col_defs     = data_block.get("columns") or {}
+        formula_cols = data_block.get("formula_columns") or {}
 
         for i, entry in enumerate(entries):
             totals = _budget_totals(entry["budget"])
@@ -618,6 +626,9 @@ def _fill_summary_template(wb, entries: list, summary_cfg: dict) -> None:
             for col_letter, field_name in col_defs.items():
                 val = totals.get(field_name, "")
                 _safe_set(ws, row_num, col_letter, val, font=_DAT_FONT())
+            for col_letter, tpl in formula_cols.items():
+                formula = tpl.replace("{row}", str(row_num))
+                _safe_set(ws, row_num, col_letter, formula, font=_DAT_FONT())
 
 
 # ── Tek bütçe export ──────────────────────────────────────────────────────────
