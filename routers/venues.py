@@ -291,13 +291,25 @@ async def venues_bulk_delete(
         return JSONResponse({"ok": False, "error": "Geçersiz veri"}, status_code=400)
 
     deleted = 0
+    failed_ids = []
     for vid in ids:
-        venue = db.query(Venue).filter(Venue.id == str(vid)).first()
-        if venue:
-            db.delete(venue)
-            deleted += 1
-    db.commit()
-    return JSONResponse({"ok": True, "deleted": deleted})
+        try:
+            venue = db.query(Venue).filter(Venue.id == str(vid)).first()
+            if venue:
+                db.delete(venue)
+                db.flush()   # FK hatası varsa burada patlar, commit öncesinde
+                deleted += 1
+        except Exception as e:
+            db.rollback()
+            failed_ids.append(str(vid))
+            print(f"[bulk-delete] {vid} silinemedi: {e}", flush=True)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return JSONResponse({"ok": False, "error": f"Commit hatası: {e}"}, status_code=500)
+
+    return JSONResponse({"ok": True, "deleted": deleted, "failed": len(failed_ids)})
 
 
 @router.post("/{venue_id}/delete", name="venues_delete")
@@ -308,6 +320,11 @@ async def venues_delete(
 ):
     venue = db.query(Venue).filter(Venue.id == venue_id).first()
     if venue:
-        venue.active = False
-        db.commit()
+        try:
+            db.delete(venue)
+            db.commit()
+        except Exception:
+            db.rollback()
+            venue.active = False
+            db.commit()
     return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)

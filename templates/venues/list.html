@@ -223,8 +223,16 @@ async function doBulkDelete() {
 
   const fd = new FormData();
   fd.append('ids_json', JSON.stringify(ids));
-  const res  = await fetch('/venues/bulk-delete', { method: 'POST', body: fd });
-  const data = await res.json();
+  let data;
+  try {
+    const res = await fetch('/venues/bulk-delete', { method: 'POST', body: fd });
+    data = await res.json();
+  } catch(e) {
+    alert('Sunucu bağlantı hatası: ' + e);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-trash me-1"></i> Evet, Sil';
+    return;
+  }
 
   if (data.ok) {
     ids.forEach(id => {
@@ -234,6 +242,9 @@ async function doBulkDelete() {
     bootstrap.Modal.getInstance(document.getElementById('bulkDeleteModal')).hide();
     document.getElementById('checkAll').checked = false;
     updateSelCount();
+    if (data.failed > 0) {
+      setTimeout(() => alert(`${data.deleted} kayıt silindi. ${data.failed} kayıt silinemedi (ilişkili kayıt olabilir).`), 300);
+    }
   } else {
     alert(data.error || 'Silme hatası');
   }
