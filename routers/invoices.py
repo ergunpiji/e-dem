@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Invoice, INVOICE_TYPES, Request as ReqModel, User, _uuid, _now
+from models import Invoice, INVOICE_TYPES, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, User, _uuid, _now
 from templates_config import templates
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -110,20 +110,40 @@ async def invoices_create(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    req_id:       str = Form(...),
-    invoice_type: str = Form(...),
-    invoice_no:   str = Form(""),
-    invoice_date: str = Form(""),
-    due_date:     str = Form(""),
-    vendor_name:  str = Form(""),
-    description:  str = Form(""),
-    lines_json:   str = Form("[]"),
-    document:     UploadFile = File(None),
+    req_id:              str = Form(...),
+    invoice_type:        str = Form(...),
+    invoice_no:          str = Form(""),
+    invoice_date:        str = Form(""),
+    due_date:            str = Form(""),
+    vendor_name:         str = Form(""),
+    description:         str = Form(""),
+    lines_json:          str = Form("[]"),
+    belgesiz_amount:     str = Form(""),
+    belgesiz_description:str = Form(""),
+    belgesiz_date:       str = Form(""),
+    document:            UploadFile = File(None),
 ):
     _require_finance(current_user)
     req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Referans bulunamadı.")
+
+    # ── Belgesiz Gelir / Gider → UndocumentedEntry kaydet ──
+    if invoice_type in BELGESIZ_TYPES:
+        entry_type = "gelir" if invoice_type == "belgesiz_gelir" else "gider"
+        entry = UndocumentedEntry(
+            id          = _uuid(),
+            request_id  = req_id,
+            entry_type  = entry_type,
+            description = belgesiz_description.strip(),
+            amount      = float(belgesiz_amount or 0),
+            entry_date  = belgesiz_date or "",
+            created_by  = current_user.id,
+            created_at  = _now(),
+        )
+        db.add(entry)
+        db.commit()
+        return RedirectResponse(url=f"/requests/{req_id}#tab-financial", status_code=303)
 
     try:
         lines = json.loads(lines_json or "[]")

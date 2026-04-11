@@ -147,49 +147,12 @@
             {% endif %}
           </div>
 
-          {# ── Belgesiz Gelir / Gider özeti (seçili ref varsa göster) ── #}
-          {% set undoc_gelir = undoc_entries | selectattr('entry_type','equalto','gelir') | list if undoc_entries else [] %}
-          {% set undoc_gider = undoc_entries | selectattr('entry_type','equalto','gider') | list if undoc_entries else [] %}
-          {% if undoc_gelir or undoc_gider %}
-          <div class="mb-3 p-3 rounded" style="background:#fefce8; border:1px solid #fde68a; font-size:12px;">
-            <div class="fw-semibold mb-2" style="color:#92400e;">
-              <i class="bi bi-cash-stack me-1"></i>Belgesiz Gelir / Gider
-              <span class="text-muted fw-normal">({{ selected_req.request_no if selected_req else '' }})</span>
-            </div>
-            <div class="row g-2">
-              <div class="col-6">
-                <div class="text-success fw-semibold mb-1">
-                  <i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir
-                  — ₺{{ '{:,.2f}'.format(undoc_gelir | sum(attribute='amount')).replace(',','.') }}
-                </div>
-                {% for e in undoc_gelir %}
-                <div class="d-flex justify-content-between text-muted py-1 border-bottom">
-                  <span>{{ e.entry_date or '—' }} &nbsp; {{ e.description or '—' }}</span>
-                  <span class="fw-semibold text-success ms-2">₺{{ '{:,.2f}'.format(e.amount).replace(',','.') }}</span>
-                </div>
-                {% endfor %}
-              </div>
-              <div class="col-6">
-                <div class="text-danger fw-semibold mb-1">
-                  <i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider
-                  — ₺{{ '{:,.2f}'.format(undoc_gider | sum(attribute='amount')).replace(',','.') }}
-                </div>
-                {% for e in undoc_gider %}
-                <div class="d-flex justify-content-between text-muted py-1 border-bottom">
-                  <span>{{ e.entry_date or '—' }} &nbsp; {{ e.description or '—' }}</span>
-                  <span class="fw-semibold text-danger ms-2">₺{{ '{:,.2f}'.format(e.amount).replace(',','.') }}</span>
-                </div>
-                {% endfor %}
-              </div>
-            </div>
-          </div>
-          {% endif %}
-
           {# ── Fatura Tipi + No + Tedarikçi ── #}
           <div class="row g-3 mb-3">
             <div class="col-md-4">
               <label class="form-label fw-semibold">Fatura Tipi <span class="text-danger">*</span></label>
-              <select name="invoice_type" class="form-select" required>
+              <select name="invoice_type" id="invoiceTypeSelect" class="form-select" required
+                      onchange="onInvoiceTypeChange(this.value)">
                 <option value="">— Seçin —</option>
                 {% for t in invoice_types %}
                 <option value="{{ t.value }}"
@@ -199,13 +162,13 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-4" id="colInvoiceNo">
               <label class="form-label fw-semibold">Fatura No</label>
               <input type="text" name="invoice_no" id="fInvoiceNo" class="form-control"
                      value="{{ invoice.invoice_no if invoice else '' }}"
                      placeholder="2024/00123">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-4" id="colVendorName">
               <label class="form-label fw-semibold">Tedarikçi / Müşteri</label>
               <input type="text" name="vendor_name" id="fVendorName" class="form-control"
                      value="{{ invoice.vendor_name if invoice else '' }}"
@@ -213,7 +176,7 @@
             </div>
           </div>
 
-          <div class="row g-3 mb-3">
+          <div class="row g-3 mb-3" id="rowDates">
             <div class="col-md-4">
               <label class="form-label fw-semibold">Fatura Tarihi</label>
               <input type="date" name="invoice_date" id="fInvoiceDate" class="form-control"
@@ -232,8 +195,28 @@
             </div>
           </div>
 
+          {# ── Belgesiz Gelir / Gider Alanları (sadece belgesiz tipinde görünür) ── #}
+          <div id="belgesizFields" style="display:none;">
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Tarih</label>
+                <input type="date" name="belgesiz_date" id="fBelgesizDate" class="form-control">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Tutar (₺) <span class="text-danger">*</span></label>
+                <input type="number" name="belgesiz_amount" id="fBelgesizAmount" class="form-control"
+                       min="0" step="0.01" placeholder="0,00">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Açıklama</label>
+                <input type="text" name="belgesiz_description" id="fBelgesizDescription" class="form-control"
+                       placeholder="Gelir / gider açıklaması">
+              </div>
+            </div>
+          </div>
+
           {# ── Kalem Tablosu ── #}
-          <div class="mb-3">
+          <div class="mb-3" id="linesSection">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <label class="form-label fw-semibold mb-0">Fatura Kalemleri</label>
               <button type="button" class="btn btn-outline-primary btn-sm"
@@ -259,7 +242,7 @@
           </div>
 
           {# ── Toplamlar ── #}
-          <div class="total-bar mb-4">
+          <div class="total-bar mb-4" id="totalsSection">
             <div class="total-row">
               <span class="text-muted">KDV Hariç Toplam</span>
               <span id="sumExcl">0,00 ₺</span>
@@ -277,7 +260,7 @@
           <input type="hidden" name="lines_json" id="linesJson">
 
           {# ── Belge Upload ── #}
-          <div class="mb-4">
+          <div class="mb-4" id="docSection">
             <label class="form-label fw-semibold">Belge (PDF / Resim)</label>
             {% if edit_mode and invoice and invoice.document_path %}
             <div class="mb-2">
@@ -440,6 +423,8 @@ function updateTotals() {
 }
 
 function prepareSave() {
+  const typeVal = document.getElementById('invoiceTypeSelect').value;
+  if (BELGESIZ_TYPES.has(typeVal)) return; // belgesiz: kalem tablosu yok
   // vat_amount'ları hesapla ve JSON'a yaz
   lines.forEach(ln => {
     ln.vat_amount = Math.round((parseFloat(ln.amount)||0) * (parseFloat(ln.vat_rate)||0) / 100 * 100) / 100;
@@ -574,6 +559,32 @@ function showAiError(msg) {
   el.textContent = msg;
   el.style.display = '';
 }
+
+// ── Fatura Tipi Değişince ─────────────────────────────────────────────────────
+const BELGESIZ_TYPES = new Set(['belgesiz_gelir', 'belgesiz_gider']);
+const INVOICE_SECTIONS = ['colInvoiceNo','colVendorName','rowDates','linesSection','totalsSection','docSection','aiZone'];
+
+function onInvoiceTypeChange(val) {
+  const isBelgesiz = BELGESIZ_TYPES.has(val);
+  INVOICE_SECTIONS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isBelgesiz ? 'none' : '';
+  });
+  document.getElementById('belgesizFields').style.display = isBelgesiz ? '' : 'none';
+  // Belgesiz seçilince kalem tablosunu gizle — AI parse de anlamsız
+  if (isBelgesiz) {
+    // Set invoice_date to today as default
+    const d = new Date().toISOString().slice(0,10);
+    const fd = document.getElementById('fBelgesizDate');
+    if (fd && !fd.value) fd.value = d;
+  }
+}
+
+// Sayfa yüklenince mevcut seçime göre uygula
+(function() {
+  const sel = document.getElementById('invoiceTypeSelect');
+  if (sel && sel.value) onInvoiceTypeChange(sel.value);
+})();
 
 // ── Yardımcılar ───────────────────────────────────────────────────────────────
 function snapVat(v) {

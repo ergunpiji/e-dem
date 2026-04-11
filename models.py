@@ -143,12 +143,16 @@ USER_ROLES = [
 USER_ROLE_LABELS = {r["value"]: r["label"] for r in USER_ROLES}
 
 INVOICE_TYPES = [
-    {"value": "kesilen",       "label": "Kesilen Fatura (Müşteriye)"},
-    {"value": "gelen",         "label": "Gelen Fatura (Tedarikçiden)"},
-    {"value": "komisyon",      "label": "Komisyon Faturası"},
-    {"value": "iade_kesilen",  "label": "İade — Kesilen Fatura"},
-    {"value": "iade_gelen",    "label": "İade — Gelen Fatura"},
+    {"value": "kesilen",        "label": "Kesilen Fatura (Müşteriye)"},
+    {"value": "gelen",          "label": "Gelen Fatura (Tedarikçiden)"},
+    {"value": "komisyon",       "label": "Komisyon Faturası"},
+    {"value": "iade_kesilen",   "label": "İade — Kesilen Fatura"},
+    {"value": "iade_gelen",     "label": "İade — Gelen Fatura"},
+    {"value": "belgesiz_gelir", "label": "Belgesiz Gelir"},
+    {"value": "belgesiz_gider", "label": "Belgesiz Gider"},
 ]
+
+BELGESIZ_TYPES = {"belgesiz_gelir", "belgesiz_gider"}
 
 INVOICE_TYPE_LABELS = {t["value"]: t["label"] for t in INVOICE_TYPES}
 
