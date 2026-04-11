@@ -543,6 +543,7 @@ def migrate_db():
         _safe_add_column(conn, "customers", "contacts_json",       "TEXT", "'{}'")
         _safe_add_column(conn, "requests",  "contact_person_json", "TEXT", "'{}'")
         _safe_add_column(conn, "users",     "org_title_id",        "TEXT")
+        _safe_add_column(conn, "users",     "avatar_b64",          "TEXT", "''")
 
         # Budgets
         _safe_add_column(conn, "budgets", "budget_status",       "TEXT",  "'draft_edem'")

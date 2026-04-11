@@ -238,6 +238,7 @@ class User(Base):
     surname      = Column(String(100), nullable=False)
     title        = Column(String(100), default="")
     phone        = Column(String(30), default="")
+    avatar_b64   = Column(Text, default="")          # profil fotoğrafı base64 (data URI)
     active       = Column(Boolean, default=True, nullable=False)
     created_at   = Column(DateTime, default=_now, nullable=False)
     org_title_id = Column(String(36), ForeignKey("org_titles.id"), nullable=True)
