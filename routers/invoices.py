@@ -187,6 +187,22 @@ async def invoices_create(
 
     db.add(inv)
     db.commit()
+
+    # Bildirim: PM onayı bekleniyor
+    if req.created_by:
+        from utils.notifications import create_notification
+        vendor = inv.vendor_name or inv.invoice_no or "—"
+        create_notification(
+            db,
+            user_id    = req.created_by,
+            notif_type = "invoice_pending",
+            title      = f"Fatura onayı bekleniyor — {vendor}",
+            message    = f"{req.request_no} referansına ait fatura onayınızı bekliyor.",
+            link       = f"/requests/{req_id}#tab-financial",
+            ref_id     = inv.id,
+        )
+        db.commit()
+
     return RedirectResponse(url=f"/requests/{req_id}#tab-financial", status_code=303)
 
 

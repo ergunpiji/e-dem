@@ -620,12 +620,33 @@ async def requests_update(
     req.contact_person_json   = contact_person_json
     req.updated_at            = _now()
 
+    went_pending = False
     if action == "send" and req.status == "draft":
-        req.status = "pending"
+        req.status   = "pending"
+        went_pending = True
     elif action == "direct" and req.status == "draft":
         req.status = "in_progress"
 
     db.commit()
+
+    # Bildirim: tüm e_dem kullanıcılarına yeni referans
+    if went_pending:
+        from utils.notifications import create_notification
+        edem_users = db.query(User).filter(
+            User.role == "e_dem", User.active == True  # noqa: E712
+        ).all()
+        for eu in edem_users:
+            create_notification(
+                db,
+                user_id    = eu.id,
+                notif_type = "new_request",
+                title      = f"Yeni referans — {req.request_no}",
+                message    = f"{req.event_name} ({req.client_name or ''})",
+                link       = f"/requests/{req_id}",
+                ref_id     = req_id,
+            )
+        db.commit()
+
     return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
 
 

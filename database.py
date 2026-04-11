@@ -775,6 +775,43 @@ def migrate_db():
             ))
         conn.commit()
 
+        # notifications tablosu
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id         TEXT PRIMARY KEY,
+                    user_id    TEXT NOT NULL REFERENCES users(id),
+                    notif_type TEXT NOT NULL,
+                    title      TEXT NOT NULL,
+                    message    TEXT DEFAULT '',
+                    link       TEXT DEFAULT '',
+                    ref_id     TEXT DEFAULT '',
+                    read_at    TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)"
+            ))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id         VARCHAR(36) PRIMARY KEY,
+                    user_id    VARCHAR(36) NOT NULL REFERENCES users(id),
+                    notif_type VARCHAR(50) NOT NULL,
+                    title      VARCHAR(200) NOT NULL,
+                    message    VARCHAR(500) DEFAULT '',
+                    link       VARCHAR(500) DEFAULT '',
+                    ref_id     VARCHAR(36)  DEFAULT '',
+                    read_at    TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)"
+            ))
+        conn.commit()
+
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()
 

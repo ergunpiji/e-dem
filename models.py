@@ -1132,6 +1132,24 @@ class UndocumentedEntry(Base):
     creator = relationship("User", foreign_keys=[created_by])
 
 
+class Notification(Base):
+    """Kullanıcı bildirimleri — bekleyen görevler için"""
+    __tablename__ = "notifications"
+
+    id         = Column(String(36), primary_key=True, default=_uuid)
+    user_id    = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    notif_type = Column(String(50), nullable=False)
+    # invoice_pending | hbf_submitted | budget_pricing | budget_revision | new_request
+    title      = Column(String(200), nullable=False)
+    message    = Column(String(500), default="")
+    link       = Column(String(500), default="")
+    ref_id     = Column(String(36), default="")   # ilgili nesnenin ID'si
+    read_at    = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
 class Settings(Base):
     """Sistem ayarları — tek satır (id=1)"""
     __tablename__ = "settings"

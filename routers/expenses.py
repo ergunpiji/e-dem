@@ -246,6 +246,20 @@ async def expenses_edit_post(
 
     if next_action == "submit":
         back_id = report.request_id
+        # Bildirim: PM onayı bekleniyor
+        req_obj = db.query(ReqModel).filter(ReqModel.id == back_id).first() if back_id else None
+        if req_obj and req_obj.created_by:
+            from utils.notifications import create_notification
+            create_notification(
+                db,
+                user_id    = req_obj.created_by,
+                notif_type = "hbf_submitted",
+                title      = f"HBF onayı bekleniyor — {report.title or 'Harcama Formu'}",
+                message    = f"{req_obj.request_no} referansına ait harcama formu onayınızı bekliyor.",
+                link       = f"/expenses/{report.id}",
+                ref_id     = report.id,
+            )
+            db.commit()
         return RedirectResponse(url=f"/requests/{back_id}", status_code=302)
     return RedirectResponse(url=f"/expenses/{report_id}/edit", status_code=302)
 

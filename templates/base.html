@@ -388,6 +388,38 @@
     <div class="d-flex align-items-center gap-2">
       {% block topbar_actions %}{% endblock %}
 
+      {# ── Bildirim çanı ── #}
+      <div class="position-relative" id="notifBellWrap">
+        <button onclick="toggleNotifPanel(event)" id="notifBellBtn" title="Bildirimler"
+                style="background:none;border:none;padding:6px 8px;border-radius:8px;
+                       cursor:pointer;color:#64748b;position:relative;transition:background .15s;"
+                onmouseover="this.style.background='#f1f5f9'"
+                onmouseout="this.style.background='none'">
+          <i class="bi bi-bell" style="font-size:18px;"></i>
+          <span id="notifBadge"
+                style="display:none;position:absolute;top:2px;right:2px;background:#ef4444;
+                       color:#fff;border-radius:999px;font-size:9px;font-weight:700;
+                       min-width:16px;height:16px;line-height:16px;text-align:center;
+                       padding:0 3px;"></span>
+        </button>
+        <div id="notifPanel"
+             style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:340px;
+                    background:#fff;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);
+                    z-index:2000;overflow:hidden;">
+          <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;
+                      align-items:center;justify-content:space-between;">
+            <span style="font-weight:700;font-size:14px;">Bildirimler</span>
+            <button onclick="markAllRead()" style="font-size:11px;color:#6366f1;background:none;
+                    border:none;cursor:pointer;padding:0;">Tümünü okundu işaretle</button>
+          </div>
+          <div id="notifList" style="max-height:360px;overflow-y:auto;">
+            <div class="text-center text-muted py-4" style="font-size:13px;">
+              <span class="spinner-border spinner-border-sm"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {# ── Profil butonu ── #}
       <button class="profile-btn" onclick="toggleProfilePanel(event)" id="profileBtn">
         <div class="profile-avatar" id="topbarAvatar">
@@ -628,6 +660,109 @@
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Kaydet';
   };
+})();
+</script>
+
+<!-- ── Bildirim JS ── -->
+<script>
+(function() {
+  const badge     = document.getElementById('notifBadge');
+  const panel     = document.getElementById('notifPanel');
+  const listEl    = document.getElementById('notifList');
+  const bellWrap  = document.getElementById('notifBellWrap');
+  if (!panel) return;
+
+  // İkon + renk tablosu
+  const NOTIF_META = {
+    invoice_pending : { icon: 'bi-receipt',              color: '#f59e0b' },
+    hbf_submitted   : { icon: 'bi-file-earmark-check',   color: '#3b82f6' },
+    budget_pricing  : { icon: 'bi-currency-dollar',      color: '#10b981' },
+    budget_revision : { icon: 'bi-pencil-square',        color: '#f97316' },
+    new_request     : { icon: 'bi-inbox',                color: '#8b5cf6' },
+  };
+
+  async function fetchCount() {
+    try {
+      const r = await fetch('/notifications/count');
+      if (!r.ok) return;
+      const { count } = await r.json();
+      if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : count;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    } catch (_) {}
+  }
+
+  async function loadList() {
+    listEl.innerHTML = '<div class="text-center text-muted py-4" style="font-size:13px;"><span class="spinner-border spinner-border-sm"></span></div>';
+    try {
+      const r = await fetch('/notifications');
+      if (!r.ok) { listEl.innerHTML = '<div class="text-center text-muted py-3" style="font-size:13px;">Yüklenemedi</div>'; return; }
+      const items = await r.json();
+      if (!items.length) {
+        listEl.innerHTML = '<div class="text-center text-muted py-4" style="font-size:13px;">Bildirim yok</div>';
+        return;
+      }
+      listEl.innerHTML = items.map(n => {
+        const m = NOTIF_META[n.type] || { icon: 'bi-bell', color: '#64748b' };
+        const bg = n.read ? '' : 'background:#f8faff;';
+        return `<a href="${n.link || '#'}" onclick="markOne('${n.id}',event)"
+                   style="${bg}display:block;padding:10px 16px;text-decoration:none;
+                          border-bottom:1px solid #f1f5f9;transition:background .12s;"
+                   onmouseover="this.style.background='#f1f5f9'"
+                   onmouseout="this.style.background='${n.read ? '' : '#f8faff'}'">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <i class="bi ${m.icon}" style="color:${m.color};font-size:16px;margin-top:2px;flex-shrink:0;"></i>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:${n.read ? '400' : '600'};color:#1e293b;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.title}</div>
+              ${n.message ? `<div style="font-size:11px;color:#64748b;margin-top:2px;
+                             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.message}</div>` : ''}
+              <div style="font-size:10px;color:#94a3b8;margin-top:3px;">${n.created_at}</div>
+            </div>
+            ${!n.read ? '<span style="width:7px;height:7px;background:#6366f1;border-radius:50%;flex-shrink:0;margin-top:5px;"></span>' : ''}
+          </div>
+        </a>`;
+      }).join('');
+    } catch (_) {
+      listEl.innerHTML = '<div class="text-center text-muted py-3" style="font-size:13px;">Yüklenemedi</div>';
+    }
+  }
+
+  window.toggleNotifPanel = function(e) {
+    e.stopPropagation();
+    const isOpen = panel.style.display !== 'none';
+    if (isOpen) {
+      panel.style.display = 'none';
+    } else {
+      panel.style.display = '';
+      loadList();
+    }
+  };
+
+  window.markAllRead = async function() {
+    await fetch('/notifications/read-all', { method: 'POST' });
+    badge.style.display = 'none';
+    loadList();
+  };
+
+  window.markOne = async function(id, e) {
+    await fetch(`/notifications/${id}/read`, { method: 'POST' });
+    fetchCount();
+  };
+
+  // Dışarı tıklayınca kapat
+  document.addEventListener('click', function(e) {
+    if (bellWrap && !bellWrap.contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
+  // Başlangıçta say, sonra 60sn aralıklarla güncelle
+  fetchCount();
+  setInterval(fetchCount, 60000);
 })();
 </script>
 

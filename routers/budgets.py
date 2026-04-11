@@ -481,6 +481,21 @@ async def budgets_send_to_manager(
         budget.updated_at    = _now()
         db.commit()
 
+        # Bildirim: PM fiyatlandırma yapmalı
+        req_obj = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first() if budget else None
+        if req_obj and req_obj.created_by:
+            from utils.notifications import create_notification
+            create_notification(
+                db,
+                user_id    = req_obj.created_by,
+                notif_type = "budget_pricing",
+                title      = f"Bütçe fiyatlandırması gerekiyor — {budget.venue_name or req_obj.request_no}",
+                message    = f"{req_obj.request_no} referansına ait bütçe fiyatlandırmanızı bekliyor.",
+                link       = f"/budgets/{budget.id}/price",
+                ref_id     = budget.id,
+            )
+            db.commit()
+
     # Manager bildirimi için mailto: hazırla
     manager_email = ""
     if budget:
@@ -683,6 +698,23 @@ async def budgets_request_revision(
         budget.revision_notes = revision_notes.strip()
         budget.updated_at     = _now()
         db.commit()
+
+        # Bildirim: E-dem revizyona almalı
+        if budget.created_by:
+            from utils.notifications import create_notification
+            req_obj = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
+            req_no  = req_obj.request_no if req_obj else ""
+            create_notification(
+                db,
+                user_id    = budget.created_by,
+                notif_type = "budget_revision",
+                title      = f"Bütçe revizyonu istendi — {budget.venue_name or req_no}",
+                message    = revision_notes.strip()[:200] or "PM revizyon talep etti.",
+                link       = f"/budgets/{budget_id}/edit",
+                ref_id     = budget_id,
+            )
+            db.commit()
+
     return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
 
 
