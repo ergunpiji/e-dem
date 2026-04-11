@@ -738,9 +738,7 @@ function renderTable() {
       const unitCellHtml = isManagerRow
         ? `<input type="text" class="form-control form-control-sm" value="${escHtml(rows[i].unit||'Adet')}" style="width:65px;" oninput="rows[${i}].unit=this.value;saveRows()">`
         : escHtml(rows[i].unit || 'Adet');
-      const qtyCellHtml = isManagerRow
-        ? `<input type="number" class="form-control form-control-sm text-center" style="width:55px;" min="1" value="${qty}" oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">`
-        : qty;
+      const qtyCellHtml = `<input type="number" class="form-control form-control-sm text-center" style="width:55px;" min="1" value="${qty}" oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">`;
       html += `<tr style="${isFlagged ? 'background:#fff7ed;' : ''}">
         <td class="ps-3 ${isManagerRow ? '' : 'fw-semibold'}" style="font-size:13px;">${nameCellHtml}</td>
         <td style="color:#64748b; font-size:12px;">${unitCellHtml}</td>
