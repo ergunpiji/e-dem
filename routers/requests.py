@@ -451,6 +451,13 @@ async def requests_detail(
     undocumented_entries = req.undocumented_entries or []
     undoc_gelir_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gelir"), 2)
     undoc_gider_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gider"), 2)
+
+    # Onaylanmış HBF giderleri → karlılığa eksi etki (KDV hariç)
+    hbf_approved_total = round(
+        sum(r.grand_excl_vat for r in expense_reports if r.status == "approved"), 2
+    )
+    # Gerçek kar = fatura karı − onaylanan HBF giderleri
+    invoice_kar = round(invoice_kar - hbf_approved_total, 2)
     from datetime import date as _date
     today = _date.today().strftime("%Y-%m-%d")
 
@@ -491,6 +498,7 @@ async def requests_detail(
             "all_requests":          all_requests,
             "email_templates_json":  email_templates_json,
             "settings_ctx":          settings_ctx,
+            "hbf_approved_total":      hbf_approved_total,
             # HBF & Belgesiz
             "expense_reports":        expense_reports,
             "undocumented_entries":   undocumented_entries,

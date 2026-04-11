@@ -1063,14 +1063,17 @@
           <div style="font-size:20px; font-weight:800; color:#dc2626; line-height:1.2;">
             ₺{{ '{:,.0f}'.format(invoice_net_maliyet).replace(',', '.') }}
           </div>
-          {% if invoice_komisyon > 0 %}
-          <div style="font-size:11px; color:#94a3b8;">
+          <div style="font-size:11px; color:#94a3b8; line-height:1.6;">
+            {% if invoice_komisyon > 0 %}
             Brüt ₺{{ '{:,.0f}'.format(invoice_maliyet).replace(',', '.') }}
-            <span style="color:#16a34a;">− Kom. ₺{{ '{:,.0f}'.format(invoice_komisyon).replace(',', '.') }}</span>
+            <span style="color:#16a34a;">− Kom. ₺{{ '{:,.0f}'.format(invoice_komisyon).replace(',', '.') }}</span><br>
+            {% else %}
+            Faturadan<br>
+            {% endif %}
+            {% if hbf_approved_total > 0 %}
+            <span style="color:#b45309;">+ HBF ₺{{ '{:,.0f}'.format(hbf_approved_total).replace(',', '.') }}</span>
+            {% endif %}
           </div>
-          {% else %}
-          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
-          {% endif %}
         </div>
       </div>
       <div class="col-sm-6 col-lg-3">
@@ -1082,7 +1085,12 @@
           <div style="font-size:20px; font-weight:800; color:{% if invoice_kar >= 0 %}#16a34a{% else %}#dc2626{% endif %}; line-height:1.2;">
             ₺{{ '{:,.0f}'.format(invoice_kar).replace(',', '.') }}
           </div>
-          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
+          <div style="font-size:11px; color:#94a3b8;">
+            Fatura + HBF
+            {% if hbf_approved_total > 0 %}
+            <span style="color:#b45309;">(HBF: −₺{{ '{:,.0f}'.format(hbf_approved_total).replace(',', '.') }})</span>
+            {% endif %}
+          </div>
         </div>
       </div>
       <div class="col-sm-6 col-lg-3">
@@ -1102,7 +1110,7 @@
           {% else %}
           <div style="font-size:20px; font-weight:800; color:#94a3b8; line-height:1.2;">—</div>
           {% endif %}
-          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
+          <div style="font-size:11px; color:#94a3b8;">Fatura + HBF</div>
         </div>
       </div>
     </div>
