@@ -521,7 +521,7 @@
 {# ─── Catalog + venue data ─── #}
 <script>
 const SERVICES_BY_CAT = {{ services_by_cat | tojson }};
-const VENUES_DATA = [{% for v in venues %}{id:{{ v.id|tojson }},name:{{ v.name|tojson }},city:{{ v.city|tojson }},supplier_type:{{ v.supplier_type|tojson }}},{% endfor %}];
+const VENUES_DATA = [{% for v in venues %}{id:{{ v.id|tojson }},name:{{ v.name|tojson }},city:{{ v.city|tojson }},cities:{{ (v.cities or [v.city]) | tojson }},supplier_type:{{ v.supplier_type|tojson }}},{% endfor %}];
 const TAB_TYPES = {
   {% for tab in request_tabs %}'{{ tab.id }}': {{ tab.supplier_types | tojson }},
   {% endfor %}
@@ -561,7 +561,7 @@ renderCityTags();
 
 document.getElementById('cityAdder').addEventListener('change', function() {
   const v = this.value;
-  if (v && !cities.includes(v)) { cities.push(v); renderCityTags(); saveCitiesJson(); }
+  if (v && !cities.includes(v)) { cities.push(v); renderCityTags(); saveCitiesJson(); refreshAllVenueDrops(); }
   this.value = '';
 });
 function renderCityTags() {
@@ -570,8 +570,17 @@ function renderCityTags() {
     `<span class="tag-badge">${escHtml(city)}<button type="button" onclick="removeCity(${i})">×</button></span>`
   ).join('');
 }
-function removeCity(i) { cities.splice(i, 1); renderCityTags(); saveCitiesJson(); }
+function removeCity(i) { cities.splice(i, 1); renderCityTags(); saveCitiesJson(); refreshAllVenueDrops(); }
 function saveCitiesJson() { document.getElementById('citiesJson').value = JSON.stringify(cities); }
+function refreshAllVenueDrops() {
+  // Açık olan tüm dropdown'ları ve chip listelerini güncelle
+  document.querySelectorAll('.vs-dropdown').forEach(drop => {
+    if (drop.style.display !== 'none') {
+      const tabId = drop.id.replace('vsDrop-', '');
+      renderVsDrop(tabId, document.getElementById('vsSearch-' + tabId)?.value || '');
+    }
+  });
+}
 
 // ─── Etkinlik tarihleri değişince ───
 function onCheckInChange() {
@@ -956,19 +965,39 @@ function filterVsDrop(tabId, query) {
   if (drop) { drop.style.display = 'block'; renderVsDrop(tabId, query); }
 }
 
+function getSelectedCities() {
+  // form.html'deki global `cities` array'ini kullan (renderCityTags tarafından yönetilir)
+  if (typeof cities !== 'undefined' && cities.length) return cities;
+  return [];
+}
+
 function renderVsDrop(tabId, query) {
   const drop = document.getElementById('vsDrop-' + tabId);
   if (!drop) return;
   const types = TAB_TYPES[tabId] || [];
   const q = query.toLowerCase().trim();
+  const selectedCities = getSelectedCities().map(c => c.toLowerCase());
   const typeLabels = {otel:'Otel',etkinlik:'Etkinlik Mekanı',teknik:'Teknik',dekor:'Dekor',
     transfer:'Transfer',tasarim:'Tasarım',restaurant:'Restoran',susleme:'Süsleme',ik:'İK',diger:'Diğer'};
-  const filtered = VENUES_DATA.filter(v =>
-    types.includes(v.supplier_type) &&
-    (!q || v.name.toLowerCase().includes(q) || v.city.toLowerCase().includes(q))
-  );
+
+  const filtered = VENUES_DATA.filter(v => {
+    if (!types.includes(v.supplier_type)) return false;
+    // Şehir filtresi: seçili şehir varsa tedarikçinin şehirleri ile kesişmeli
+    if (selectedCities.length > 0) {
+      const vCities = (v.cities || [v.city]).map(c => c.toLowerCase());
+      const match = selectedCities.some(sc => vCities.some(vc => vc.includes(sc) || sc.includes(vc)));
+      if (!match) return false;
+    }
+    // Arama filtresi
+    if (q) return v.name.toLowerCase().includes(q) || v.city.toLowerCase().includes(q);
+    return true;
+  });
+
   if (!filtered.length) {
-    drop.innerHTML = `<div class="vs-no-res">Sonuç bulunamadı</div>`;
+    const hint = selectedCities.length > 0
+      ? `<div class="vs-no-res">Seçili şehirlerde (${selectedCities.join(', ')}) tedarikçi bulunamadı.<br><small>Farklı bir şehir seçin veya arama yapın.</small></div>`
+      : `<div class="vs-no-res">Sonuç bulunamadı</div>`;
+    drop.innerHTML = hint;
     return;
   }
   drop.innerHTML = filtered.map(v =>

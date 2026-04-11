@@ -1075,13 +1075,8 @@ async def requests_export(
 
     # ── Excel oluştur ────────────────────────────────────────────────────────
     try:
-        if use_template:
-            from excel_export import fill_customer_template_multi
-            output = fill_customer_template_multi(
-                template_path=tpl_path,
-                cell_map=cell_map,
-                entries=entries,
-            )
+        if False:  # Müşteri template export geçici olarak devre dışı
+            pass
         else:
             from excel_export import build_multi_sheet
             output = build_multi_sheet(entries, vat_mode=vat_mode,

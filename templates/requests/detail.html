@@ -1036,6 +1036,7 @@
 
     {# Özet Kartlar #}
     <div class="row g-3 mb-4">
+      {% if current_user.role != 'e_dem' %}
       {% macro fin_card(label, bgt_val, real_val, color) %}
       <div class="col-sm-6 col-lg-3">
         <div class="p-3 rounded border" style="background:#f8fafc;">
@@ -1103,6 +1104,7 @@
         </div>
       </div>
     </div>
+    {% endif %}{# /current_user.role != 'e_dem' #}
 
     {# ── Makro: fatura satırı ── #}
     {% macro invoice_row(inv, show_actions, show_approve, row_style='') %}

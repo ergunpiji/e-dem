@@ -594,6 +594,16 @@ function renderTable() {
                      oninput="rows[${i}].cost_price=parseFloat(this.value)||0;updateTotals();saveRows()">
             </div>
             ${rowCur !== 'TRY' && cost > 0 ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">≈ ${fmtMoney(amountToTry(total,rowCur))}</div>` : ''}
+            <div class="mt-1 d-flex align-items-center gap-1" title="Komisyon oranı: bu tutardan düşülür">
+              <span style="font-size:10px;color:#6366f1;white-space:nowrap;">Kom.%</span>
+              <input type="number" class="form-control form-control-sm text-center p-0"
+                     style="font-size:11px;width:46px;height:22px;border-color:#c7d2fe;"
+                     min="0" max="100" step="0.5" placeholder="0"
+                     value="${row.commission_pct > 0 ? row.commission_pct : ''}"
+                     oninput="rows[${i}].commission_pct=parseFloat(this.value)||0;updateTotals();saveRows()"
+                     title="Komisyon oranı (%)">
+              ${row.commission_pct > 0 ? `<span style="font-size:10px;color:#6366f1;">−${currSymbol(rowCur)}${fmtNum((parseFloat(row.cost_price)||0)*row.commission_pct/100)}</span>` : ''}
+            </div>
           </td>
           ${BUDGET_IS_CONFIRMED ? `<td style="background:#f0fdf4;">
             <div class="input-group input-group-sm">
@@ -653,7 +663,7 @@ function renderTable() {
 function addRow(section) {
   const vat = defaultVat(section);
   rows.push({section, service_name:'', unit:'Adet', qty:1, nights:1,
-             cost_price:0, sale_price:0, vat_rate: vat, currency: offerCurrency || 'TRY'});
+             cost_price:0, sale_price:0, vat_rate: vat, currency: offerCurrency || 'TRY', commission_pct:0});
   renderTable();
   updateTotals();
   saveRows();

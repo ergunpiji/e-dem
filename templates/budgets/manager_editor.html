@@ -763,12 +763,21 @@ function renderTable() {
                    value="${cost || ''}" placeholder="0,00" style="${isManagerRow ? '' : 'background:#f8fafc;'}"
                    oninput="rows[${i}].cost_price=parseFloat(this.value)||0;calcServiceFee();updateRowSaleSub(${i})">
           </div>
+          ${(rows[i].commission_pct > 0) ? `<div class="mt-1" style="font-size:10px;color:#6366f1;">
+            Kom. %${rows[i].commission_pct} = −${fmtCurrency(cost*rows[i].commission_pct/100, rowCur)}
+          </div>` : ''}
         </td>
         <td class="${isManagerRow ? '' : 'cost-cell'}" style="font-size:12px; font-weight:600; white-space:nowrap;" id="costSub-${i}">
           ${cost > 0
-            ? (rowCur !== 'TRY'
-                ? `<div>${fmtCurrency(costSub, rowCur)}</div><div style="font-size:10px;color:#94a3b8;">${fmtMoney(costSubTry)}</div>`
-                : fmtMoney(costSub))
+            ? (() => {
+                const netCost = cost * (1 - (rows[i].commission_pct||0)/100);
+                const netSub  = netCost * (parseFloat(rows[i].qty)||1) * (parseFloat(rows[i].nights)||1);
+                const netSubTry = rowCur !== 'TRY' ? amountToTry(netSub, rowCur) : netSub;
+                return (rowCur !== 'TRY'
+                  ? `<div>${fmtCurrency(netSub, rowCur)}</div><div style="font-size:10px;color:#94a3b8;">${fmtMoney(netSubTry)}</div>`
+                  : fmtMoney(netSub))
+                + ((rows[i].commission_pct > 0) ? `<div style="font-size:10px;color:#6366f1;">net (kom. düş.)</div>` : '');
+              })()
             : '<span class="text-muted">—</span>'}
         </td>
         <td>

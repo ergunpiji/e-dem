@@ -777,17 +777,8 @@ async def budgets_export(
             flush=True,
         )
 
-        if use_template:
-            # ── Müşteri template'i ─────────────────────────────────────────
-            from excel_export import fill_customer_template
-            output = fill_customer_template(
-                template_path=template_path,
-                cell_map=cell_map,
-                budget=budget,
-                request=req,
-                customer=customer,
-                creator=creator,
-            )
+        if False:  # Müşteri template export geçici olarak devre dışı
+            pass
         else:
             # ── E-dem standart format ──────────────────────────────────────
             from excel_export import build_standard
