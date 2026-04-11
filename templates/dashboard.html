@@ -24,7 +24,8 @@
 
 {% block content %}
 
-{# ══════════════════ FİNANSAL ÖZET KARTLARI ══════════════════ #}
+{# ══════════════════ FİNANSAL ÖZET KARTLARI — sadece admin ve PM ══════════════════ #}
+{% if current_user.role != 'e_dem' %}
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-lg-3">
     <div class="fin-card">
@@ -65,6 +66,39 @@
     </div>
   </div>
 </div>
+{% else %}
+{# ══ E-DEM: İş yükü özet kartları ══ #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="fin-card">
+      <div class="fin-label"><i class="bi bi-inbox text-warning me-1"></i> Bekleyen</div>
+      <div class="fin-value text-warning">{{ stats.pending or 0 }}</div>
+      <div class="fin-sub">Üstlenilmemiş talepler</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="fin-card">
+      <div class="fin-label"><i class="bi bi-arrow-repeat text-primary me-1"></i> İşlemdeki</div>
+      <div class="fin-value text-primary">{{ stats.in_progress or 0 }}</div>
+      <div class="fin-sub">Aktif devam eden işler</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="fin-card">
+      <div class="fin-label"><i class="bi bi-envelope text-info me-1"></i> Mekan İlet.</div>
+      <div class="fin-value text-info">{{ stats.venues_contacted or 0 }}</div>
+      <div class="fin-sub">Yanıt bekleniyor</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="fin-card">
+      <div class="fin-label"><i class="bi bi-calculator me-1" style="color:#7c3aed;"></i> Bütçelerim</div>
+      <div class="fin-value" style="color:#7c3aed;">{{ stats.my_budgets or 0 }}</div>
+      <div class="fin-sub">Hazırladığım bütçeler</div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {# ══════════════════ HIZLI ERİŞİM ══════════════════ #}
 <div class="mb-4 d-flex flex-wrap gap-2">
@@ -101,7 +135,8 @@
   {% endif %}
 </div>
 
-{# ══════════════════ GRAFİK + SON TALEPLER ══════════════════ #}
+{# ══════════════════ GRAFİK + DURUM — sadece admin ve PM ══════════════════ #}
+{% if current_user.role != 'e_dem' %}
 <div class="row g-4 mb-4">
 
   {# CİRO / KAR GRAFİĞİ #}
@@ -170,34 +205,12 @@
         </div>
       </div>
 
-      {% else %}{# e_dem #}
-      <div class="d-flex flex-column gap-2">
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#fefce8;">
-          <span style="font-size:13px;"><i class="bi bi-inbox me-2 text-warning"></i>Bekleyen Talep</span>
-          <span class="fw-bold text-warning">{{ stats.pending }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#eff6ff;">
-          <span style="font-size:13px;"><i class="bi bi-gear me-2 text-primary"></i>İşlemdeki</span>
-          <span class="fw-bold text-primary">{{ stats.in_progress }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#e0f2fe;">
-          <span style="font-size:13px;"><i class="bi bi-envelope me-2 text-info"></i>Mekan İletişimi</span>
-          <span class="fw-bold text-info">{{ stats.venues_contacted }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f0fdf4;">
-          <span style="font-size:13px;"><i class="bi bi-check-circle me-2 text-success"></i>Bütçe Hazır</span>
-          <span class="fw-bold text-success">{{ stats.budget_ready }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f5f3ff;">
-          <span style="font-size:13px;"><i class="bi bi-calculator me-2" style="color:#7c3aed;"></i>Hazırladığım Bütçe</span>
-          <span class="fw-bold" style="color:#7c3aed;">{{ stats.my_budgets }}</span>
-        </div>
-      </div>
       {% endif %}
 
     </div>
   </div>
 </div>
+{% endif %}{# /e_dem gizle #}
 
 {# ══════════════════ SON AKTİVİTE TABLOSU ══════════════════ #}
 <div class="card">
@@ -272,6 +285,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+{% if current_user.role != 'e_dem' %}
 <script>
 (function() {
   const raw = {{ chart_data | safe }};
@@ -328,4 +342,5 @@
   });
 })();
 </script>
+{% endif %}
 {% endblock %}

@@ -155,13 +155,7 @@ async def dashboard(
             .all()
         )
 
-    else:  # e_dem
-        my_budget_req_ids = [
-            b.request_id for b in db.query(Budget.request_id)
-            .filter(Budget.created_by == current_user.id)
-            .distinct()
-            .all()
-        ]
+    else:  # e_dem — sadece iş yükü, finansal bilgi yok
         stats = {
             "pending":          db.query(ReqModel).filter(ReqModel.status == "pending").count(),
             "in_progress":      db.query(ReqModel).filter(ReqModel.status == "in_progress").count(),
@@ -172,7 +166,7 @@ async def dashboard(
                 ReqModel.status.in_(["pending", "in_progress", "venues_contacted", "budget_ready"])
             ).count(),
         }
-        financial = _build_financial_stats(db, budget_filter=my_budget_req_ids if my_budget_req_ids else None)
+        financial = {}   # e_dem finansal veri görmez
         recent_requests = (
             db.query(ReqModel)
             .filter(ReqModel.status.in_(["pending", "in_progress", "venues_contacted"]))
