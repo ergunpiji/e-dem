@@ -2,7 +2,6 @@
 E-dem — Fatura Yönetimi
 Erişim: admin, muhasebe_muduru, muhasebe
 """
-import base64
 import json
 import os
 import shutil
@@ -258,82 +257,21 @@ async def invoices_parse_pdf(
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
-        return JSONResponse({"error": "ANTHROPIC_API_KEY sunucuda tanımlı değil. Railway ortam değişkenlerine ekleyin."}, status_code=500)
-
-    import anthropic as _anthropic
+        return JSONResponse(
+            {"error": "ANTHROPIC_API_KEY sunucuda tanımlı değil. Railway ortam değişkenlerine ekleyin."},
+            status_code=500,
+        )
 
     file_bytes = await file.read()
     if len(file_bytes) > MAX_FILE_SIZE:
         return JSONResponse({"error": "Dosya 10 MB'ı aşıyor."}, status_code=400)
 
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    b64 = base64.standard_b64encode(file_bytes).decode()
-
-    # PDF için document block, resimler için image block
-    if ext == ".pdf":
-        media_type = "application/pdf"
-        content_block = {
-            "type": "document",
-            "source": {"type": "base64", "media_type": media_type, "data": b64},
-        }
-    else:
-        mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
-        media_type = mime_map.get(ext, "image/jpeg")
-        content_block = {
-            "type": "image",
-            "source": {"type": "base64", "media_type": media_type, "data": b64},
-        }
-
-    prompt = """Bu fatura belgesinden bilgileri çıkar ve SADECE aşağıdaki JSON formatında döndür. Başka hiçbir metin yazma.
-
-{
-  "invoice_no": "fatura/fiş numarası",
-  "invoice_date": "YYYY-MM-DD (kesim tarihi)",
-  "due_date": "YYYY-MM-DD (son ödeme/vade tarihi, yoksa boş string)",
-  "vendor_name": "faturayı kesen firma/kişi adı",
-  "description": "fatura üstündeki genel açıklama veya sipariş notu (varsa, yoksa boş string)",
-  "lines": [
-    {
-      "description": "kalem adı/açıklaması",
-      "amount": 1000.00,
-      "vat_rate": 10
-    }
-  ]
-}
-
-ZORUNLU KURALLAR:
-1. amount = KDV HARİÇ net tutar (matrah). KDV dahil toplam değil.
-   - Faturada "Matrah" veya "KDV Hariç Tutar" sütunu varsa onu al.
-   - Yoksa: KDV dahil tutarı (1 + kdv_oranı) ile böl. Örn: KDV %10 ise amount = toplam / 1.10
-2. vat_rate = tam sayı KDV yüzdesi (örn: 10, 20). Sadece şu değerler geçerli: 0, 1, 8, 10, 18, 20.
-   - Faturadaki KDV oranı bu listede yoksa en yakın geçerli orana yuvarla.
-   - Örn: %13 → 10, %25 → 20
-3. Her farklı KDV oranı için ayrı satır oluştur. Toplam/ara toplam satırlarını lines'a EKLEME.
-4. Tüm sayısal değerlerde ondalık ayırıcı olarak nokta kullan (virgül değil).
-5. Tarihler mutlaka YYYY-MM-DD formatında olmalı.
-6. Bilinmeyen alanlar: boş string ("") veya 0."""
-
     try:
-        client = _anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            messages=[{
-                "role": "user",
-                "content": [content_block, {"type": "text", "text": prompt}],
-            }],
-        )
-        text = response.content[0].text.strip()
-        # JSON bloğu varsa çıkar
-        if "```" in text:
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-        data = json.loads(text)
+        from agents.invoice_reader import parse_invoice
+        data = parse_invoice(file_bytes, file.filename or "invoice.pdf", api_key)
         return JSONResponse({"ok": True, "data": data})
-    except json.JSONDecodeError as e:
-        return JSONResponse({"error": f"AI yanıtı parse edilemedi: {e}"}, status_code=500)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
     except Exception as e:
         return JSONResponse({"error": f"AI hatası: {e}"}, status_code=500)
 
