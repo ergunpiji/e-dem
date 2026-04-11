@@ -478,9 +478,15 @@ class Request(Base):
     # İlişkiler
     customer = relationship("Customer", back_populates="requests")
     creator  = relationship("User", back_populates="created_requests", foreign_keys=[created_by])
-    budgets  = relationship("Budget", back_populates="request", cascade="all, delete-orphan")
-    invoices = relationship("Invoice", back_populates="request", order_by="Invoice.invoice_date",
-                            cascade="all, delete-orphan")
+    budgets              = relationship("Budget", back_populates="request", cascade="all, delete-orphan")
+    invoices             = relationship("Invoice", back_populates="request", order_by="Invoice.invoice_date",
+                                        cascade="all, delete-orphan")
+    expense_reports      = relationship("ExpenseReport", back_populates="request",
+                                        cascade="all, delete-orphan",
+                                        order_by="ExpenseReport.created_at")
+    undocumented_entries = relationship("UndocumentedEntry", back_populates="request",
+                                        cascade="all, delete-orphan",
+                                        order_by="UndocumentedEntry.entry_date")
 
     @property
     def cities(self) -> list:
@@ -998,6 +1004,126 @@ class Invoice(Base):
             "created_by":    self.created_by,
             "created_at":    self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ---------------------------------------------------------------------------
+# HBF — Harcama Bildirim Formu
+# ---------------------------------------------------------------------------
+
+EXPENSE_PAYMENT_METHODS = [
+    {"value": "kredi_karti", "label": "Kredi Kartı"},
+    {"value": "nakit",       "label": "Nakit"},
+]
+
+EXPENSE_DOC_TYPES = [
+    {"value": "fatura",    "label": "Fatura"},
+    {"value": "fis",       "label": "Fiş"},
+    {"value": "belgesiz",  "label": "Belgesiz"},
+]
+
+EXPENSE_STATUSES = [
+    {"value": "draft",     "label": "Taslak",        "color": "secondary"},
+    {"value": "submitted", "label": "Onay Bekliyor",  "color": "warning"},
+    {"value": "approved",  "label": "Onaylandı",      "color": "success"},
+    {"value": "rejected",  "label": "Reddedildi",     "color": "danger"},
+]
+EXPENSE_STATUS_LABELS = {s["value"]: s["label"] for s in EXPENSE_STATUSES}
+EXPENSE_STATUS_COLORS = {s["value"]: s["color"] for s in EXPENSE_STATUSES}
+
+
+class ExpenseReport(Base):
+    """HBF — Harcama Bildirim Formu başlığı"""
+    __tablename__ = "expense_reports"
+
+    id            = Column(String(36), primary_key=True, default=_uuid)
+    request_id    = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    title         = Column(String(300), default="")
+    status        = Column(String(16), default="draft")   # draft|submitted|approved|rejected
+    submitted_by  = Column(String(36), ForeignKey("users.id"), nullable=False)
+    approved_by   = Column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at   = Column(DateTime, nullable=True)
+    rejection_note = Column(Text, default="")
+    created_at    = Column(DateTime, default=_now, nullable=False)
+    updated_at    = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    # İlişkiler
+    request   = relationship("Request",  back_populates="expense_reports")
+    submitter = relationship("User",  foreign_keys=[submitted_by])
+    approver  = relationship("User",  foreign_keys=[approved_by])
+    items     = relationship("ExpenseItem", back_populates="report",
+                             cascade="all, delete-orphan",
+                             order_by="ExpenseItem.item_date")
+
+    @property
+    def status_label(self) -> str:
+        return EXPENSE_STATUS_LABELS.get(self.status, self.status)
+
+    @property
+    def status_color(self) -> str:
+        return EXPENSE_STATUS_COLORS.get(self.status, "secondary")
+
+    @property
+    def grand_total(self) -> float:
+        return round(sum(i.total_amount for i in self.items), 2)
+
+    @property
+    def grand_excl_vat(self) -> float:
+        return round(sum(i.amount for i in self.items), 2)
+
+    @property
+    def grand_vat(self) -> float:
+        return round(sum(i.vat_amount for i in self.items), 2)
+
+
+class ExpenseItem(Base):
+    """HBF kalemi"""
+    __tablename__ = "expense_items"
+
+    id             = Column(String(36), primary_key=True, default=_uuid)
+    report_id      = Column(String(36), ForeignKey("expense_reports.id"), nullable=False, index=True)
+    item_date      = Column(String(10), default="")    # YYYY-MM-DD
+    description    = Column(String(300), default="")
+    payment_method = Column(String(16), default="nakit")   # kredi_karti | nakit
+    document_type  = Column(String(16), default="fis")     # fatura | fis | belgesiz
+    amount         = Column(Float, default=0.0)    # KDV hariç
+    vat_rate       = Column(Float, default=0.0)    # 0 için belgesiz; 10, 20 vb.
+    vat_amount     = Column(Float, default=0.0)
+    total_amount   = Column(Float, default=0.0)    # KDV dahil
+    document_path  = Column(String(500), nullable=True)
+    document_name  = Column(String(255), nullable=True)
+    sort_order     = Column(Integer, default=0)
+    created_at     = Column(DateTime, default=_now, nullable=False)
+
+    report = relationship("ExpenseReport", back_populates="items")
+
+    @property
+    def payment_label(self) -> str:
+        return {"kredi_karti": "Kredi Kartı", "nakit": "Nakit"}.get(self.payment_method, self.payment_method)
+
+    @property
+    def doc_label(self) -> str:
+        return {"fatura": "Fatura", "fis": "Fiş", "belgesiz": "Belgesiz"}.get(self.document_type, self.document_type)
+
+
+# ---------------------------------------------------------------------------
+# Belgesiz Gelir / Gider
+# ---------------------------------------------------------------------------
+
+class UndocumentedEntry(Base):
+    """Belgesiz gelir veya gider kalemi (KDV'siz)"""
+    __tablename__ = "undocumented_entries"
+
+    id          = Column(String(36), primary_key=True, default=_uuid)
+    request_id  = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    entry_type  = Column(String(8), nullable=False)    # gelir | gider
+    description = Column(String(300), default="")
+    amount      = Column(Float, default=0.0)           # KDV yoktur
+    entry_date  = Column(String(10), default="")       # YYYY-MM-DD
+    created_by  = Column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at  = Column(DateTime, default=_now, nullable=False)
+
+    request = relationship("Request", back_populates="undocumented_entries")
+    creator = relationship("User", foreign_keys=[created_by])
 
 
 class Settings(Base):

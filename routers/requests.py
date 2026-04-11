@@ -444,6 +444,15 @@ async def requests_detail(
         from models import Request as ReqModel2
         all_requests = db.query(ReqModel2).order_by(ReqModel2.created_at.desc()).limit(200).all()
 
+    # ── HBF & Belgesiz ──
+    from models import UndocumentedEntry
+    expense_reports      = req.expense_reports or []
+    undocumented_entries = req.undocumented_entries or []
+    undoc_gelir_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gelir"), 2)
+    undoc_gider_total    = round(sum(e.amount for e in undocumented_entries if e.entry_type == "gider"), 2)
+    from datetime import date as _date
+    today = _date.today().strftime("%Y-%m-%d")
+
     return templates.TemplateResponse(
         "requests/detail.html",
         {
@@ -480,6 +489,12 @@ async def requests_detail(
             "all_requests":          all_requests,
             "email_templates_json":  email_templates_json,
             "settings_ctx":          settings_ctx,
+            # HBF & Belgesiz
+            "expense_reports":        expense_reports,
+            "undocumented_entries":   undocumented_entries,
+            "undoc_gelir_total":      undoc_gelir_total,
+            "undoc_gider_total":      undoc_gider_total,
+            "today":                  today,
         },
     )
 

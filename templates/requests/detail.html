@@ -1380,6 +1380,202 @@
   </div>
 </div>
 
+{# ─── HBF — Harcama Bildirim Formları ─── #}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between py-2"
+       style="background:#f0f9ff; border-bottom:1px solid #bae6fd;">
+    <h6 class="fw-bold mb-0">
+      <i class="bi bi-receipt-cutoff me-2" style="color:#0369a1;"></i>Harcama Bildirim Formları
+      {% if expense_reports %}
+      <span class="badge bg-primary ms-1" style="font-size:11px;">{{ expense_reports | length }}</span>
+      {% endif %}
+    </h6>
+    <a href="/expenses/new?request_id={{ req.id }}"
+       class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-plus me-1"></i>Yeni HBF
+    </a>
+  </div>
+  <div class="card-body p-0">
+    {% if expense_reports %}
+    <table class="table table-sm mb-0" style="font-size:13px;">
+      <thead>
+        <tr style="background:#f8fafc;">
+          <th class="ps-3">Başlık</th>
+          <th>Oluşturan</th>
+          <th>Tarih</th>
+          <th>Durum</th>
+          <th class="text-end">Toplam</th>
+          <th class="text-end pe-3">İşlem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rpt in expense_reports %}
+        <tr>
+          <td class="ps-3 fw-semibold">
+            <a href="/expenses/{{ rpt.id }}" class="text-decoration-none text-dark">
+              {{ rpt.title or 'HBF' }}
+            </a>
+            {% if rpt.status == 'rejected' and rpt.rejection_note %}
+            <div style="font-size:11px; color:#dc2626; margin-top:2px;">
+              <i class="bi bi-x-circle me-1"></i>{{ rpt.rejection_note[:60] }}{% if rpt.rejection_note | length > 60 %}…{% endif %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="text-muted">{{ rpt.submitter.full_name if rpt.submitter else '—' }}</td>
+          <td class="text-muted" style="white-space:nowrap;">
+            {{ rpt.created_at.strftime('%d.%m.%Y') if rpt.created_at else '—' }}
+          </td>
+          <td>
+            <span class="badge bg-{{ {'draft':'secondary','submitted':'warning','approved':'success','rejected':'danger'}.get(rpt.status,'secondary') }}"
+                  style="font-size:11px;">
+              {{ {'draft':'Taslak','submitted':'Onay Bekliyor','approved':'Onaylandı','rejected':'Reddedildi'}.get(rpt.status, rpt.status) }}
+            </span>
+          </td>
+          <td class="text-end fw-semibold">
+            ₺{{ '{:,.2f}'.format(rpt.grand_total).replace(',', '.') }}
+          </td>
+          <td class="text-end pe-3" style="white-space:nowrap;">
+            <a href="/expenses/{{ rpt.id }}" class="btn btn-xs btn-outline-secondary py-0 px-2"
+               style="font-size:11px;">
+              <i class="bi bi-eye me-1"></i>Görüntüle
+            </a>
+            {% if rpt.status in ('draft','rejected') and (current_user.role == 'admin' or rpt.submitted_by == current_user.id) %}
+            <a href="/expenses/{{ rpt.id }}/edit" class="btn btn-xs btn-outline-primary py-0 px-2 ms-1"
+               style="font-size:11px;">
+              <i class="bi bi-pencil me-1"></i>Düzenle
+            </a>
+            {% endif %}
+            {% if rpt.status == 'submitted' and (current_user.role == 'admin' or req.created_by == current_user.id) %}
+            <form method="post" action="/expenses/{{ rpt.id }}/approve" class="d-inline ms-1">
+              <button type="submit" class="btn btn-xs btn-success py-0 px-2" style="font-size:11px;"
+                      onclick="return confirm('Onaylanacak. Emin misiniz?')">
+                <i class="bi bi-check-lg"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:#f0f9ff; font-weight:700;">
+          <td class="ps-3" colspan="4">Onaylanan HBF Toplamı</td>
+          <td class="text-end">
+            ₺{{ '{:,.2f}'.format(expense_reports | selectattr('status','equalto','approved') | sum(attribute='grand_total') | round(2)).replace(',','.') }}
+          </td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    {% else %}
+    <div class="text-center py-4 text-muted" style="font-size:13px;">
+      <i class="bi bi-receipt-cutoff d-block mb-2" style="font-size:24px; opacity:.3;"></i>
+      Henüz harcama bildirimi eklenmemiş.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ─── Belgesiz Gelir / Gider ─── #}
+{% if current_user.role in ('admin', 'project_manager') %}
+<div class="card mb-4">
+  <div class="card-header py-2"
+       style="background:#fefce8; border-bottom:1px solid #fde68a;">
+    <h6 class="fw-bold mb-0">
+      <i class="bi bi-cash-stack me-2" style="color:#b45309;"></i>Belgesiz Gelir / Gider
+      <span class="badge bg-warning bg-opacity-20 text-warning ms-1" style="font-size:10px;">KDV'siz</span>
+    </h6>
+  </div>
+  <div class="card-body">
+    <div class="row g-4">
+
+      {# Belgesiz Gelir #}
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-semibold" style="font-size:13px; color:#166534;">
+            <i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir
+          </span>
+          <span class="fw-bold text-success" style="font-size:14px;" id="undocIncomeTotal">
+            ₺{{ '{:,.2f}'.format(undoc_gelir_total).replace(',', '.') }}
+          </span>
+        </div>
+        <div id="undocIncomeList">
+          {% for e in undocumented_entries if e.entry_type == 'gelir' %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom undoc-row"
+               id="undoc-{{ e.id }}" style="font-size:12px;">
+            <div>
+              <span class="text-muted me-2">{{ e.entry_date or '—' }}</span>
+              {{ e.description or '—' }}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="fw-semibold text-success">₺{{ '{:,.2f}'.format(e.amount).replace(',', '.') }}</span>
+              <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
+                      onclick="deleteUndoc('{{ e.id }}', 'gelir')" title="Sil">
+                <i class="bi bi-trash3" style="font-size:10px;"></i>
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <form class="mt-2 d-flex gap-1 flex-wrap" onsubmit="addUndoc(event,'gelir')">
+          <input type="date" id="undocIncomeDate" class="form-control form-control-sm"
+                 style="width:120px;" value="{{ today }}">
+          <input type="text" id="undocIncomeDesc" class="form-control form-control-sm flex-grow-1"
+                 placeholder="Açıklama" style="min-width:120px;">
+          <input type="number" id="undocIncomeAmt" class="form-control form-control-sm text-end"
+                 placeholder="Tutar" min="0" step="0.01" style="width:110px;">
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </form>
+      </div>
+
+      {# Belgesiz Gider #}
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-semibold" style="font-size:13px; color:#991b1b;">
+            <i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider
+          </span>
+          <span class="fw-bold text-danger" style="font-size:14px;" id="undocExpenseTotal">
+            ₺{{ '{:,.2f}'.format(undoc_gider_total).replace(',', '.') }}
+          </span>
+        </div>
+        <div id="undocExpenseList">
+          {% for e in undocumented_entries if e.entry_type == 'gider' %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom undoc-row"
+               id="undoc-{{ e.id }}" style="font-size:12px;">
+            <div>
+              <span class="text-muted me-2">{{ e.entry_date or '—' }}</span>
+              {{ e.description or '—' }}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="fw-semibold text-danger">₺{{ '{:,.2f}'.format(e.amount).replace(',', '.') }}</span>
+              <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
+                      onclick="deleteUndoc('{{ e.id }}', 'gider')" title="Sil">
+                <i class="bi bi-trash3" style="font-size:10px;"></i>
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <form class="mt-2 d-flex gap-1 flex-wrap" onsubmit="addUndoc(event,'gider')">
+          <input type="date" id="undocExpenseDate" class="form-control form-control-sm"
+                 style="width:120px;" value="{{ today }}">
+          <input type="text" id="undocExpenseDesc" class="form-control form-control-sm flex-grow-1"
+                 placeholder="Açıklama" style="min-width:120px;">
+          <input type="number" id="undocExpenseAmt" class="form-control form-control-sm text-end"
+                 placeholder="Tutar" min="0" step="0.01" style="width:110px;">
+          <button type="submit" class="btn btn-sm btn-danger">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -2850,6 +3046,76 @@ function applyVenuePickerSelection(section, emailFilterSection) {
     history.replaceState({}, '', location.pathname);
   }
 })();
+
+// ─── Belgesiz Gelir / Gider ───
+const REQ_ID_UNDOC = '{{ req.id }}';
+
+async function addUndoc(e, entryType) {
+  e.preventDefault();
+  const sfx = entryType === 'gelir' ? 'Income' : 'Expense';
+  const date = document.getElementById('undoc' + sfx + 'Date').value;
+  const desc = document.getElementById('undoc' + sfx + 'Desc').value.trim();
+  const amt  = parseFloat(document.getElementById('undoc' + sfx + 'Amt').value);
+  if (!desc || isNaN(amt) || amt <= 0) return;
+
+  const fd = new FormData();
+  fd.append('request_id', REQ_ID_UNDOC);
+  fd.append('entry_type',  entryType);
+  fd.append('description', desc);
+  fd.append('amount',      amt);
+  fd.append('entry_date',  date);
+  const res  = await fetch('/undocumented/add', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (!data.ok) { alert(data.error || 'Hata'); return; }
+
+  // Listeye ekle
+  const listEl = document.getElementById('undoc' + (entryType === 'gelir' ? 'Income' : 'Expense') + 'List');
+  const div = document.createElement('div');
+  div.className = 'd-flex justify-content-between align-items-center py-1 border-bottom undoc-row';
+  div.id = 'undoc-' + data.id;
+  div.style.fontSize = '12px';
+  const fmt = n => '₺' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.').replace(/\.(\d{2})$/, ',$1');
+  const color = entryType === 'gelir' ? 'text-success' : 'text-danger';
+  div.innerHTML = `
+    <div><span class="text-muted me-2">${data.entry_date || '—'}</span>${data.description}</div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="fw-semibold ${color}">${fmt(data.amount)}</span>
+      <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
+              onclick="deleteUndoc('${data.id}','${entryType}')" title="Sil">
+        <i class="bi bi-trash3" style="font-size:10px;"></i>
+      </button>
+    </div>`;
+  listEl.appendChild(div);
+
+  // Toplamı güncelle
+  updateUndocTotal(entryType, amt);
+
+  // Formu temizle
+  document.getElementById('undoc' + sfx + 'Desc').value = '';
+  document.getElementById('undoc' + sfx + 'Amt').value  = '';
+}
+
+async function deleteUndoc(entryId, entryType) {
+  if (!confirm('Silinecek. Emin misiniz?')) return;
+  const row = document.getElementById('undoc-' + entryId);
+  const amtEl = row ? row.querySelector('.fw-semibold') : null;
+  const amt = amtEl ? parseFloat(amtEl.textContent.replace('₺','').replace(/\./g,'').replace(',','.')) : 0;
+  const res = await fetch('/undocumented/' + entryId, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) {
+    if (row) row.remove();
+    updateUndocTotal(entryType, -amt);
+  }
+}
+
+function updateUndocTotal(entryType, delta) {
+  const id = entryType === 'gelir' ? 'undocIncomeTotal' : 'undocExpenseTotal';
+  const el = document.getElementById(id);
+  if (!el) return;
+  const cur = parseFloat(el.textContent.replace('₺','').replace(/\./g,'').replace(',','.')) || 0;
+  const fmt = n => '₺' + Math.max(0,n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.').replace(/\.(\d{2})$/, ',$1');
+  el.textContent = fmt(cur + delta);
+}
 </script>
 
 {% endblock %}

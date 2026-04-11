@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from models import (
     Base, User, Venue, Customer, Service, CustomCategory, Request, Budget,
     EventType, Settings, OrgTitle, Invoice, EmailTemplate,
+    ExpenseReport, ExpenseItem, UndocumentedEntry,
     _EMAIL_TEMPLATE_DEFAULTS, _uuid, _now,
 )
 
@@ -657,6 +658,117 @@ def migrate_db():
                     updated_at  TIMESTAMP
                 )
             """))
+        conn.commit()
+
+        # HBF — expense_reports tablosu
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS expense_reports (
+                    id             TEXT PRIMARY KEY,
+                    request_id     TEXT NOT NULL REFERENCES requests(id),
+                    title          TEXT DEFAULT '',
+                    status         TEXT DEFAULT 'draft',
+                    submitted_by   TEXT NOT NULL REFERENCES users(id),
+                    approved_by    TEXT,
+                    approved_at    TIMESTAMP,
+                    rejection_note TEXT DEFAULT '',
+                    created_at     TIMESTAMP,
+                    updated_at     TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_expense_reports_request_id ON expense_reports(request_id)"
+            ))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS expense_items (
+                    id             TEXT PRIMARY KEY,
+                    report_id      TEXT NOT NULL REFERENCES expense_reports(id),
+                    item_date      TEXT DEFAULT '',
+                    description    TEXT DEFAULT '',
+                    payment_method TEXT DEFAULT 'nakit',
+                    document_type  TEXT DEFAULT 'fis',
+                    amount         REAL DEFAULT 0.0,
+                    vat_rate       REAL DEFAULT 0.0,
+                    vat_amount     REAL DEFAULT 0.0,
+                    total_amount   REAL DEFAULT 0.0,
+                    document_path  TEXT,
+                    document_name  TEXT,
+                    sort_order     INTEGER DEFAULT 0,
+                    created_at     TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_expense_items_report_id ON expense_items(report_id)"
+            ))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS undocumented_entries (
+                    id          TEXT PRIMARY KEY,
+                    request_id  TEXT NOT NULL REFERENCES requests(id),
+                    entry_type  TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    amount      REAL DEFAULT 0.0,
+                    entry_date  TEXT DEFAULT '',
+                    created_by  TEXT NOT NULL REFERENCES users(id),
+                    created_at  TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_undocumented_entries_request_id ON undocumented_entries(request_id)"
+            ))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS expense_reports (
+                    id             VARCHAR(36) PRIMARY KEY,
+                    request_id     VARCHAR(36) NOT NULL REFERENCES requests(id),
+                    title          VARCHAR(300) DEFAULT '',
+                    status         VARCHAR(16) DEFAULT 'draft',
+                    submitted_by   VARCHAR(36) NOT NULL REFERENCES users(id),
+                    approved_by    VARCHAR(36),
+                    approved_at    TIMESTAMP,
+                    rejection_note TEXT DEFAULT '',
+                    created_at     TIMESTAMP,
+                    updated_at     TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_expense_reports_request_id ON expense_reports(request_id)"
+            ))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS expense_items (
+                    id             VARCHAR(36) PRIMARY KEY,
+                    report_id      VARCHAR(36) NOT NULL REFERENCES expense_reports(id),
+                    item_date      VARCHAR(10) DEFAULT '',
+                    description    VARCHAR(300) DEFAULT '',
+                    payment_method VARCHAR(16) DEFAULT 'nakit',
+                    document_type  VARCHAR(16) DEFAULT 'fis',
+                    amount         FLOAT DEFAULT 0.0,
+                    vat_rate       FLOAT DEFAULT 0.0,
+                    vat_amount     FLOAT DEFAULT 0.0,
+                    total_amount   FLOAT DEFAULT 0.0,
+                    document_path  VARCHAR(500),
+                    document_name  VARCHAR(255),
+                    sort_order     INTEGER DEFAULT 0,
+                    created_at     TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_expense_items_report_id ON expense_items(report_id)"
+            ))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS undocumented_entries (
+                    id          VARCHAR(36) PRIMARY KEY,
+                    request_id  VARCHAR(36) NOT NULL REFERENCES requests(id),
+                    entry_type  VARCHAR(8) NOT NULL,
+                    description VARCHAR(300) DEFAULT '',
+                    amount      FLOAT DEFAULT 0.0,
+                    entry_date  VARCHAR(10) DEFAULT '',
+                    created_by  VARCHAR(36) NOT NULL REFERENCES users(id),
+                    created_at  TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_undocumented_entries_request_id ON undocumented_entries(request_id)"
+            ))
         conn.commit()
 
         # Eksik seed şablonlarını ekle (idempotent)

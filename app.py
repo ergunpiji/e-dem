@@ -104,6 +104,7 @@ from routers import reports as reports_router
 from routers import invoices as invoices_router
 from routers import email_templates as email_templates_router
 from routers import bulk_import as bulk_import_router
+from routers import expenses as expenses_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -119,3 +120,5 @@ app.include_router(reports_router.router)
 app.include_router(invoices_router.router)
 app.include_router(email_templates_router.router)
 app.include_router(bulk_import_router.router)
+app.include_router(expenses_router.router)
+app.include_router(expenses_router.undoc_router)
