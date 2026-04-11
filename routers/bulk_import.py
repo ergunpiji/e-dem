@@ -169,7 +169,7 @@ def _validate_customers(rows: list[dict], db: Session) -> list[dict]:
 
 
 def _validate_venues(rows: list[dict], db: Session) -> list[dict]:
-    existing_names = {v.name.lower() for v in db.query(Venue.name).all()}
+    existing_names = {v.name.lower() for v in db.query(Venue.name).filter(Venue.active == True).all()}
     out = []
     for i, r in enumerate(rows):
         errors = []
@@ -253,23 +253,42 @@ def _save_venues(rows: list[dict], db: Session) -> tuple[int, int]:
             total_rooms = int(float(r.get("total_rooms") or 0))
         except (ValueError, TypeError):
             pass
-        db.add(Venue(
-            id            = _uuid(),
-            name          = r["name"],
-            city          = r["city"],
-            cities_json   = json.dumps(all_cities),
-            supplier_type = r["supplier_type"],
-            address       = r.get("address", ""),
-            stars         = stars,
-            total_rooms   = total_rooms,
-            website       = r.get("website", ""),
-            notes         = r.get("notes", ""),
-            payment_term  = r.get("payment_term", ""),
-            contacts_json = json.dumps([contact]),
-            halls_json    = "[]",
-            active        = True,
-            created_at    = _now(),
-        ))
+
+        # Pasif (soft-deleted) aynı isimli kayıt varsa onu yeniden aktif yap
+        existing = db.query(Venue).filter(
+            Venue.name == r["name"], Venue.active == False
+        ).first()
+        if existing:
+            existing.city          = r["city"]
+            existing.cities_json   = json.dumps(all_cities)
+            existing.supplier_type = r["supplier_type"]
+            existing.address       = r.get("address", "")
+            existing.stars         = stars
+            existing.total_rooms   = total_rooms
+            existing.website       = r.get("website", "")
+            existing.notes         = r.get("notes", "")
+            existing.payment_term  = r.get("payment_term", "")
+            existing.contacts_json = json.dumps([contact])
+            existing.halls_json    = "[]"
+            existing.active        = True
+        else:
+            db.add(Venue(
+                id            = _uuid(),
+                name          = r["name"],
+                city          = r["city"],
+                cities_json   = json.dumps(all_cities),
+                supplier_type = r["supplier_type"],
+                address       = r.get("address", ""),
+                stars         = stars,
+                total_rooms   = total_rooms,
+                website       = r.get("website", ""),
+                notes         = r.get("notes", ""),
+                payment_term  = r.get("payment_term", ""),
+                contacts_json = json.dumps([contact]),
+                halls_json    = "[]",
+                active        = True,
+                created_at    = _now(),
+            ))
         saved += 1
     db.commit()
     return saved, skipped
