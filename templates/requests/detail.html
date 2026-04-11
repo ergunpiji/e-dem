@@ -1086,76 +1086,129 @@
       </div>
     </div>
 
-    {# Fatura Tablosu #}
+    {# ── Makro: fatura satırı ── #}
+    {% macro invoice_row(inv, show_actions, show_approve, row_style='') %}
+    {% set type_colors = {
+      'kesilen':      ('bg-success', 'text-success'),
+      'gelen':        ('bg-danger',  'text-danger'),
+      'komisyon':     ('bg-warning', 'text-warning'),
+      'iade_kesilen': ('bg-info',    'text-info'),
+      'iade_gelen':   ('bg-secondary','text-secondary')
+    } %}
+    {% set tcls = type_colors.get(inv.invoice_type, ('bg-secondary', 'text-secondary')) %}
+    <tr style="{{ row_style }}">
+      <td>
+        <span class="badge {{ tcls[0] }} bg-opacity-10 {{ tcls[1] }}" style="font-size:11px; white-space:nowrap;">
+          {{ inv.type_label }}
+        </span>
+      </td>
+      <td class="text-muted">{{ inv.invoice_no or '—' }}</td>
+      <td style="white-space:nowrap; color:#64748b;">{{ inv.invoice_date | date_tr if inv.invoice_date else '—' }}</td>
+      <td>{{ inv.vendor_name or '—' }}</td>
+      <td style="color:#64748b; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        {{ inv.description or '' }}
+      </td>
+      <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.amount).replace(',', '.') }}</td>
+      <td class="text-end text-muted">
+        %{{ inv.vat_rate | int }}
+        <br><small>₺{{ '{:,.2f}'.format(inv.vat_amount).replace(',', '.') }}</small>
+      </td>
+      <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}</td>
+      <td>
+        {% if inv.document_path %}
+        <a href="/invoices/{{ inv.id }}/document" target="_blank"
+           class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:11px;">
+          <i class="bi bi-file-earmark me-1"></i>{{ inv.document_name or 'Belge' }}
+        </a>
+        {% else %}
+        <span class="text-muted" style="font-size:11px;">—</span>
+        {% endif %}
+      </td>
+      <td class="text-end" style="white-space:nowrap;">
+        {# Onay/red butonları #}
+        {% if show_approve and inv.status == 'pending' %}
+        <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
+          <button type="submit" class="btn btn-sm btn-success py-0 px-2"
+                  title="Onayla" onclick="return confirm('Faturayı onaylıyor musunuz?')">
+            <i class="bi bi-check-lg"></i>
+          </button>
+        </form>
+        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                title="Reddet" onclick="openRejectModal('{{ inv.id }}')">
+          <i class="bi bi-x-lg"></i>
+        </button>
+        {% endif %}
+        {# Düzenle/iptal #}
+        {% if show_actions %}
+        <a href="/invoices/{{ inv.id }}/edit" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Düzenle">
+          <i class="bi bi-pencil"></i>
+        </a>
+        {% if inv.status != 'cancelled' %}
+        <form method="post" action="/invoices/{{ inv.id }}/delete" class="d-inline"
+              onsubmit="return confirm('Faturayı iptal etmek istediğinizden emin misiniz?')">
+          <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="İptal et">
+            <i class="bi bi-trash"></i>
+          </button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {# Admin: referans taşı #}
+        {% if current_user.role == 'admin' %}
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                title="Referans Taşı" onclick="openReassignModal('{{ inv.id }}', '{{ inv.vendor_name or inv.invoice_no }}')">
+          <i class="bi bi-arrow-right-circle"></i>
+        </button>
+        {% endif %}
+      </td>
+    </tr>
+    {% endmacro %}
+
+    {# ── Onay Bekleyen Faturalar ── #}
+    {% if pending_invoices %}
+    <div class="mb-3 p-3" style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px;">
+      <div class="fw-semibold mb-2" style="font-size:13px; color:#92400e;">
+        <i class="bi bi-hourglass-split me-1"></i> Onay Bekleyen Faturalar ({{ pending_invoices | length }})
+        {% if can_approve_invoices %}
+        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Onayladıktan sonra finansal tablolara yansır</span>
+        {% else %}
+        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Referans sahibi onaylaması bekleniyor</span>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" style="font-size:13px;">
+          <thead style="background:#fef3c7;">
+            <tr>
+              <th>Tip</th><th>Fatura No</th><th>Tarih</th><th>Tedarikçi / Müşteri</th>
+              <th>Açıklama</th>
+              <th class="text-end">Tutar (KDV Hariç)</th><th class="text-end">KDV</th>
+              <th class="text-end">Toplam</th><th>Belge</th><th class="text-end">İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in pending_invoices %}
+              {{ invoice_row(inv, show_actions=can_manage_invoices, show_approve=can_approve_invoices) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Onaylanan Faturalar ── #}
     {% if active_invoices %}
     <div class="table-responsive">
       <table class="table table-sm table-hover mb-0" style="font-size:13px;">
         <thead style="background:#f1f5f9;">
           <tr>
-            <th>Tip</th>
-            <th>Fatura No</th>
-            <th>Tarih</th>
-            <th>Tedarikçi / Müşteri</th>
+            <th>Tip</th><th>Fatura No</th><th>Tarih</th><th>Tedarikçi / Müşteri</th>
             <th>Açıklama</th>
-            <th class="text-end">Tutar (KDV Hariç)</th>
-            <th class="text-end">KDV</th>
-            <th class="text-end">Toplam</th>
-            <th>Belge</th>
-            {% if can_manage_invoices %}<th class="text-end">İşlem</th>{% endif %}
+            <th class="text-end">Tutar (KDV Hariç)</th><th class="text-end">KDV</th>
+            <th class="text-end">Toplam</th><th>Belge</th><th class="text-end">İşlem</th>
           </tr>
         </thead>
         <tbody>
           {% for inv in active_invoices %}
-          {% set type_colors = {
-            'kesilen':      ('bg-success', 'text-success'),
-            'gelen':        ('bg-danger',  'text-danger'),
-            'komisyon':     ('bg-warning', 'text-warning'),
-            'iade_kesilen': ('bg-info',    'text-info'),
-            'iade_gelen':   ('bg-secondary','text-secondary')
-          } %}
-          {% set tcls = type_colors.get(inv.invoice_type, ('bg-secondary', 'text-secondary')) %}
-          <tr>
-            <td>
-              <span class="badge {{ tcls[0] }} bg-opacity-10 {{ tcls[1] }}" style="font-size:11px; white-space:nowrap;">
-                {{ inv.type_label }}
-              </span>
-            </td>
-            <td class="text-muted">{{ inv.invoice_no or '—' }}</td>
-            <td style="white-space:nowrap; color:#64748b;">{{ inv.invoice_date | date_tr if inv.invoice_date else '—' }}</td>
-            <td>{{ inv.vendor_name or '—' }}</td>
-            <td style="color:#64748b; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              {{ inv.description or '' }}
-            </td>
-            <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.amount).replace(',', '.') }}</td>
-            <td class="text-end text-muted">
-              %{{ inv.vat_rate | int }}
-              <br><small>₺{{ '{:,.2f}'.format(inv.vat_amount).replace(',', '.') }}</small>
-            </td>
-            <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}</td>
-            <td>
-              {% if inv.document_path %}
-              <a href="/invoices/{{ inv.id }}/document" target="_blank"
-                 class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:11px;">
-                <i class="bi bi-file-earmark me-1"></i>{{ inv.document_name or 'Belge' }}
-              </a>
-              {% else %}
-              <span class="text-muted" style="font-size:11px;">—</span>
-              {% endif %}
-            </td>
-            {% if can_manage_invoices %}
-            <td class="text-end">
-              <a href="/invoices/{{ inv.id }}/edit" class="btn btn-sm btn-outline-secondary py-0 px-1">
-                <i class="bi bi-pencil"></i>
-              </a>
-              <form method="post" action="/invoices/{{ inv.id }}/delete" class="d-inline"
-                    onsubmit="return confirm('Faturayı iptal etmek istediğinizden emin misiniz?')">
-                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1">
-                  <i class="bi bi-x"></i>
-                </button>
-              </form>
-            </td>
-            {% endif %}
-          </tr>
+            {{ invoice_row(inv, show_actions=can_manage_invoices, show_approve=false) }}
           {% endfor %}
         </tbody>
         <tfoot style="background:#f8fafc; font-size:12px;">
@@ -1164,12 +1217,12 @@
             <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(active_invoices | sum(attribute='amount')).replace(',', '.') }}</td>
             <td></td>
             <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(active_invoices | sum(attribute='total_amount')).replace(',', '.') }}</td>
-            <td colspan="{% if can_manage_invoices %}2{% else %}1{% endif %}"></td>
+            <td colspan="2"></td>
           </tr>
         </tfoot>
       </table>
     </div>
-    {% else %}
+    {% elif not pending_invoices %}
     <div class="text-center py-4 text-muted">
       <i class="bi bi-receipt" style="font-size:2.5rem; opacity:.3;"></i>
       <p class="mt-2 mb-0" style="font-size:13px;">Henüz fatura girilmemiş.</p>
@@ -1181,6 +1234,127 @@
     </div>
     {% endif %}
 
+    {# ── Reddedilen Faturalar (gizli, aç/kapa) ── #}
+    {% if rejected_invoices %}
+    <div class="mt-2">
+      <button class="btn btn-sm btn-link text-muted p-0" type="button"
+              data-bs-toggle="collapse" data-bs-target="#rejectedInvoices">
+        <i class="bi bi-chevron-down me-1"></i>
+        Reddedilen faturalar ({{ rejected_invoices | length }})
+      </button>
+      <div class="collapse" id="rejectedInvoices">
+        <div class="table-responsive mt-2">
+          <table class="table table-sm mb-0" style="font-size:12px; opacity:.75;">
+            <thead style="background:#fee2e2;">
+              <tr>
+                <th>Tip</th><th>Fatura No</th><th>Tarih</th><th>Tedarikçi / Müşteri</th>
+                <th>Red Notu</th>
+                <th class="text-end">Toplam</th><th>Belge</th><th class="text-end">İşlem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for inv in rejected_invoices %}
+              <tr style="background:#fff5f5;">
+                {% set type_colors = {
+                  'kesilen':('bg-success','text-success'),'gelen':('bg-danger','text-danger'),
+                  'komisyon':('bg-warning','text-warning'),'iade_kesilen':('bg-info','text-info'),
+                  'iade_gelen':('bg-secondary','text-secondary')
+                } %}
+                {% set tcls = type_colors.get(inv.invoice_type, ('bg-secondary','text-secondary')) %}
+                <td><span class="badge {{ tcls[0] }} bg-opacity-10 {{ tcls[1] }}" style="font-size:10px;">{{ inv.type_label }}</span></td>
+                <td class="text-muted">{{ inv.invoice_no or '—' }}</td>
+                <td style="white-space:nowrap; color:#64748b;">{{ inv.invoice_date | date_tr if inv.invoice_date else '—' }}</td>
+                <td>{{ inv.vendor_name or '—' }}</td>
+                <td style="color:#b91c1c; font-size:11px;">{{ inv.rejection_note or '—' }}</td>
+                <td class="text-end">₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}</td>
+                <td>
+                  {% if inv.document_path %}
+                  <a href="/invoices/{{ inv.id }}/document" target="_blank" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:10px;">
+                    <i class="bi bi-file-earmark"></i>
+                  </a>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-end" style="white-space:nowrap;">
+                  {% if can_approve_invoices %}
+                  <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2" title="Tekrar Onayla">
+                      <i class="bi bi-check-lg"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                  {% if can_manage_invoices %}
+                  <a href="/invoices/{{ inv.id }}/edit" class="btn btn-sm btn-outline-secondary py-0 px-1"><i class="bi bi-pencil"></i></a>
+                  {% endif %}
+                  {% if current_user.role == 'admin' %}
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                          onclick="openReassignModal('{{ inv.id }}', '{{ inv.vendor_name or inv.invoice_no }}')">
+                    <i class="bi bi-arrow-right-circle"></i>
+                  </button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Red Modalı ── #}
+    <div class="modal fade" id="rejectModal" tabindex="-1">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title">Faturayı Reddet</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form method="post" id="rejectForm">
+            <div class="modal-body">
+              <label class="form-label fw-semibold" style="font-size:13px;">Red Notu <span class="text-muted fw-normal">(isteğe bağlı)</span></label>
+              <textarea name="rejection_note" class="form-control form-control-sm" rows="3"
+                        maxlength="300" placeholder="Neden reddedildi?"></textarea>
+            </div>
+            <div class="modal-footer py-2">
+              <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+              <button type="submit" class="btn btn-sm btn-danger">Reddet</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {# ── Referans Taşıma Modalı (admin) ── #}
+    {% if current_user.role == 'admin' %}
+    <div class="modal fade" id="reassignModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title">Referans Değiştir</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form method="post" id="reassignForm">
+            <div class="modal-body">
+              <p class="text-muted mb-3" style="font-size:13px;" id="reassignInvName"></p>
+              <label class="form-label fw-semibold" style="font-size:13px;">Yeni Referans</label>
+              <select name="new_request_id" class="form-select form-select-sm">
+                {% for r in all_requests %}
+                <option value="{{ r.id }}" {% if r.id == req.id %}selected{% endif %}>
+                  {{ r.request_no }} — {{ r.event_name }} ({{ r.client_name }})
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="modal-footer py-2">
+              <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+              <button type="submit" class="btn btn-sm btn-primary">Taşı</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 
@@ -1188,6 +1362,18 @@
 
 {% block extra_scripts %}
 <script>
+// ─── Fatura Onay Modalları ───
+function openRejectModal(invoiceId) {
+  document.getElementById('rejectForm').action = '/invoices/' + invoiceId + '/reject';
+  document.querySelector('#rejectModal textarea[name=rejection_note]').value = '';
+  new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+function openReassignModal(invoiceId, invLabel) {
+  document.getElementById('reassignForm').action = '/invoices/' + invoiceId + '/reassign';
+  document.getElementById('reassignInvName').textContent = 'Fatura: ' + invLabel;
+  new bootstrap.Modal(document.getElementById('reassignModal')).show();
+}
+
 // ─── RFQ Veri ───
 const REQ_DATA = {
   request_no:     {{ req.request_no | tojson }},

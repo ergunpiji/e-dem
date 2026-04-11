@@ -29,6 +29,15 @@ def _require_finance(current_user: User):
         raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
 
 
+def _require_approval_permission(current_user: User, inv):
+    """Onay/red için: admin veya faturanın bağlı olduğu referansın sahibi."""
+    if current_user.role == "admin":
+        return
+    if inv.request and inv.request.created_by == current_user.id:
+        return
+    raise HTTPException(status_code=403, detail="Bu faturayı onaylamak/reddetmek için yetkiniz yok.")
+
+
 def _get_invoice_or_404(db: Session, invoice_id: str) -> Invoice:
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not inv:
@@ -141,7 +150,7 @@ async def invoices_create(
         vat_rate     = first_vat,
         vat_amount   = vat_total,
         total_amount = incl,
-        status       = "active",
+        status       = "pending",
         created_by   = current_user.id,
         created_at   = _now(),
         updated_at   = _now(),
@@ -255,25 +264,124 @@ async def invoices_parse_pdf(
 ):
     _require_finance(current_user)
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        return JSONResponse(
-            {"error": "ANTHROPIC_API_KEY sunucuda tanımlı değil. Railway ortam değişkenlerine ekleyin."},
-            status_code=500,
-        )
-
     file_bytes = await file.read()
     if len(file_bytes) > MAX_FILE_SIZE:
         return JSONResponse({"error": "Dosya 10 MB'ı aşıyor."}, status_code=400)
 
+    ext = os.path.splitext(file.filename or "")[1].lower()
+
+    # ── PDF → kural tabanlı ayrıştırıcı (API masrafı yok) ─────────────────
+    if ext == ".pdf":
+        try:
+            from agents.invoice_parser import parse_pdf
+            data = parse_pdf(file_bytes)
+            return JSONResponse({"ok": True, "data": data})
+        except ValueError as e:
+            # Taranmış PDF gibi metin çıkarılamayan durumlar
+            return JSONResponse({"error": str(e)}, status_code=422)
+        except Exception as e:
+            return JSONResponse({"error": f"PDF okuma hatası: {e}"}, status_code=500)
+
+    # ── Görsel (JPG/PNG) → AI ile analiz ──────────────────────────────────
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return JSONResponse(
+            {"error": (
+                "Görsel faturalar için AI gerekli, ancak ANTHROPIC_API_KEY tanımlı değil. "
+                "PDF formatında yükleyin veya bilgileri manuel girin."
+            )},
+            status_code=500,
+        )
+
     try:
         from agents.invoice_reader import parse_invoice
-        data = parse_invoice(file_bytes, file.filename or "invoice.pdf", api_key)
+        data = parse_invoice(file_bytes, file.filename or "invoice.jpg", api_key)
         return JSONResponse({"ok": True, "data": data})
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     except Exception as e:
         return JSONResponse({"error": f"AI hatası: {e}"}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# POST /invoices/{id}/approve  — referans sahibi (PM) veya admin onaylar
+# ---------------------------------------------------------------------------
+
+@router.post("/{invoice_id}/approve", name="invoices_approve")
+async def invoices_approve(
+    invoice_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    inv = _get_invoice_or_404(db, invoice_id)
+    _require_approval_permission(current_user, inv)
+
+    if inv.status not in ("pending", "rejected"):
+        raise HTTPException(status_code=400, detail="Bu fatura zaten onaylanmış veya iptal edilmiş.")
+
+    inv.status      = "approved"
+    inv.approved_by = current_user.id
+    inv.approved_at = _now()
+    inv.rejection_note = ""
+    inv.updated_at  = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /invoices/{id}/reject  — referans sahibi (PM) veya admin reddeder
+# ---------------------------------------------------------------------------
+
+@router.post("/{invoice_id}/reject", name="invoices_reject")
+async def invoices_reject(
+    invoice_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    rejection_note: str = Form(""),
+):
+    inv = _get_invoice_or_404(db, invoice_id)
+    _require_approval_permission(current_user, inv)
+
+    if inv.status not in ("pending", "approved"):
+        raise HTTPException(status_code=400, detail="Bu fatura iptal edilmiş.")
+
+    inv.status         = "rejected"
+    inv.rejection_note = rejection_note.strip()[:300]
+    inv.approved_by    = None
+    inv.approved_at    = None
+    inv.updated_at     = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /invoices/{id}/reassign  — sadece admin, referansı değiştirir
+# ---------------------------------------------------------------------------
+
+@router.post("/{invoice_id}/reassign", name="invoices_reassign")
+async def invoices_reassign(
+    invoice_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    new_request_id: str = Form(...),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin referans değiştirebilir.")
+
+    inv = _get_invoice_or_404(db, invoice_id)
+    old_req_id = inv.request_id
+
+    new_req = db.query(ReqModel).filter(ReqModel.id == new_request_id).first()
+    if not new_req:
+        raise HTTPException(status_code=404, detail="Hedef referans bulunamadı.")
+
+    inv.request_id = new_request_id
+    inv.updated_at = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{old_req_id}#tab-financial", status_code=303)
 
 
 # ---------------------------------------------------------------------------

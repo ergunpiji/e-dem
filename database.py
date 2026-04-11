@@ -545,6 +545,12 @@ def migrate_db():
         _safe_add_column(conn, "users",     "org_title_id",        "TEXT")
         _safe_add_column(conn, "users",     "avatar_b64",          "TEXT", "''")
         _safe_add_column(conn, "invoices",  "lines_json",          "TEXT", "'[]'")
+        _safe_add_column(conn, "invoices",  "approved_by",         "TEXT")
+        _safe_add_column(conn, "invoices",  "approved_at",         "TEXT")
+        _safe_add_column(conn, "invoices",  "rejection_note",      "TEXT", "''")
+        # Mevcut "active" faturalar → "approved" (geriye uyumluluk)
+        conn.execute(text("UPDATE invoices SET status='approved' WHERE status='active'"))
+        conn.commit()
 
         # Budgets
         _safe_add_column(conn, "budgets", "budget_status",       "TEXT",  "'draft_edem'")

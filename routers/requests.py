@@ -412,7 +412,12 @@ async def requests_detail(
         })
 
     # ── Finansal veriler ──
-    active_invoices = [inv for inv in (req.invoices or []) if inv.status == "active"]
+    approved_invoices = [inv for inv in (req.invoices or []) if inv.status == "approved"]
+    pending_invoices  = [inv for inv in (req.invoices or []) if inv.status == "pending"]
+    rejected_invoices = [inv for inv in (req.invoices or []) if inv.status == "rejected"]
+    # geriye uyumluluk — eski "active" kayıtlar da dahil
+    active_invoices   = approved_invoices + [inv for inv in (req.invoices or []) if inv.status == "active"]
+
     invoice_ciro    = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "kesilen")
                      - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_kesilen"))
     invoice_maliyet = (sum(inv.amount for inv in active_invoices if inv.invoice_type in ("gelen", "komisyon"))
@@ -428,6 +433,13 @@ async def requests_detail(
     budget_cost_excl = confirmed_budget.grand_cost_excl_vat if confirmed_budget else 0.0
 
     can_manage_invoices = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    # Onaylama yetkisi: admin veya referansın sahibi (PM)
+    can_approve_invoices = (current_user.role == "admin" or req.created_by == current_user.id)
+    # Admin referans taşıma için tüm referanslar
+    all_requests = []
+    if current_user.role == "admin":
+        from models import Request as ReqModel2
+        all_requests = db.query(ReqModel2).order_by(ReqModel2.created_at.desc()).limit(200).all()
 
     return templates.TemplateResponse(
         "requests/detail.html",
@@ -450,13 +462,17 @@ async def requests_detail(
             "customer":         customer,
             "budgets_json":     budgets_json,
             # Finansal
-            "active_invoices":  active_invoices,
-            "invoice_ciro":     round(invoice_ciro, 2),
-            "invoice_maliyet":  round(invoice_maliyet, 2),
-            "invoice_kar":      round(invoice_kar, 2),
-            "budget_sale_excl": budget_sale_excl,
-            "budget_cost_excl": budget_cost_excl,
+            "active_invoices":   active_invoices,
+            "pending_invoices":  pending_invoices,
+            "rejected_invoices": rejected_invoices,
+            "invoice_ciro":      round(invoice_ciro, 2),
+            "invoice_maliyet":   round(invoice_maliyet, 2),
+            "invoice_kar":       round(invoice_kar, 2),
+            "budget_sale_excl":  budget_sale_excl,
+            "budget_cost_excl":  budget_cost_excl,
             "can_manage_invoices":   can_manage_invoices,
+            "can_approve_invoices":  can_approve_invoices,
+            "all_requests":          all_requests,
             "email_templates_json":  email_templates_json,
             "settings_ctx":          settings_ctx,
         },
