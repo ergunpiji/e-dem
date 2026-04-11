@@ -104,8 +104,18 @@ Görevin: Sana iletilen fatura görselinden veya PDF'inden yapılandırılmış 
 |------|---------------|
 | %0   | İhracat, transit taşımacılık, temel gıda (süt, yumurta, ekmek, sebze/meyve), sağlık, eğitim |
 | %1   | Tarım ürünleri, bazı işlenmiş gıdalar, gazete/dergi |
-| %10  | Konaklama hizmetleri (otel/pansiyon geceleme), restoran/kafe/yemek hizmetleri, su ürünleri |
+| %10  | Restoran/kafe/yemek hizmetleri, su ürünleri |
 | %20  | Genel standart oran — akaryakıt, elektronik, tekstil, inşaat, danışmanlık, kira, vs. |
+
+## Konaklama Vergisi (KV) — KDV'den FARKLI bir vergi
+- Konaklama hizmetleri (otel geceleme, pansiyon, tatil köyü vb.) için KDV oranı **%10**'dur.
+- Ancak faturada ayrıca **"Konaklama Vergisi"** satırı görülüyorsa bu satırın vat_rate = **0**'dır.
+  Konaklama Vergisi, KDV kanunu kapsamında değildir; üzerine ayrıca KDV uygulanmaz.
+- Konaklama Vergisi oranı %2'dir ve konaklama bedelinin (KDV hariç) %2'si olarak hesaplanır.
+- Örnek otel faturası:
+  - Geceleme hizmeti: matrah 1.000 TL → KDV %10 → 100 TL KDV
+  - Konaklama Vergisi: matrah 20 TL → KDV %0 → 0 TL KDV
+- Bu iki satırı **ayrı kalemler** olarak çıkar.
 
 **DİKKAT**: %8, %13, %15, %18, %25 gibi oranlar Türkiye'de GÜNCEL DEĞİLDİR.
 - Faturada %18 görürsen → %20 olarak yuvarla (2023 öncesi fatura olabilir)
