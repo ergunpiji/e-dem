@@ -371,9 +371,19 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
         sec = r.get("section", "other")
         rows_by_sec.setdefault(sec, []).append(r)
 
+    # col_defs'teki sayısal toplam alanları — servis bedeli için SUM formülü yazılacak
+    _NUMERIC_TOTAL_FIELDS = {
+        "sale_price", "sale_price_inc", "total_excl", "total_incl",
+        "sale_price_try", "total_excl_try", "total_incl_try",
+        "sale_price_sf", "sale_price_sf_try", "total_incl_sf_try", "total_incl_sf_vat_try",
+        "sale_price_eur", "sale_price_usd", "total_eur", "total_usd",
+    }
+
     # 6. Bölümleri yaz
     current_row = start_row
     subtotal_rows: dict[str, list[int]] = {}   # col_letter -> [subtotal satır numaraları]
+    # col_defs sayısal kolonları için veri aralıklarını tut (servis bedeli hesabı için)
+    col_defs_ranges: dict[str, list[str]] = {}  # col_letter -> ["B5:B8", ...]
 
     for sec in SECTIONS_ORDER:
         sec_rows = rows_by_sec.get(sec, [])
@@ -403,6 +413,13 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
         sec_data_end = current_row - 1
         print(f"[FILLER] sec={sec} hdr={sec_data_start-1} data={sec_data_start}..{sec_data_end} subtotal={current_row}", flush=True)
 
+        # col_defs sayısal kolonları için bu bölümün aralığını kaydet
+        for col_letter, field_name in col_defs.items():
+            if field_name in _NUMERIC_TOTAL_FIELDS:
+                col_defs_ranges.setdefault(col_letter, []).append(
+                    f"{col_letter}{sec_data_start}:{col_letter}{sec_data_end}"
+                )
+
         # Ara toplam satırı
         sub_label = SECTION_SUBTOTAL_LABELS.get(sec, f"{sec_label} Ara Toplam")
         _safe_set(ws, current_row, label_col, sub_label,
@@ -419,10 +436,22 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
         sf_label = service_fee.get("service_name") or "Hizmet Bedeli"
         sf_pct   = float(service_fee.get("sf_percent", 0) or budget.service_fee_pct or 0)
         _safe_set(ws, current_row, label_col, sf_label, font=_DAT_FONT())
-        # col_defs: sf_pct alanı buradan okunur (% sütununa atanmışsa gösterilir)
+
+        # col_defs kolonları:
+        # - sayısal toplam alanları → =SUM(tüm veri aralıkları)*pct/100
+        # - diğerleri (service_name, unit, qty, sf_pct vb.) → _row_value ile yaz
         for col_letter, field_name in col_defs.items():
-            val = _row_value(field_name, service_fee, budget, currency)
-            _safe_set(ws, current_row, col_letter, val, font=_DAT_FONT())
+            if field_name in _NUMERIC_TOTAL_FIELDS and sf_pct:
+                ranges = col_defs_ranges.get(col_letter, [])
+                if ranges:
+                    range_args = ",".join(ranges)
+                    formula = f"=SUM({range_args})*{sf_pct}/100"
+                    _safe_set(ws, current_row, col_letter, formula, font=_DAT_FONT())
+                # ranges yoksa hiçbir şey yazma
+            else:
+                val = _row_value(field_name, service_fee, budget, currency)
+                _safe_set(ws, current_row, col_letter, val, font=_DAT_FONT())
+
         # formula_cols: normal satır formülü UYGULANMAZ.
         # Bunun yerine ara toplam hücrelerinin yüzdesi alınır: =(sub1+sub2+...)*pct/100
         for col_letter in formula_cols:
