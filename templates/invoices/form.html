@@ -450,7 +450,7 @@ async function runAiParse() {
     lines = d.lines.map(l => ({
       description: l.description || '',
       amount:      parseFloat(l.amount) || 0,
-      vat_rate:    parseInt(l.vat_rate) || 20,
+      vat_rate:    snapVat(parseInt(l.vat_rate) || 20),
       vat_amount:  0,
     }));
     renderLines();
@@ -479,6 +479,12 @@ function showAiError(msg) {
 }
 
 // ── Yardımcılar ───────────────────────────────────────────────────────────────
+function snapVat(v) {
+  // AI'dan gelen KDV oranını desteklenen en yakın değere yuvarla
+  const valid = [0, 1, 8, 10, 18, 20];
+  if (valid.includes(v)) return v;
+  return valid.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
+}
 function fmt(n) {
   return parseFloat(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

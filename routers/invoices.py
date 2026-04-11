@@ -284,32 +284,34 @@ async def invoices_parse_pdf(
             "source": {"type": "base64", "media_type": media_type, "data": b64},
         }
 
-    prompt = """Bu fatura belgesinden aşağıdaki bilgileri çıkar ve SADECE JSON formatında döndür, başka hiçbir şey yazma.
+    prompt = """Bu fatura belgesinden bilgileri çıkar ve SADECE aşağıdaki JSON formatında döndür. Başka hiçbir metin yazma.
 
-JSON formatı:
 {
-  "invoice_no": "fatura numarası veya boş string",
-  "invoice_date": "YYYY-MM-DD formatında tarih veya boş string",
-  "due_date": "YYYY-MM-DD formatında vade tarihi veya boş string",
-  "vendor_name": "tedarikçi veya müşteri firma adı",
-  "description": "fatura genel açıklaması (varsa)",
+  "invoice_no": "fatura/fiş numarası",
+  "invoice_date": "YYYY-MM-DD (kesim tarihi)",
+  "due_date": "YYYY-MM-DD (son ödeme/vade tarihi, yoksa boş string)",
+  "vendor_name": "faturayı kesen firma/kişi adı",
+  "description": "fatura üstündeki genel açıklama veya sipariş notu (varsa, yoksa boş string)",
   "lines": [
     {
-      "description": "kalem açıklaması",
+      "description": "kalem adı/açıklaması",
       "amount": 1000.00,
-      "vat_rate": 20
+      "vat_rate": 10
     }
   ]
 }
 
-Önemli kurallar:
-- lines dizisinde her farklı KDV oranı için ayrı satır oluştur
-- amount değerleri KDV HARİÇ olmalı (net tutar)
-- vat_rate 0, 1, 8, 10, 18 veya 20 olabilir
-- Tarih formatı mutlaka YYYY-MM-DD olmalı
-- Fatura kalemler ayrı açıklama içeriyorsa her biri ayrı satır
-- Sayısal değerlerde virgül değil nokta kullan
-- Eğer bir bilgi bulunamıyorsa boş string veya 0 kullan"""
+ZORUNLU KURALLAR:
+1. amount = KDV HARİÇ net tutar (matrah). KDV dahil toplam değil.
+   - Faturada "Matrah" veya "KDV Hariç Tutar" sütunu varsa onu al.
+   - Yoksa: KDV dahil tutarı (1 + kdv_oranı) ile böl. Örn: KDV %10 ise amount = toplam / 1.10
+2. vat_rate = tam sayı KDV yüzdesi (örn: 10, 20). Sadece şu değerler geçerli: 0, 1, 8, 10, 18, 20.
+   - Faturadaki KDV oranı bu listede yoksa en yakın geçerli orana yuvarla.
+   - Örn: %13 → 10, %25 → 20
+3. Her farklı KDV oranı için ayrı satır oluştur. Toplam/ara toplam satırlarını lines'a EKLEME.
+4. Tüm sayısal değerlerde ondalık ayırıcı olarak nokta kullan (virgül değil).
+5. Tarihler mutlaka YYYY-MM-DD formatında olmalı.
+6. Bilinmeyen alanlar: boş string ("") veya 0."""
 
     try:
         client = _anthropic.Anthropic(api_key=api_key)
