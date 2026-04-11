@@ -78,6 +78,15 @@ async def expenses_list(
 # Yeni HBF
 # ---------------------------------------------------------------------------
 
+def _all_requests_for_user(db: Session, user):
+    """Form dropdown için tüm aktif referansları döndür (role'e göre filtrele)."""
+    from models import Request as ReqModel
+    q = db.query(ReqModel).filter(ReqModel.status != "cancelled")
+    if user.role == "project_manager":
+        q = q.filter(ReqModel.created_by == user.id)
+    return q.order_by(ReqModel.created_at.desc()).all()
+
+
 @router.get("/new", response_class=HTMLResponse, name="expenses_new")
 async def expenses_new(
     request: Request,
@@ -88,11 +97,13 @@ async def expenses_new(
     req = None
     if request_id:
         req = db.query(ReqModel).filter(ReqModel.id == request_id).first()
+    all_reqs = _all_requests_for_user(db, current_user)
     return templates.TemplateResponse("expenses/form.html", {
         "request": request,
         "current_user": current_user,
         "report": None,
         "req": req,
+        "all_requests": all_reqs,
         "page_title": "Yeni Harcama Bildirim Formu",
         "PAYMENT_METHODS": EXPENSE_PAYMENT_METHODS,
         "DOC_TYPES": EXPENSE_DOC_TYPES,
@@ -102,20 +113,28 @@ async def expenses_new(
 @router.post("/new", name="expenses_create")
 async def expenses_create(
     request: Request,
-    request_id: str = Form(...),
+    request_ids_json: str = Form("[]"),
     title: str = Form(""),
     items_json: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     import json
-    req = db.query(ReqModel).filter(ReqModel.id == request_id).first()
+    try:
+        refs = json.loads(request_ids_json or "[]")
+    except Exception:
+        refs = []
+    if not refs:
+        raise HTTPException(400, detail="En az bir referans seçmelisiniz.")
+    primary_id = refs[0]["id"]
+    req = db.query(ReqModel).filter(ReqModel.id == primary_id).first()
     if not req:
         raise HTTPException(404)
 
     report = ExpenseReport(
         id=_uuid(),
-        request_id=request_id,
+        request_id=primary_id,
+        request_ids_json=json.dumps(refs, ensure_ascii=False),
         title=title.strip() or f"HBF — {req.request_no}",
         status="draft",
         submitted_by=current_user.id,
@@ -146,11 +165,13 @@ async def expenses_edit_get(
         raise HTTPException(404)
     if not _can_edit(report, current_user):
         raise HTTPException(403)
+    all_reqs = _all_requests_for_user(db, current_user)
     return templates.TemplateResponse("expenses/form.html", {
         "request": request,
         "current_user": current_user,
         "report": report,
         "req": report.request,
+        "all_requests": all_reqs,
         "page_title": report.title or "HBF Düzenle",
         "PAYMENT_METHODS": EXPENSE_PAYMENT_METHODS,
         "DOC_TYPES": EXPENSE_DOC_TYPES,
@@ -162,11 +183,13 @@ async def expenses_edit_post(
     report_id: str,
     request: Request,
     title: str = Form(""),
+    request_ids_json: str = Form("[]"),
     items_json: str = Form("[]"),
     next_action: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    import json as _json
     report = db.query(ExpenseReport).filter(ExpenseReport.id == report_id).first()
     if not report:
         raise HTTPException(404)
@@ -175,6 +198,15 @@ async def expenses_edit_post(
 
     report.title = title.strip() or report.title
     report.updated_at = _now()
+
+    # Referans listesini güncelle
+    try:
+        refs = _json.loads(request_ids_json or "[]")
+    except Exception:
+        refs = []
+    if refs:
+        report.request_ids_json = _json.dumps(refs, ensure_ascii=False)
+        report.request_id = refs[0]["id"]   # birincil ref güncelle
 
     # Eski kalemleri sil, yenilerini ekle
     for item in list(report.items):
@@ -212,6 +244,7 @@ async def expenses_view(
         "current_user": current_user,
         "report": report,
         "req": report.request,
+        "all_requests": [],
         "readonly": True,
         "can_approve": _can_approve(report, current_user),
         "page_title": report.title or "HBF Detay",
@@ -408,6 +441,7 @@ def _save_items_from_json(db: Session, report_id: str, items_json: str):
         item = ExpenseItem(
             id=_uuid(),
             report_id=report_id,
+            assigned_request_id=it.get("assigned_request_id") or None,
             item_date=it.get("item_date", "") or "",
             description=it.get("description", "") or "",
             payment_method=it.get("payment_method", "nakit"),

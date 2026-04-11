@@ -1035,16 +1035,17 @@ class ExpenseReport(Base):
     """HBF — Harcama Bildirim Formu başlığı"""
     __tablename__ = "expense_reports"
 
-    id            = Column(String(36), primary_key=True, default=_uuid)
-    request_id    = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
-    title         = Column(String(300), default="")
-    status        = Column(String(16), default="draft")   # draft|submitted|approved|rejected
-    submitted_by  = Column(String(36), ForeignKey("users.id"), nullable=False)
-    approved_by   = Column(String(36), ForeignKey("users.id"), nullable=True)
-    approved_at   = Column(DateTime, nullable=True)
-    rejection_note = Column(Text, default="")
-    created_at    = Column(DateTime, default=_now, nullable=False)
-    updated_at    = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    id               = Column(String(36), primary_key=True, default=_uuid)
+    request_id       = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    request_ids_json = Column(Text, default="[]")   # JSON array of {id,request_no,event_name,client_name}
+    title            = Column(String(300), default="")
+    status           = Column(String(16), default="draft")   # draft|submitted|approved|rejected
+    submitted_by     = Column(String(36), ForeignKey("users.id"), nullable=False)
+    approved_by      = Column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at      = Column(DateTime, nullable=True)
+    rejection_note   = Column(Text, default="")
+    created_at       = Column(DateTime, default=_now, nullable=False)
+    updated_at       = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
     # İlişkiler
     request   = relationship("Request",  back_populates="expense_reports")
@@ -1079,20 +1080,21 @@ class ExpenseItem(Base):
     """HBF kalemi"""
     __tablename__ = "expense_items"
 
-    id             = Column(String(36), primary_key=True, default=_uuid)
-    report_id      = Column(String(36), ForeignKey("expense_reports.id"), nullable=False, index=True)
-    item_date      = Column(String(10), default="")    # YYYY-MM-DD
-    description    = Column(String(300), default="")
-    payment_method = Column(String(16), default="nakit")   # kredi_karti | nakit
-    document_type  = Column(String(16), default="fis")     # fatura | fis | belgesiz
-    amount         = Column(Float, default=0.0)    # KDV hariç
-    vat_rate       = Column(Float, default=0.0)    # 0 için belgesiz; 10, 20 vb.
-    vat_amount     = Column(Float, default=0.0)
-    total_amount   = Column(Float, default=0.0)    # KDV dahil
-    document_path  = Column(String(500), nullable=True)
-    document_name  = Column(String(255), nullable=True)
-    sort_order     = Column(Integer, default=0)
-    created_at     = Column(DateTime, default=_now, nullable=False)
+    id                  = Column(String(36), primary_key=True, default=_uuid)
+    report_id           = Column(String(36), ForeignKey("expense_reports.id"), nullable=False, index=True)
+    assigned_request_id = Column(String(36), ForeignKey("requests.id"), nullable=True)  # hangi ref'e atandı
+    item_date           = Column(String(10), default="")    # YYYY-MM-DD
+    description         = Column(String(300), default="")
+    payment_method      = Column(String(16), default="nakit")   # kredi_karti | nakit
+    document_type       = Column(String(16), default="fis")     # fatura | fis | belgesiz
+    amount              = Column(Float, default=0.0)    # KDV hariç
+    vat_rate            = Column(Float, default=0.0)    # 0 için belgesiz; 10, 20 vb.
+    vat_amount          = Column(Float, default=0.0)
+    total_amount        = Column(Float, default=0.0)    # KDV dahil
+    document_path       = Column(String(500), nullable=True)
+    document_name       = Column(String(255), nullable=True)
+    sort_order          = Column(Integer, default=0)
+    created_at          = Column(DateTime, default=_now, nullable=False)
 
     report = relationship("ExpenseReport", back_populates="items")
 

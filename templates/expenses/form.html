@@ -139,14 +139,12 @@
         <h4 class="mb-0 fw-bold mt-1">Yeni Harcama Bildirimi</h4>
         {% endif %}
       </div>
-      {% if req %}
-      <div class="d-flex gap-2 align-items-center flex-wrap">
+      <div class="d-flex gap-2 align-items-center flex-wrap" id="headerRefBadges">
+        {# JS ile doldurulur (edit/new); readonly için fallback #}
+        {% if req %}
         <span class="hbf-ref-badge">{{ req.request_no }}</span>
-        <span class="hbf-ref-badge" style="background:rgba(255,255,255,.1);">
-          <i class="bi bi-calendar3 me-1"></i>{{ req.check_in or '—' }}
-        </span>
+        {% endif %}
       </div>
-      {% endif %}
     </div>
     {% if req %}
     <div class="mt-2" style="font-size:13px; opacity:.8;">
@@ -203,16 +201,54 @@
   <form method="post"
         action="{{ '/expenses/' + report.id + '/edit' if report else '/expenses/new' }}"
         id="hbfForm">
-    {% if not report %}
-    <input type="hidden" name="request_id" value="{{ req.id if req else '' }}">
-    {% endif %}
     <input type="hidden" name="items_json" id="itemsJson" value="[]">
+    <input type="hidden" name="request_ids_json" id="requestIdsJson" value="[]">
     <input type="hidden" name="next_action" id="nextAction" value="">
   {% else %}
   <div>
   {% endif %}
 
     <div class="p-4">
+
+      {# ── Referans Seçici ── #}
+      {% if not readonly %}
+      <div class="mb-4">
+        <label class="form-label fw-semibold" style="font-size:13px;">
+          Referans Numaraları <span class="text-danger">*</span>
+          <span class="text-muted fw-normal ms-1" style="font-size:12px;">(Birden fazla ekleyebilirsiniz)</span>
+        </label>
+        <div id="refTagsWrap" class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          {# Mevcut referanslar (edit modunda) — JS tarafından doldurulur #}
+        </div>
+        <div class="d-flex gap-2" style="max-width:520px;">
+          <input type="text" id="refSearchInput" class="form-control form-control-sm"
+                 placeholder="Referans no veya etkinlik adı ara..." autocomplete="off"
+                 oninput="filterRefDropdown(this.value)" onfocus="showRefDropdown()"
+                 onblur="setTimeout(hideRefDropdown, 200)">
+          <div style="position:relative; flex:1;">
+            <div id="refDropdown" class="border rounded shadow-sm bg-white"
+                 style="display:none; position:absolute; top:0; left:-100%; width:450px; max-height:200px;
+                        overflow-y:auto; z-index:1000; font-size:13px;">
+              {% for r in all_requests %}
+              <div class="refDropItem px-3 py-2 border-bottom"
+                   style="cursor:pointer;"
+                   data-id="{{ r.id }}"
+                   data-no="{{ r.request_no }}"
+                   data-name="{{ r.event_name | e }}"
+                   data-client="{{ r.client_name | e }}"
+                   onmousedown="addRef(this)">
+                <span class="fw-bold text-primary">{{ r.request_no }}</span>
+                <span class="text-muted ms-2">{{ r.event_name }}</span>
+                {% if r.client_name %}<span class="text-muted"> — {{ r.client_name }}</span>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      {# Readonly: referans listeleri #}
+      {% endif %}
 
       {# Form başlığı #}
       {% if not readonly %}
@@ -230,16 +266,18 @@
           <thead>
             <tr>
               <th style="width:110px;">Tarih</th>
-              <th style="min-width:200px;">Açıklama</th>
+              <th style="min-width:180px;">Açıklama</th>
               <th style="width:110px;">Ödeme</th>
               <th style="width:110px;">Belge</th>
               <th class="text-end" style="width:110px;">Tutar (KDV hariç)</th>
               <th style="width:80px;">KDV %</th>
               <th class="text-end" style="width:100px;">Toplam</th>
               {% if not readonly %}
+              <th id="thRef" style="width:110px; display:none;">Referans</th>
               <th style="width:80px;">Belge</th>
               <th style="width:36px;"></th>
               {% else %}
+              <th id="thRef" style="display:none;">Referans</th>
               <th style="width:100px;">Belge</th>
               {% endif %}
             </tr>
@@ -265,6 +303,13 @@
                   {% if item.document_type == 'belgesiz' %}—{% else %}%{{ item.vat_rate | int }}{% endif %}
                 </td>
                 <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(item.total_amount).replace(',', '.') }}</td>
+                <td style="display:none;">
+                  {% if item.assigned_request_id %}
+                    <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:10px;">
+                      {{ item.assigned_request_id[:8] }}
+                    </span>
+                  {% else %}—{% endif %}
+                </td>
                 <td>
                   {% if item.document_path %}
                   <a href="/expenses/doc/{{ item.id }}" target="_blank"
@@ -283,9 +328,15 @@
       </div>
 
       {% if not readonly %}
-      <button type="button" class="btn-add-row" onclick="addRow()">
-        <i class="bi bi-plus-lg me-1"></i>Satır Ekle
-      </button>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <button type="button" class="btn-add-row" onclick="addRow()">
+          <i class="bi bi-plus-lg me-1"></i>Satır Ekle
+        </button>
+        <button type="button" id="autoDistBtn" class="btn btn-sm btn-outline-secondary"
+                onclick="autoDistribute()" style="display:none; font-size:12px;">
+          <i class="bi bi-distribute-vertical me-1"></i>Otomatik Dağıt
+        </button>
+      </div>
       {% endif %}
 
     </div>
@@ -371,20 +422,133 @@
 const REPORT_ID = '{{ report.id if report else "" }}';
 const READONLY  = {{ 'true' if readonly else 'false' }};
 
+// ─── Referans listesi ───────────────────────────────────────────
+let selectedRefs = [];   // [{id, request_no, event_name, client_name}]
+
+// Mevcut referansları yükle (edit modunda DB'den)
+{% if report and report.request_ids_json %}
+try {
+  const _stored = {{ report.request_ids_json | safe }};
+  if (Array.isArray(_stored) && _stored.length) {
+    selectedRefs = _stored;
+  } else {
+    // Eski kayıtlarda sadece request_id var
+    selectedRefs = [{ id: '{{ report.request_id }}',
+                      request_no: '{{ report.request.request_no if report.request else "" }}',
+                      event_name: {{ (report.request.event_name if report.request else '') | tojson }},
+                      client_name: {{ (report.request.client_name if report.request else '') | tojson }} }];
+  }
+} catch(e) {
+  selectedRefs = [];
+}
+{% elif req %}
+// Yeni form — URL'den gelen request_id
+selectedRefs = [{ id: '{{ req.id }}',
+                  request_no: '{{ req.request_no }}',
+                  event_name: {{ req.event_name | tojson }},
+                  client_name: {{ (req.client_name or '') | tojson }} }];
+{% endif %}
+
+function renderRefTags() {
+  const wrap = document.getElementById('refTagsWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  // Header badges güncelle
+  const hdr = document.getElementById('headerRefBadges');
+  if (hdr) {
+    hdr.innerHTML = selectedRefs.map(r =>
+      `<span class="hbf-ref-badge">${r.request_no}</span>`
+    ).join('');
+  }
+  selectedRefs.forEach((r, i) => {
+    const span = document.createElement('span');
+    span.className = 'badge d-flex align-items-center gap-1 py-1 px-2';
+    span.style.cssText = 'background:#dbeafe; color:#1d4ed8; font-size:12px; font-weight:600; border-radius:6px;';
+    span.innerHTML = `${r.request_no}
+      <span style="font-weight:400; opacity:.7; font-size:11px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+            title="${(r.event_name||'').replace(/"/g,'&quot;')}">${r.event_name||''}</span>
+      <button type="button" onclick="removeRef(${i})"
+              style="background:none;border:none;color:#1d4ed8;padding:0 2px;font-size:13px;line-height:1;cursor:pointer;"
+              title="Kaldır">&times;</button>`;
+    wrap.appendChild(span);
+  });
+  syncRefHidden();
+  updateRefColVisibility();
+}
+
+function addRef(el) {
+  const id = el.dataset.id;
+  if (selectedRefs.find(r => r.id === id)) return; // zaten var
+  selectedRefs.push({ id, request_no: el.dataset.no, event_name: el.dataset.name, client_name: el.dataset.client });
+  document.getElementById('refSearchInput').value = '';
+  hideRefDropdown();
+  renderRefTags();
+  renderTable();
+}
+
+function removeRef(i) {
+  selectedRefs.splice(i, 1);
+  renderRefTags();
+  renderTable();
+}
+
+function syncRefHidden() {
+  const el = document.getElementById('requestIdsJson');
+  if (el) el.value = JSON.stringify(selectedRefs);
+}
+
+function filterRefDropdown(q) {
+  const items = document.querySelectorAll('.refDropItem');
+  q = q.toLowerCase();
+  items.forEach(el => {
+    const match = (el.dataset.no + ' ' + el.dataset.name + ' ' + el.dataset.client).toLowerCase().includes(q);
+    el.style.display = match ? '' : 'none';
+  });
+  showRefDropdown();
+}
+
+function showRefDropdown() {
+  const dd = document.getElementById('refDropdown');
+  if (dd) dd.style.display = '';
+}
+function hideRefDropdown() {
+  const dd = document.getElementById('refDropdown');
+  if (dd) dd.style.display = 'none';
+}
+
+function updateRefColVisibility() {
+  const multi = selectedRefs.length > 1;
+  document.querySelectorAll('#thRef, .tdRef').forEach(el => {
+    el.style.display = multi ? '' : 'none';
+  });
+  const autoBtn = document.getElementById('autoDistBtn');
+  if (autoBtn) autoBtn.style.display = multi ? '' : 'none';
+}
+
+function autoDistribute() {
+  if (selectedRefs.length < 2) return;
+  rows.forEach((row, i) => {
+    row.assigned_request_id = selectedRefs[i % selectedRefs.length].id;
+  });
+  renderTable();
+}
+
+// ─── Kalemler ──────────────────────────────────────────────────
 // Mevcut kalemler (edit modunda DB'den geliyor)
 let rows = [
   {% if report and not readonly %}
   {% for item in report.items %}
   {
-    id:             '{{ item.id }}',
-    item_date:      '{{ item.item_date or '' }}',
-    description:    {{ item.description | tojson }},
-    payment_method: '{{ item.payment_method }}',
-    document_type:  '{{ item.document_type }}',
-    amount:         {{ item.amount }},
-    vat_rate:       {{ item.vat_rate }},
-    document_path:  '{{ item.document_path or '' }}',
-    document_name:  {{ (item.document_name or '') | tojson }},
+    id:                   '{{ item.id }}',
+    item_date:            '{{ item.item_date or '' }}',
+    description:          {{ item.description | tojson }},
+    payment_method:       '{{ item.payment_method }}',
+    document_type:        '{{ item.document_type }}',
+    amount:               {{ item.amount }},
+    vat_rate:             {{ item.vat_rate }},
+    document_path:        '{{ item.document_path or '' }}',
+    document_name:        {{ (item.document_name or '') | tojson }},
+    assigned_request_id:  '{{ item.assigned_request_id or '' }}',
   },
   {% endfor %}
   {% endif %}
@@ -401,6 +565,7 @@ function renderTable() {
   if (READONLY) return;
   const tbody = document.getElementById('hbfTbody');
   tbody.innerHTML = '';
+  const multi = selectedRefs.length > 1;
   rows.forEach((row, i) => {
     const payOpts = PAYMENT_METHODS.map(p =>
       `<option value="${p.value}" ${row.payment_method === p.value ? 'selected' : ''}>${p.label}</option>`
@@ -425,12 +590,23 @@ function renderTable() {
                   onchange="uploadDoc(${i}, this)">
          </label>`;
 
+    // Referans dropdown (çok referans varsa)
+    const refOpts = `<option value="">—</option>` + selectedRefs.map(r =>
+      `<option value="${r.id}" ${row.assigned_request_id === r.id ? 'selected' : ''}>${r.request_no}</option>`
+    ).join('');
+    const refCell = `<td class="tdRef" style="${multi ? '' : 'display:none;'}">
+      <select style="width:100px; font-size:11px;"
+              onchange="rows[${i}].assigned_request_id=this.value;">
+        ${refOpts}
+      </select>
+    </td>`;
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><input type="date" value="${row.item_date || ''}" style="width:108px;"
                  onchange="rows[${i}].item_date=this.value; updateTotals();"></td>
       <td><input type="text" value="${(row.description||'').replace(/"/g,'&quot;')}"
-                 placeholder="Açıklama" style="width:100%; min-width:180px;"
+                 placeholder="Açıklama" style="width:100%; min-width:160px;"
                  oninput="rows[${i}].description=this.value;"></td>
       <td>
         <select onchange="rows[${i}].payment_method=this.value; updateTotals();"
@@ -453,6 +629,7 @@ function renderTable() {
         </select>
       </td>
       <td class="text-end fw-semibold" id="rowTotal_${i}">${fmt(total)}</td>
+      ${refCell}
       <td>${docBtnHtml}</td>
       <td>
         <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
@@ -523,7 +700,12 @@ function saveItems() {
 }
 
 function submitForm(action) {
+  if (selectedRefs.length === 0) {
+    alert('En az bir referans numarası seçmelisiniz.');
+    return;
+  }
   saveItems();
+  syncRefHidden();
   document.getElementById('nextAction').value = action;
   document.getElementById('hbfForm').submit();
 }
@@ -557,7 +739,10 @@ async function uploadDoc(rowIdx, input) {
 }
 
 // İlk render
-if (!READONLY) renderTable();
+if (!READONLY) {
+  renderRefTags();
+  renderTable();
+}
 
 // Readonly: özet hesapla
 {% if readonly and report %}
