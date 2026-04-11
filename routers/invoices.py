@@ -2,12 +2,14 @@
 E-dem — Fatura Yönetimi
 Erişim: admin, muhasebe_muduru, muhasebe
 """
+import base64
+import json
 import os
 import shutil
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
@@ -36,7 +38,6 @@ def _get_invoice_or_404(db: Session, invoice_id: str) -> Invoice:
 
 
 def _save_document(file: UploadFile, invoice_id: str) -> tuple[str, str]:
-    """Dosyayı kaydet, (relative_path, original_name) döner."""
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status_code=400, detail="Desteklenmeyen dosya türü. PDF veya resim yükleyin.")
@@ -45,15 +46,21 @@ def _save_document(file: UploadFile, invoice_id: str) -> tuple[str, str]:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(dest_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    # Check size
     if os.path.getsize(dest_path) > MAX_FILE_SIZE:
         os.remove(dest_path)
         raise HTTPException(status_code=400, detail="Dosya boyutu 10 MB'ı aşamaz.")
     return f"uploads/invoices/{dest_filename}", file.filename or dest_filename
 
 
+def _compute_totals(lines: list) -> tuple[float, float, float]:
+    """lines'dan (amount_excl, vat_amount, total_incl) hesapla."""
+    total_excl = sum(float(l.get("amount", 0) or 0) for l in lines)
+    total_vat  = sum(float(l.get("vat_amount", 0) or 0) for l in lines)
+    return round(total_excl, 2), round(total_vat, 2), round(total_excl + total_vat, 2)
+
+
 # ---------------------------------------------------------------------------
-# GET /invoices/new  — fatura oluştur formu
+# GET /invoices/new
 # ---------------------------------------------------------------------------
 
 @router.get("/new", response_class=HTMLResponse, name="invoices_new_form")
@@ -83,7 +90,7 @@ async def invoices_new_form(
 
 
 # ---------------------------------------------------------------------------
-# POST /invoices/new  — fatura kaydet
+# POST /invoices/new
 # ---------------------------------------------------------------------------
 
 @router.post("/new", name="invoices_create")
@@ -98,8 +105,7 @@ async def invoices_create(
     due_date:     str = Form(""),
     vendor_name:  str = Form(""),
     description:  str = Form(""),
-    amount:       str = Form("0"),
-    vat_rate:     str = Form("20"),
+    lines_json:   str = Form("[]"),
     document:     UploadFile = File(None),
 ):
     _require_finance(current_user)
@@ -108,16 +114,19 @@ async def invoices_create(
         raise HTTPException(status_code=404, detail="Referans bulunamadı.")
 
     try:
-        amt = float(amount or 0)
-    except ValueError:
-        amt = 0.0
-    try:
-        vat = float(vat_rate or 0)
-    except ValueError:
-        vat = 20.0
+        lines = json.loads(lines_json or "[]")
+    except Exception:
+        lines = []
 
-    vat_amt   = round(amt * vat / 100, 2)
-    total_amt = round(amt + vat_amt, 2)
+    # Her satırın vat_amount'unu hesapla
+    for ln in lines:
+        amt = float(ln.get("amount", 0) or 0)
+        vat = float(ln.get("vat_rate", 0) or 0)
+        ln["vat_amount"] = round(amt * vat / 100, 2)
+
+    excl, vat_total, incl = _compute_totals(lines)
+    # geriye uyumluluk için vat_rate: ilk satırın oranı (veya 0)
+    first_vat = float(lines[0].get("vat_rate", 0)) if lines else 0.0
 
     inv = Invoice(
         id           = _uuid(),
@@ -128,10 +137,11 @@ async def invoices_create(
         due_date     = due_date or None,
         vendor_name  = vendor_name.strip(),
         description  = description.strip(),
-        amount       = amt,
-        vat_rate     = vat,
-        vat_amount   = vat_amt,
-        total_amount = total_amt,
+        lines_json   = json.dumps(lines, ensure_ascii=False),
+        amount       = excl,
+        vat_rate     = first_vat,
+        vat_amount   = vat_total,
+        total_amount = incl,
         status       = "active",
         created_by   = current_user.id,
         created_at   = _now(),
@@ -149,7 +159,7 @@ async def invoices_create(
 
 
 # ---------------------------------------------------------------------------
-# GET /invoices/{id}/edit  — düzenleme formu
+# GET /invoices/{id}/edit
 # ---------------------------------------------------------------------------
 
 @router.get("/{invoice_id}/edit", response_class=HTMLResponse, name="invoices_edit_form")
@@ -175,7 +185,7 @@ async def invoices_edit_form(
 
 
 # ---------------------------------------------------------------------------
-# POST /invoices/{id}/edit  — güncelle
+# POST /invoices/{id}/edit
 # ---------------------------------------------------------------------------
 
 @router.post("/{invoice_id}/edit", name="invoices_update")
@@ -190,21 +200,24 @@ async def invoices_update(
     due_date:     str = Form(""),
     vendor_name:  str = Form(""),
     description:  str = Form(""),
-    amount:       str = Form("0"),
-    vat_rate:     str = Form("20"),
+    lines_json:   str = Form("[]"),
     document:     UploadFile = File(None),
 ):
     _require_finance(current_user)
     inv = _get_invoice_or_404(db, invoice_id)
 
     try:
-        amt = float(amount or 0)
-    except ValueError:
-        amt = 0.0
-    try:
-        vat = float(vat_rate or 0)
-    except ValueError:
-        vat = 20.0
+        lines = json.loads(lines_json or "[]")
+    except Exception:
+        lines = []
+
+    for ln in lines:
+        amt = float(ln.get("amount", 0) or 0)
+        vat = float(ln.get("vat_rate", 0) or 0)
+        ln["vat_amount"] = round(amt * vat / 100, 2)
+
+    excl, vat_total, incl = _compute_totals(lines)
+    first_vat = float(lines[0].get("vat_rate", 0)) if lines else 0.0
 
     inv.invoice_type = invoice_type
     inv.invoice_no   = invoice_no.strip()
@@ -212,14 +225,14 @@ async def invoices_update(
     inv.due_date     = due_date or None
     inv.vendor_name  = vendor_name.strip()
     inv.description  = description.strip()
-    inv.amount       = amt
-    inv.vat_rate     = vat
-    inv.vat_amount   = round(amt * vat / 100, 2)
-    inv.total_amount = round(amt + inv.vat_amount, 2)
+    inv.lines_json   = json.dumps(lines, ensure_ascii=False)
+    inv.amount       = excl
+    inv.vat_rate     = first_vat
+    inv.vat_amount   = vat_total
+    inv.total_amount = incl
     inv.updated_at   = _now()
 
     if document and document.filename:
-        # Eski dosyayı sil
         if inv.document_path:
             old_path = os.path.join(os.path.dirname(__file__), "..", "static", inv.document_path)
             if os.path.exists(old_path):
@@ -233,7 +246,94 @@ async def invoices_update(
 
 
 # ---------------------------------------------------------------------------
-# POST /invoices/{id}/delete  — iptal (soft delete)
+# POST /invoices/parse-pdf  — Claude API ile PDF'den otomatik doldur
+# ---------------------------------------------------------------------------
+
+@router.post("/parse-pdf", name="invoices_parse_pdf")
+async def invoices_parse_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance(current_user)
+
+    import anthropic as _anthropic
+
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return JSONResponse({"error": "Dosya 10 MB'ı aşıyor."}, status_code=400)
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    b64 = base64.standard_b64encode(file_bytes).decode()
+
+    # PDF için document block, resimler için image block
+    if ext == ".pdf":
+        media_type = "application/pdf"
+        content_block = {
+            "type": "document",
+            "source": {"type": "base64", "media_type": media_type, "data": b64},
+        }
+    else:
+        mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+        media_type = mime_map.get(ext, "image/jpeg")
+        content_block = {
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": b64},
+        }
+
+    prompt = """Bu fatura belgesinden aşağıdaki bilgileri çıkar ve SADECE JSON formatında döndür, başka hiçbir şey yazma.
+
+JSON formatı:
+{
+  "invoice_no": "fatura numarası veya boş string",
+  "invoice_date": "YYYY-MM-DD formatında tarih veya boş string",
+  "due_date": "YYYY-MM-DD formatında vade tarihi veya boş string",
+  "vendor_name": "tedarikçi veya müşteri firma adı",
+  "description": "fatura genel açıklaması (varsa)",
+  "lines": [
+    {
+      "description": "kalem açıklaması",
+      "amount": 1000.00,
+      "vat_rate": 20
+    }
+  ]
+}
+
+Önemli kurallar:
+- lines dizisinde her farklı KDV oranı için ayrı satır oluştur
+- amount değerleri KDV HARİÇ olmalı (net tutar)
+- vat_rate 0, 1, 8, 10, 18 veya 20 olabilir
+- Tarih formatı mutlaka YYYY-MM-DD olmalı
+- Fatura kalemler ayrı açıklama içeriyorsa her biri ayrı satır
+- Sayısal değerlerde virgül değil nokta kullan
+- Eğer bir bilgi bulunamıyorsa boş string veya 0 kullan"""
+
+    try:
+        client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [content_block, {"type": "text", "text": prompt}],
+            }],
+        )
+        text = response.content[0].text.strip()
+        # JSON bloğu varsa çıkar
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+        data = json.loads(text)
+        return JSONResponse({"ok": True, "data": data})
+    except json.JSONDecodeError as e:
+        return JSONResponse({"error": f"AI yanıtı parse edilemedi: {e}"}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"error": f"AI hatası: {e}"}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# POST /invoices/{id}/delete
 # ---------------------------------------------------------------------------
 
 @router.post("/{invoice_id}/delete", name="invoices_delete")
@@ -253,7 +353,7 @@ async def invoices_delete(
 
 
 # ---------------------------------------------------------------------------
-# GET /invoices/{id}/document  — belge dosyasını serve et
+# GET /invoices/{id}/document
 # ---------------------------------------------------------------------------
 
 @router.get("/{invoice_id}/document", name="invoices_document")

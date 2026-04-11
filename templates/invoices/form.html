@@ -18,17 +18,72 @@
 {% endif %}
 {% endblock %}
 
+{% block extra_head %}
+<style>
+  .lines-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+                    color: #64748b; background: #f8fafc; white-space: nowrap; }
+  .lines-table td { vertical-align: middle; padding: 6px 8px; }
+  .lines-table input, .lines-table select { font-size: 13px; }
+  .total-bar { background: #f8fafc; border-radius: 10px; padding: 14px 20px; }
+  .total-row { display: flex; justify-content: space-between; align-items: center;
+               font-size: 13px; padding: 3px 0; }
+  .total-row.grand { font-size: 15px; font-weight: 700; color: #1e293b;
+                     border-top: 1px solid #e2e8f0; margin-top: 6px; padding-top: 8px; }
+  .ai-zone { border: 2px dashed #6366f1; border-radius: 10px; padding: 16px 20px;
+             background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); }
+  .ai-btn { background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white; border: none; border-radius: 8px; padding: 8px 18px;
+            font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+  .ai-btn:hover { opacity: .85; }
+  .ai-btn:disabled { opacity: .5; cursor: default; }
+  .ai-loading { display: none; font-size: 13px; color: #6366f1; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-8">
+  <div class="col-lg-9">
     <div class="card">
       <div class="card-body p-4">
 
         <form method="post"
               action="{% if edit_mode %}/invoices/{{ invoice.id }}/edit{% else %}/invoices/new{% endif %}"
-              enctype="multipart/form-data">
+              enctype="multipart/form-data"
+              id="invoiceForm">
 
-          {# ── Referans seçimi ── #}
+          {# ── AI ile Doldur ── #}
+          <div class="ai-zone mb-4">
+            <div class="d-flex align-items-start gap-3">
+              <div style="font-size:28px;">🤖</div>
+              <div class="flex-grow-1">
+                <div class="fw-bold mb-1" style="font-size:14px; color:#4f46e5;">
+                  PDF'den Otomatik Doldur
+                </div>
+                <div class="text-muted mb-2" style="font-size:12px;">
+                  Fatura PDF veya görselini yükleyin — AI tüm alanları otomatik dolduracak.
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <input type="file" id="aiFileInput" accept=".pdf,.jpg,.jpeg,.png"
+                         style="display:none" onchange="handleAiFile(this)">
+                  <button type="button" class="ai-btn" id="aiPickBtn"
+                          onclick="document.getElementById('aiFileInput').click()">
+                    <i class="bi bi-upload me-1"></i> Dosya Seç
+                  </button>
+                  <span id="aiFileName" class="text-muted" style="font-size:12px;"></span>
+                  <button type="button" class="ai-btn" id="aiRunBtn" style="display:none"
+                          onclick="runAiParse()">
+                    <i class="bi bi-stars me-1"></i> AI ile Analiz Et
+                  </button>
+                  <span class="ai-loading" id="aiLoading">
+                    <span class="spinner-border spinner-border-sm me-1"></span> Analiz ediliyor…
+                  </span>
+                </div>
+                <div id="aiError" class="text-danger mt-2" style="font-size:12px; display:none;"></div>
+              </div>
+            </div>
+          </div>
+
+          {# ── Referans ── #}
           <div class="mb-3">
             <label class="form-label fw-semibold">Referans <span class="text-danger">*</span></label>
             {% if edit_mode %}
@@ -55,86 +110,96 @@
             {% endif %}
           </div>
 
-          {# ── Fatura Tipi ── #}
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Fatura Tipi <span class="text-danger">*</span></label>
-            <select name="invoice_type" class="form-select" required>
-              <option value="">— Seçin —</option>
-              {% for t in invoice_types %}
-              <option value="{{ t.value }}"
-                {% if invoice and invoice.invoice_type == t.value %}selected{% endif %}>
-                {{ t.label }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-
+          {# ── Fatura Tipi + No + Tedarikçi ── #}
           <div class="row g-3 mb-3">
-            {# ── Fatura No ── #}
-            <div class="col-md-6">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Fatura Tipi <span class="text-danger">*</span></label>
+              <select name="invoice_type" class="form-select" required>
+                <option value="">— Seçin —</option>
+                {% for t in invoice_types %}
+                <option value="{{ t.value }}"
+                  {% if invoice and invoice.invoice_type == t.value %}selected{% endif %}>
+                  {{ t.label }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
               <label class="form-label fw-semibold">Fatura No</label>
-              <input type="text" name="invoice_no" class="form-control"
+              <input type="text" name="invoice_no" id="fInvoiceNo" class="form-control"
                      value="{{ invoice.invoice_no if invoice else '' }}"
                      placeholder="2024/00123">
             </div>
-            {# ── Tedarikçi / Müşteri Adı ── #}
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label class="form-label fw-semibold">Tedarikçi / Müşteri</label>
-              <input type="text" name="vendor_name" class="form-control"
+              <input type="text" name="vendor_name" id="fVendorName" class="form-control"
                      value="{{ invoice.vendor_name if invoice else '' }}"
                      placeholder="Firma adı">
             </div>
           </div>
 
           <div class="row g-3 mb-3">
-            {# ── Fatura Tarihi ── #}
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label class="form-label fw-semibold">Fatura Tarihi</label>
-              <input type="date" name="invoice_date" class="form-control"
+              <input type="date" name="invoice_date" id="fInvoiceDate" class="form-control"
                      value="{{ invoice.invoice_date if invoice else '' }}">
             </div>
-            {# ── Vade Tarihi ── #}
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label class="form-label fw-semibold">Vade Tarihi</label>
-              <input type="date" name="due_date" class="form-control"
+              <input type="date" name="due_date" id="fDueDate" class="form-control"
                      value="{{ invoice.due_date if invoice else '' }}">
             </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Genel Açıklama</label>
+              <input type="text" name="description" id="fDescription" class="form-control"
+                     value="{{ invoice.description if invoice else '' }}"
+                     placeholder="Fatura açıklaması">
+            </div>
           </div>
 
-          {# ── Açıklama ── #}
+          {# ── Kalem Tablosu ── #}
           <div class="mb-3">
-            <label class="form-label fw-semibold">Açıklama</label>
-            <textarea name="description" class="form-control" rows="2"
-                      placeholder="Fatura açıklaması">{{ invoice.description if invoice else '' }}</textarea>
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <label class="form-label fw-semibold mb-0">Fatura Kalemleri</label>
+              <button type="button" class="btn btn-outline-primary btn-sm"
+                      onclick="addLine()">
+                <i class="bi bi-plus-lg me-1"></i> Kalem Ekle
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="table lines-table mb-0" style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                <thead>
+                  <tr>
+                    <th class="ps-3" style="min-width:220px;">Açıklama</th>
+                    <th style="width:130px;">Tutar (KDV Hariç) ₺</th>
+                    <th style="width:100px;">KDV %</th>
+                    <th style="width:120px;">KDV Tutarı ₺</th>
+                    <th style="width:130px;">Toplam ₺</th>
+                    <th style="width:40px;"></th>
+                  </tr>
+                </thead>
+                <tbody id="linesBody"></tbody>
+              </table>
+            </div>
           </div>
 
-          {# ── Tutarlar ── #}
-          <div class="row g-3 mb-3">
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Tutar (KDV Hariç) ₺</label>
-              <input type="number" name="amount" id="fAmount" class="form-control"
-                     step="0.01" min="0"
-                     value="{{ '%.2f'|format(invoice.amount) if invoice else '0.00' }}"
-                     oninput="calcVat()">
+          {# ── Toplamlar ── #}
+          <div class="total-bar mb-4">
+            <div class="total-row">
+              <span class="text-muted">KDV Hariç Toplam</span>
+              <span id="sumExcl">0,00 ₺</span>
             </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">KDV Oranı</label>
-              <select name="vat_rate" id="fVatRate" class="form-select" onchange="calcVat()">
-                {% for r in [0, 1, 8, 10, 18, 20] %}
-                <option value="{{ r }}"
-                  {% if invoice and invoice.vat_rate == r %}selected
-                  {% elif not invoice and r == 20 %}selected{% endif %}>
-                  %{{ r }}
-                </option>
-                {% endfor %}
-              </select>
+            <div class="total-row">
+              <span class="text-muted">KDV Toplamı</span>
+              <span id="sumVat">0,00 ₺</span>
             </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Toplam (KDV Dahil) ₺</label>
-              <input type="text" id="fTotal" class="form-control bg-light" readonly
-                     value="{{ '%.2f'|format(invoice.total_amount) if invoice else '0.00' }}">
+            <div class="total-row grand">
+              <span>GENEL TOPLAM (KDV Dahil)</span>
+              <span id="sumTotal">0,00 ₺</span>
             </div>
           </div>
+
+          <input type="hidden" name="lines_json" id="linesJson">
 
           {# ── Belge Upload ── #}
           <div class="mb-4">
@@ -149,14 +214,14 @@
               <span class="text-muted ms-2" style="font-size:12px;">Yeni dosya seçerseniz eskisi değiştirilir.</span>
             </div>
             {% endif %}
-            <input type="file" name="document" class="form-control"
+            <input type="file" name="document" id="docFileInput" class="form-control"
                    accept=".pdf,.jpg,.jpeg,.png,.gif,.webp">
             <div class="form-text">Maks. 10 MB. PDF, JPG veya PNG.</div>
           </div>
 
           {# ── Butonlar ── #}
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" onclick="prepareSave()">
               <i class="bi bi-check-lg me-1"></i>
               {% if edit_mode %}Güncelle{% else %}Kaydet{% endif %}
             </button>
@@ -180,12 +245,171 @@
 
 {% block extra_scripts %}
 <script>
-function calcVat() {
-  const amt  = parseFloat(document.getElementById('fAmount').value) || 0;
-  const rate = parseFloat(document.getElementById('fVatRate').value) || 0;
-  const total = amt + (amt * rate / 100);
-  document.getElementById('fTotal').value = total.toFixed(2);
+// ── Başlangıç verileri ───────────────────────────────────────────────────────
+const VAT_RATES = [0, 1, 8, 10, 18, 20];
+let lines = [];
+{% if invoice and invoice.lines_json %}
+try { lines = {{ invoice.lines | tojson }}; } catch(e) {}
+{% endif %}
+// Eski format (lines yoksa ama amount varsa) geriye uyumluluk
+{% if invoice and not invoice.lines %}
+  {% if invoice.amount and invoice.amount > 0 %}
+  lines = [{ description: {{ (invoice.description or '') | tojson }}, amount: {{ invoice.amount }}, vat_rate: {{ invoice.vat_rate or 20 }}, vat_amount: {{ invoice.vat_amount or 0 }} }];
+  {% endif %}
+{% endif %}
+if (lines.length === 0) addLine();
+else renderLines();
+
+// ── Satır fonksiyonları ───────────────────────────────────────────────────────
+function addLine(desc='', amount=0, vat_rate=20) {
+  lines.push({ description: desc, amount: amount, vat_rate: vat_rate, vat_amount: 0 });
+  renderLines();
 }
-calcVat();
+
+function removeLine(i) {
+  lines.splice(i, 1);
+  if (lines.length === 0) addLine();
+  else renderLines();
+}
+
+function renderLines() {
+  const tbody = document.getElementById('linesBody');
+  let html = '';
+  lines.forEach((ln, i) => {
+    const vatOpts = VAT_RATES.map(r =>
+      `<option value="${r}" ${ln.vat_rate == r ? 'selected' : ''}>%${r}</option>`
+    ).join('');
+    const vatAmt = ((parseFloat(ln.amount)||0) * (parseFloat(ln.vat_rate)||0) / 100).toFixed(2);
+    const total  = ((parseFloat(ln.amount)||0) + parseFloat(vatAmt)).toFixed(2);
+    html += `<tr>
+      <td class="ps-3">
+        <input type="text" class="form-control form-control-sm" placeholder="Kalem açıklaması"
+               value="${escHtml(ln.description||'')}"
+               oninput="lines[${i}].description=this.value">
+      </td>
+      <td>
+        <input type="number" class="form-control form-control-sm text-end" min="0" step="0.01"
+               value="${parseFloat(ln.amount)||''}" placeholder="0,00"
+               oninput="lines[${i}].amount=parseFloat(this.value)||0;renderLines()">
+      </td>
+      <td>
+        <select class="form-select form-select-sm" onchange="lines[${i}].vat_rate=parseInt(this.value);renderLines()">
+          ${vatOpts}
+        </select>
+      </td>
+      <td class="text-end text-muted" style="font-size:13px;">${fmt(vatAmt)}</td>
+      <td class="text-end fw-semibold" style="font-size:13px;">${fmt(total)}</td>
+      <td class="text-center">
+        ${lines.length > 1 ? `<button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeLine(${i})"><i class="bi bi-trash"></i></button>` : ''}
+      </td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+  updateTotals();
+}
+
+function updateTotals() {
+  let excl = 0, vatSum = 0;
+  lines.forEach(ln => {
+    const a = parseFloat(ln.amount) || 0;
+    const v = (parseFloat(ln.vat_rate) || 0) / 100;
+    excl   += a;
+    vatSum += a * v;
+  });
+  const total = excl + vatSum;
+  document.getElementById('sumExcl').textContent  = fmt(excl)   + ' ₺';
+  document.getElementById('sumVat').textContent   = fmt(vatSum) + ' ₺';
+  document.getElementById('sumTotal').textContent = fmt(total)  + ' ₺';
+}
+
+function prepareSave() {
+  // vat_amount'ları hesapla ve JSON'a yaz
+  lines.forEach(ln => {
+    ln.vat_amount = Math.round((parseFloat(ln.amount)||0) * (parseFloat(ln.vat_rate)||0) / 100 * 100) / 100;
+  });
+  document.getElementById('linesJson').value = JSON.stringify(lines);
+}
+
+// ── AI Parse ─────────────────────────────────────────────────────────────────
+let aiFile = null;
+
+function handleAiFile(input) {
+  aiFile = input.files[0];
+  if (!aiFile) return;
+  document.getElementById('aiFileName').textContent = aiFile.name;
+  document.getElementById('aiRunBtn').style.display = '';
+  document.getElementById('aiError').style.display  = 'none';
+}
+
+async function runAiParse() {
+  if (!aiFile) return;
+  document.getElementById('aiRunBtn').style.display    = 'none';
+  document.getElementById('aiLoading').style.display   = '';
+  document.getElementById('aiError').style.display     = 'none';
+
+  const fd = new FormData();
+  fd.append('file', aiFile);
+
+  let res, text;
+  try {
+    res  = await fetch('/invoices/parse-pdf', { method: 'POST', body: fd });
+    text = await res.text();
+  } catch(e) {
+    showAiError('Bağlantı hatası: ' + e);
+    return;
+  }
+
+  let data;
+  try { data = JSON.parse(text); } catch(e) {
+    showAiError('Sunucu hatası (' + res.status + '): ' + text.slice(0, 300));
+    return;
+  }
+
+  if (!data.ok) { showAiError(data.error || 'Bilinmeyen hata'); return; }
+
+  // Formu doldur
+  const d = data.data;
+  if (d.invoice_no)   document.getElementById('fInvoiceNo').value   = d.invoice_no;
+  if (d.invoice_date) document.getElementById('fInvoiceDate').value = d.invoice_date;
+  if (d.due_date)     document.getElementById('fDueDate').value     = d.due_date;
+  if (d.vendor_name)  document.getElementById('fVendorName').value  = d.vendor_name;
+  if (d.description)  document.getElementById('fDescription').value = d.description;
+
+  if (d.lines && d.lines.length > 0) {
+    lines = d.lines.map(l => ({
+      description: l.description || '',
+      amount:      parseFloat(l.amount) || 0,
+      vat_rate:    parseInt(l.vat_rate) || 20,
+      vat_amount:  0,
+    }));
+    renderLines();
+  }
+
+  // Dosyayı fatura belgesi olarak da ata
+  const docInput = document.getElementById('docFileInput');
+  const dt = new DataTransfer();
+  dt.items.add(aiFile);
+  docInput.files = dt.files;
+
+  document.getElementById('aiLoading').style.display = 'none';
+  document.getElementById('aiRunBtn').style.display  = '';
+  document.getElementById('aiFileName').textContent  = '✓ ' + aiFile.name + ' — dolduruldu';
+}
+
+function showAiError(msg) {
+  document.getElementById('aiLoading').style.display = 'none';
+  document.getElementById('aiRunBtn').style.display  = '';
+  const el = document.getElementById('aiError');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── Yardımcılar ───────────────────────────────────────────────────────────────
+function fmt(n) {
+  return parseFloat(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 </script>
 {% endblock %}

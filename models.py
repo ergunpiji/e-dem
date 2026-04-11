@@ -937,10 +937,11 @@ class Invoice(Base):
     due_date      = Column(String(10), nullable=True)    # YYYY-MM-DD string
     vendor_name   = Column(String(255), default="")      # tedarikçi/müşteri adı
     description   = Column(Text, default="")
-    amount        = Column(Float, default=0.0)           # KDV hariç, TRY
-    vat_rate      = Column(Float, default=20.0)          # % olarak: 20 = %20
-    vat_amount    = Column(Float, default=0.0)           # KDV tutarı
-    total_amount  = Column(Float, default=0.0)           # KDV dahil
+    amount        = Column(Float, default=0.0)           # KDV hariç toplam, TRY (lines'dan hesaplanır)
+    vat_rate      = Column(Float, default=20.0)          # geriye uyumluluk için (artık lines'da)
+    vat_amount    = Column(Float, default=0.0)           # KDV tutarı toplamı
+    total_amount  = Column(Float, default=0.0)           # KDV dahil toplam
+    lines_json    = Column(Text, default="[]")           # list[{description, amount, vat_rate, vat_amount}]
     document_path = Column(String(500), nullable=True)   # disk path (relative)
     document_name = Column(String(255), nullable=True)   # orijinal dosya adı
     status        = Column(String(16), default="active") # active | cancelled
@@ -950,6 +951,13 @@ class Invoice(Base):
 
     request = relationship("Request", back_populates="invoices")
     creator = relationship("User", foreign_keys=[created_by])
+
+    @property
+    def lines(self) -> list:
+        try:
+            return json.loads(self.lines_json or "[]")
+        except Exception:
+            return []
 
     @property
     def type_label(self) -> str:
