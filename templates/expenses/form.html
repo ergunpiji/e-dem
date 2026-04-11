@@ -250,14 +250,9 @@
       {# Readonly: referans listeleri #}
       {% endif %}
 
-      {# Form başlığı #}
+      {# title alanı gizli — otomatik doldurulur #}
       {% if not readonly %}
-      <div class="mb-4">
-        <label class="form-label fw-semibold" style="font-size:13px;">Form Başlığı</label>
-        <input type="text" name="title" class="form-control" style="max-width:400px;"
-               value="{{ report.title if report else '' }}"
-               placeholder="ör. Etkinlik Hazırlık Harcamaları">
-      </div>
+      <input type="hidden" name="title" value="{{ report.title if report else '' }}">
       {% endif %}
 
       {# ── Harcama tablosu ── #}
