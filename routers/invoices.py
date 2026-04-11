@@ -256,6 +256,10 @@ async def invoices_parse_pdf(
 ):
     _require_finance(current_user)
 
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY sunucuda tanımlı değil. Railway ortam değişkenlerine ekleyin."}, status_code=500)
+
     import anthropic as _anthropic
 
     file_bytes = await file.read()
@@ -308,7 +312,7 @@ JSON formatı:
 - Eğer bir bilgi bulunamıyorsa boş string veya 0 kullan"""
 
     try:
-        client = _anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        client = _anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,

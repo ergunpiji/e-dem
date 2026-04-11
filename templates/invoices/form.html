@@ -30,7 +30,9 @@
   .total-row.grand { font-size: 15px; font-weight: 700; color: #1e293b;
                      border-top: 1px solid #e2e8f0; margin-top: 6px; padding-top: 8px; }
   .ai-zone { border: 2px dashed #6366f1; border-radius: 10px; padding: 16px 20px;
-             background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); }
+             background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+             transition: border-color .2s, background .2s; }
+  .ai-zone.drag-over { border-color: #4f46e5; background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); }
   .ai-btn { background: linear-gradient(135deg, #6366f1, #8b5cf6);
             color: white; border: none; border-radius: 8px; padding: 8px 18px;
             font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
@@ -38,6 +40,14 @@
   .ai-btn:disabled { opacity: .5; cursor: default; }
   .ai-loading { display: none; font-size: 13px; color: #6366f1; }
   #aiFileInput { font-size: 13px; }
+  .doc-drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 14px 16px;
+              text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+              background: #f8fafc; }
+  .doc-drop:hover, .doc-drop.drag-over { border-color: #6366f1; background: #f5f3ff; }
+  .doc-drop input[type=file] { display: none; }
+  .doc-drop-label { font-size: 13px; color: #64748b; }
+  .doc-drop-label strong { color: #4f46e5; cursor: pointer; }
+  .doc-chosen { font-size: 12px; color: #059669; margin-top: 6px; }
 </style>
 {% endblock %}
 
@@ -53,7 +63,8 @@
               id="invoiceForm">
 
           {# ── AI ile Doldur ── #}
-          <div class="ai-zone mb-4">
+          <div class="ai-zone mb-4" id="aiZone"
+               ondragover="aiDragOver(event)" ondragleave="aiDragLeave(event)" ondrop="aiDrop(event)">
             <div class="d-flex align-items-start gap-3">
               <div style="font-size:28px;">🤖</div>
               <div class="flex-grow-1">
@@ -61,11 +72,15 @@
                   PDF'den Otomatik Doldur
                 </div>
                 <div class="text-muted mb-2" style="font-size:12px;">
-                  Fatura PDF veya görselini yükleyin — AI tüm alanları otomatik dolduracak.
+                  Dosyayı seçin veya buraya sürükleyip bırakın — AI tüm alanları otomatik dolduracak.
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                  <input type="file" id="aiFileInput" accept=".pdf,.jpg,.jpeg,.png"
-                         onchange="handleAiFile(this)">
+                  <label class="ai-btn mb-0" style="cursor:pointer;">
+                    <i class="bi bi-upload me-1"></i> Dosya Seç
+                    <input type="file" id="aiFileInput" accept=".pdf,.jpg,.jpeg,.png"
+                           style="display:none" onchange="handleAiFile(this)">
+                  </label>
+                  <span id="aiFileName" class="text-muted" style="font-size:12px;"></span>
                   <button type="button" class="ai-btn" id="aiRunBtn" style="display:none"
                           onclick="runAiParse()">
                     <i class="bi bi-stars me-1"></i> AI ile Analiz Et
@@ -210,9 +225,18 @@
               <span class="text-muted ms-2" style="font-size:12px;">Yeni dosya seçerseniz eskisi değiştirilir.</span>
             </div>
             {% endif %}
-            <input type="file" name="document" id="docFileInput" class="form-control"
-                   accept=".pdf,.jpg,.jpeg,.png,.gif,.webp">
-            <div class="form-text">Maks. 10 MB. PDF, JPG veya PNG.</div>
+            <div class="doc-drop" id="docDrop"
+                 ondragover="docDragOver(event)" ondragleave="docDragLeave(event)" ondrop="docDropFile(event)"
+                 onclick="document.getElementById('docFileInput').click()">
+              <input type="file" name="document" id="docFileInput" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                     onchange="docChosen(this)">
+              <div class="doc-drop-label">
+                <i class="bi bi-cloud-upload fs-5 d-block mb-1" style="color:#6366f1;"></i>
+                <strong>Dosya seçin</strong> veya buraya sürükleyin
+                <div style="font-size:11px; margin-top:4px;">PDF, JPG, PNG — maks. 10 MB</div>
+              </div>
+              <div class="doc-chosen" id="docChosenName" style="display:none;"></div>
+            </div>
           </div>
 
           {# ── Butonlar ── #}
@@ -332,8 +356,60 @@ let aiFile = null;
 function handleAiFile(input) {
   aiFile = input.files[0];
   if (!aiFile) return;
+  document.getElementById('aiFileName').textContent = aiFile.name;
   document.getElementById('aiRunBtn').style.display = '';
   document.getElementById('aiError').style.display  = 'none';
+}
+
+// AI zone drag-and-drop
+function aiDragOver(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('aiZone').classList.add('drag-over');
+}
+function aiDragLeave(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('aiZone').classList.remove('drag-over');
+}
+function aiDrop(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('aiZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['pdf','jpg','jpeg','png'].includes(ext)) {
+    showAiError('Desteklenmeyen dosya türü. PDF, JPG veya PNG yükleyin.'); return;
+  }
+  aiFile = file;
+  document.getElementById('aiFileName').textContent = file.name;
+  document.getElementById('aiRunBtn').style.display = '';
+  document.getElementById('aiError').style.display  = 'none';
+}
+
+// Belge drop zone
+function docDragOver(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('docDrop').classList.add('drag-over');
+}
+function docDragLeave(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('docDrop').classList.remove('drag-over');
+}
+function docDropFile(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('docDrop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const inp = document.getElementById('docFileInput');
+  inp.files = dt.files;
+  docChosen(inp);
+}
+function docChosen(input) {
+  const f = input.files[0];
+  const el = document.getElementById('docChosenName');
+  if (f) { el.textContent = '✓ ' + f.name; el.style.display = ''; }
+  else   { el.style.display = 'none'; }
 }
 
 async function runAiParse() {
@@ -381,10 +457,13 @@ async function runAiParse() {
   }
 
   // Dosyayı fatura belgesi olarak da ata
-  const docInput = document.getElementById('docFileInput');
-  const dt = new DataTransfer();
-  dt.items.add(aiFile);
-  docInput.files = dt.files;
+  try {
+    const docInput = document.getElementById('docFileInput');
+    const dt2 = new DataTransfer();
+    dt2.items.add(aiFile);
+    docInput.files = dt2.files;
+    docChosen(docInput);
+  } catch(_) { /* DataTransfer bazı tarayıcılarda çalışmayabilir */ }
 
   document.getElementById('aiLoading').style.display = 'none';
   document.getElementById('aiRunBtn').style.display  = '';
