@@ -969,13 +969,13 @@ class Invoice(Base):
 
     @property
     def is_income(self) -> bool:
-        """Gelir etkisi pozitif mi? (kesilen = +ciro, iade_kesilen = -ciro)"""
-        return self.invoice_type in ("kesilen", "iade_gelen")
+        """Gelir etkisi pozitif mi? kesilen + komisyon = gelir; iade_gelen = maliyet azaltır"""
+        return self.invoice_type in ("kesilen", "iade_gelen", "komisyon")
 
     @property
     def is_cost(self) -> bool:
-        """Maliyet etkisi var mı?"""
-        return self.invoice_type in ("gelen", "komisyon", "iade_kesilen")
+        """Maliyet etkisi var mı? komisyon maliyet değil, gelirdir."""
+        return self.invoice_type in ("gelen", "iade_kesilen")
 
     def to_dict(self) -> dict:
         return {

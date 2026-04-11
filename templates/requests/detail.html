@@ -1051,7 +1051,25 @@
       </div>
       {% endmacro %}
       {{ fin_card('Ciro',    budget_sale_excl, invoice_ciro,    '#2563eb') }}
-      {{ fin_card('Maliyet', budget_cost_excl, invoice_maliyet, '#dc2626') }}
+      <div class="col-sm-6 col-lg-3">
+        <div class="p-3 rounded border" style="background:#f8fafc;">
+          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">Maliyet</div>
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
+            Bütçe: <span class="fw-semibold text-dark">{{ '₺{:,.0f}'.format(budget_cost_excl).replace(',', '.') }}</span>
+          </div>
+          <div style="font-size:20px; font-weight:800; color:#dc2626; line-height:1.2;">
+            ₺{{ '{:,.0f}'.format(invoice_net_maliyet).replace(',', '.') }}
+          </div>
+          {% if invoice_komisyon > 0 %}
+          <div style="font-size:11px; color:#94a3b8;">
+            Brüt ₺{{ '{:,.0f}'.format(invoice_maliyet).replace(',', '.') }}
+            <span style="color:#16a34a;">− Kom. ₺{{ '{:,.0f}'.format(invoice_komisyon).replace(',', '.') }}</span>
+          </div>
+          {% else %}
+          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
+          {% endif %}
+        </div>
+      </div>
       <div class="col-sm-6 col-lg-3">
         <div class="p-3 rounded border" style="background:#f8fafc;">
           <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">Kar</div>
@@ -1089,10 +1107,10 @@
     {# ── Makro: fatura satırı ── #}
     {% macro invoice_row(inv, show_actions, show_approve, row_style='') %}
     {% set type_colors = {
-      'kesilen':      ('bg-success', 'text-success'),
-      'gelen':        ('bg-danger',  'text-danger'),
-      'komisyon':     ('bg-warning', 'text-warning'),
-      'iade_kesilen': ('bg-info',    'text-info'),
+      'kesilen':      ('bg-success',  'text-success'),
+      'gelen':        ('bg-danger',   'text-danger'),
+      'komisyon':     ('bg-success',  'text-success'),
+      'iade_kesilen': ('bg-info',     'text-info'),
       'iade_gelen':   ('bg-secondary','text-secondary')
     } %}
     {% set tcls = type_colors.get(inv.invoice_type, ('bg-secondary', 'text-secondary')) %}
@@ -1257,7 +1275,7 @@
               <tr style="background:#fff5f5;">
                 {% set type_colors = {
                   'kesilen':('bg-success','text-success'),'gelen':('bg-danger','text-danger'),
-                  'komisyon':('bg-warning','text-warning'),'iade_kesilen':('bg-info','text-info'),
+                  'komisyon':('bg-success','text-success'),'iade_kesilen':('bg-info','text-info'),
                   'iade_gelen':('bg-secondary','text-secondary')
                 } %}
                 {% set tcls = type_colors.get(inv.invoice_type, ('bg-secondary','text-secondary')) %}

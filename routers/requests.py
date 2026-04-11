@@ -418,11 +418,14 @@ async def requests_detail(
     # geriye uyumluluk — eski "active" kayıtlar da dahil
     active_invoices   = approved_invoices + [inv for inv in (req.invoices or []) if inv.status == "active"]
 
-    invoice_ciro    = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "kesilen")
-                     - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_kesilen"))
-    invoice_maliyet = (sum(inv.amount for inv in active_invoices if inv.invoice_type in ("gelen", "komisyon"))
-                     - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_gelen"))
-    invoice_kar     = invoice_ciro - invoice_maliyet
+    invoice_ciro     = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "kesilen")
+                      - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_kesilen"))
+    invoice_komisyon = sum(inv.amount for inv in active_invoices if inv.invoice_type == "komisyon")
+    invoice_maliyet  = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "gelen")
+                      - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_gelen"))
+    # Net maliyet: brüt gelen faturalar - komisyon geliri (komisyon maliyeti düşürür)
+    invoice_net_maliyet = invoice_maliyet - invoice_komisyon
+    invoice_kar      = invoice_ciro - invoice_net_maliyet
 
     confirmed_budget = None
     for b in req.budgets:
@@ -462,12 +465,14 @@ async def requests_detail(
             "customer":         customer,
             "budgets_json":     budgets_json,
             # Finansal
-            "active_invoices":   active_invoices,
-            "pending_invoices":  pending_invoices,
-            "rejected_invoices": rejected_invoices,
-            "invoice_ciro":      round(invoice_ciro, 2),
-            "invoice_maliyet":   round(invoice_maliyet, 2),
-            "invoice_kar":       round(invoice_kar, 2),
+            "active_invoices":       active_invoices,
+            "pending_invoices":      pending_invoices,
+            "rejected_invoices":     rejected_invoices,
+            "invoice_ciro":          round(invoice_ciro, 2),
+            "invoice_komisyon":      round(invoice_komisyon, 2),
+            "invoice_maliyet":       round(invoice_maliyet, 2),
+            "invoice_net_maliyet":   round(invoice_net_maliyet, 2),
+            "invoice_kar":           round(invoice_kar, 2),
             "budget_sale_excl":  budget_sale_excl,
             "budget_cost_excl":  budget_cost_excl,
             "can_manage_invoices":   can_manage_invoices,
