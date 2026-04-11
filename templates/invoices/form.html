@@ -48,6 +48,7 @@
   .doc-drop-label { font-size: 13px; color: #64748b; }
   .doc-drop-label strong { color: #4f46e5; cursor: pointer; }
   .doc-chosen { font-size: 12px; color: #059669; margin-top: 6px; }
+  .req-drop-item:hover { background: #f0f9ff; }
 </style>
 {% endblock %}
 
@@ -97,29 +98,92 @@
           {# ── Referans ── #}
           <div class="mb-3">
             <label class="form-label fw-semibold">Referans <span class="text-danger">*</span></label>
-            {% if edit_mode %}
-              <input type="hidden" name="req_id" value="{{ invoice.request_id }}">
-              <div class="form-control bg-light" style="font-size:13px;">
-                {{ invoice.request.request_no }} — {{ invoice.request.event_name }}
-                <span class="text-muted ms-2">({{ invoice.request.client_name }})</span>
-              </div>
-            {% elif selected_req %}
-              <input type="hidden" name="req_id" value="{{ selected_req.id }}">
-              <div class="form-control bg-light" style="font-size:13px;">
-                {{ selected_req.request_no }} — {{ selected_req.event_name }}
-                <span class="text-muted ms-2">({{ selected_req.client_name }})</span>
-              </div>
-            {% else %}
-              <select name="req_id" class="form-select" required>
-                <option value="">— Referans Seçin —</option>
+            <input type="hidden" name="req_id" id="reqIdHidden"
+                   value="{{ invoice.request_id if edit_mode else (selected_req.id if selected_req else '') }}"
+                   required>
+            {# Seçili referans badge #}
+            <div id="reqSelectedBadge"
+                 style="{% if not edit_mode and not selected_req %}display:none;{% endif %} margin-bottom:6px;">
+              <span class="badge d-inline-flex align-items-center gap-1 px-2 py-1"
+                    style="background:#dbeafe; color:#1d4ed8; font-size:13px; font-weight:600; border-radius:6px;">
+                <span id="reqBadgeText">
+                  {% if edit_mode %}{{ invoice.request.request_no }} — {{ invoice.request.event_name }} ({{ invoice.request.client_name }})
+                  {% elif selected_req %}{{ selected_req.request_no }} — {{ selected_req.event_name }} ({{ selected_req.client_name }})
+                  {% endif %}
+                </span>
+                {% if not edit_mode %}
+                <button type="button" onclick="clearReqSelection()"
+                        style="background:none;border:none;color:#1d4ed8;padding:0 2px;font-size:14px;line-height:1;cursor:pointer;"
+                        title="Değiştir">&times;</button>
+                {% endif %}
+              </span>
+            </div>
+            {# Arama kutusu #}
+            {% if not edit_mode %}
+            <div id="reqSearchWrap" style="{% if selected_req %}display:none;{% endif %} position:relative; max-width:520px;">
+              <input type="text" id="reqSearchInput" class="form-control"
+                     placeholder="Referans no veya etkinlik adı ara..."
+                     autocomplete="off"
+                     oninput="filterReqDropdown(this.value)"
+                     onfocus="showReqDropdown()"
+                     onblur="setTimeout(hideReqDropdown, 200)">
+              <div id="reqDropdown"
+                   style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:220px;
+                          overflow-y:auto; z-index:1000; background:#fff; border:1px solid #e2e8f0;
+                          border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.1); font-size:13px;">
                 {% for r in all_requests %}
-                <option value="{{ r.id }}">
-                  {{ r.request_no }} — {{ r.event_name }} ({{ r.client_name }})
-                </option>
+                <div class="req-drop-item px-3 py-2 border-bottom"
+                     style="cursor:pointer;"
+                     data-id="{{ r.id }}"
+                     data-label="{{ r.request_no }} — {{ r.event_name | e }} ({{ r.client_name | e }})"
+                     onmousedown="selectReq(this)">
+                  <span class="fw-bold text-primary">{{ r.request_no }}</span>
+                  <span class="text-dark ms-1">{{ r.event_name }}</span>
+                  {% if r.client_name %}<span class="text-muted"> — {{ r.client_name }}</span>{% endif %}
+                </div>
                 {% endfor %}
-              </select>
+              </div>
+            </div>
             {% endif %}
           </div>
+
+          {# ── Belgesiz Gelir / Gider özeti (seçili ref varsa göster) ── #}
+          {% set undoc_gelir = undoc_entries | selectattr('entry_type','equalto','gelir') | list if undoc_entries else [] %}
+          {% set undoc_gider = undoc_entries | selectattr('entry_type','equalto','gider') | list if undoc_entries else [] %}
+          {% if undoc_gelir or undoc_gider %}
+          <div class="mb-3 p-3 rounded" style="background:#fefce8; border:1px solid #fde68a; font-size:12px;">
+            <div class="fw-semibold mb-2" style="color:#92400e;">
+              <i class="bi bi-cash-stack me-1"></i>Belgesiz Gelir / Gider
+              <span class="text-muted fw-normal">({{ selected_req.request_no if selected_req else '' }})</span>
+            </div>
+            <div class="row g-2">
+              <div class="col-6">
+                <div class="text-success fw-semibold mb-1">
+                  <i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir
+                  — ₺{{ '{:,.2f}'.format(undoc_gelir | sum(attribute='amount')).replace(',','.') }}
+                </div>
+                {% for e in undoc_gelir %}
+                <div class="d-flex justify-content-between text-muted py-1 border-bottom">
+                  <span>{{ e.entry_date or '—' }} &nbsp; {{ e.description or '—' }}</span>
+                  <span class="fw-semibold text-success ms-2">₺{{ '{:,.2f}'.format(e.amount).replace(',','.') }}</span>
+                </div>
+                {% endfor %}
+              </div>
+              <div class="col-6">
+                <div class="text-danger fw-semibold mb-1">
+                  <i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider
+                  — ₺{{ '{:,.2f}'.format(undoc_gider | sum(attribute='amount')).replace(',','.') }}
+                </div>
+                {% for e in undoc_gider %}
+                <div class="d-flex justify-content-between text-muted py-1 border-bottom">
+                  <span>{{ e.entry_date or '—' }} &nbsp; {{ e.description or '—' }}</span>
+                  <span class="fw-semibold text-danger ms-2">₺{{ '{:,.2f}'.format(e.amount).replace(',','.') }}</span>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endif %}
 
           {# ── Fatura Tipi + No + Tedarikçi ── #}
           <div class="row g-3 mb-3">
@@ -265,6 +329,39 @@
 
 {% block extra_scripts %}
 <script>
+// ── Referans autocomplete ────────────────────────────────────────────────────
+function filterReqDropdown(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.req-drop-item').forEach(el => {
+    el.style.display = (el.dataset.label || '').toLowerCase().includes(q) ? '' : 'none';
+  });
+  showReqDropdown();
+}
+function showReqDropdown() {
+  const dd = document.getElementById('reqDropdown');
+  if (dd) dd.style.display = '';
+}
+function hideReqDropdown() {
+  const dd = document.getElementById('reqDropdown');
+  if (dd) dd.style.display = 'none';
+}
+function selectReq(el) {
+  document.getElementById('reqIdHidden').value = el.dataset.id;
+  document.getElementById('reqBadgeText').textContent = el.dataset.label;
+  document.getElementById('reqSelectedBadge').style.display = '';
+  document.getElementById('reqSearchWrap').style.display = 'none';
+  document.getElementById('reqSearchInput').value = '';
+  hideReqDropdown();
+}
+function clearReqSelection() {
+  document.getElementById('reqIdHidden').value = '';
+  document.getElementById('reqSelectedBadge').style.display = 'none';
+  document.getElementById('reqSearchWrap').style.display = '';
+  document.getElementById('reqSearchInput').focus();
+  // tüm dropdown itemları tekrar göster
+  document.querySelectorAll('.req-drop-item').forEach(el => el.style.display = '');
+}
+
 // ── Başlangıç verileri ───────────────────────────────────────────────────────
 const VAT_RATES = [0, 1, 8, 10, 18, 20];
 let lines = [];

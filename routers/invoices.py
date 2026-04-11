@@ -84,7 +84,10 @@ async def invoices_new_form(
         req = db.query(ReqModel).filter(ReqModel.id == request_id).first()
         if not req:
             raise HTTPException(status_code=404, detail="Referans bulunamadı.")
-    all_requests = db.query(ReqModel).order_by(ReqModel.created_at.desc()).all()
+    all_requests = db.query(ReqModel).filter(
+        ReqModel.status != "cancelled"
+    ).order_by(ReqModel.created_at.desc()).all()
+    undoc_entries = req.undocumented_entries if req else []
     return templates.TemplateResponse("invoices/form.html", {
         "request":       request,
         "current_user":  current_user,
@@ -92,6 +95,7 @@ async def invoices_new_form(
         "invoice":       None,
         "selected_req":  req,
         "all_requests":  all_requests,
+        "undoc_entries": undoc_entries,
         "invoice_types": INVOICE_TYPES,
         "edit_mode":     False,
     })
@@ -179,7 +183,10 @@ async def invoices_edit_form(
 ):
     _require_finance(current_user)
     inv = _get_invoice_or_404(db, invoice_id)
-    all_requests = db.query(ReqModel).order_by(ReqModel.created_at.desc()).all()
+    all_requests = db.query(ReqModel).filter(
+        ReqModel.status != "cancelled"
+    ).order_by(ReqModel.created_at.desc()).all()
+    undoc_entries = inv.request.undocumented_entries if inv.request else []
     return templates.TemplateResponse("invoices/form.html", {
         "request":       request,
         "current_user":  current_user,
@@ -187,6 +194,7 @@ async def invoices_edit_form(
         "invoice":       inv,
         "selected_req":  inv.request,
         "all_requests":  all_requests,
+        "undoc_entries": undoc_entries,
         "invoice_types": INVOICE_TYPES,
         "edit_mode":     True,
     })
