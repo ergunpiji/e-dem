@@ -1264,6 +1264,115 @@
     </div>
     {% endif %}
 
+    {# ─── Belgesiz Gelir / Gider — sadece değer varsa veya yetkiliyse göster ─── #}
+    {% if undoc_gelir_total or undoc_gider_total or can_manage_undoc %}
+    <hr class="my-3">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <span class="fw-semibold" style="font-size:13px; color:#92400e;">
+        <i class="bi bi-cash-stack me-1" style="color:#b45309;"></i>Belgesiz Gelir / Gider
+        <span class="badge bg-warning bg-opacity-20 text-warning ms-1" style="font-size:10px;">KDV'siz</span>
+      </span>
+      {% if not can_manage_undoc %}
+      <span class="text-muted" style="font-size:11px;"><i class="bi bi-eye me-1"></i>Salt görüntüleme</span>
+      {% endif %}
+    </div>
+    <div class="row g-3">
+      {# Belgesiz Gelir #}
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span style="font-size:12px; font-weight:600; color:#166534;">
+            <i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir
+          </span>
+          <span class="fw-bold text-success" style="font-size:13px;" id="undocIncomeTotal">
+            ₺{{ '{:,.2f}'.format(undoc_gelir_total).replace(',', '.') }}
+          </span>
+        </div>
+        <div id="undocIncomeList">
+          {% for e in undocumented_entries if e.entry_type == 'gelir' %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom undoc-row"
+               id="undoc-{{ e.id }}" style="font-size:12px;">
+            <div>
+              <span class="text-muted me-2">{{ e.entry_date or '—' }}</span>
+              {{ e.description or '—' }}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="fw-semibold text-success">₺{{ '{:,.2f}'.format(e.amount).replace(',', '.') }}</span>
+              {% if can_manage_undoc %}
+              <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
+                      onclick="deleteUndoc('{{ e.id }}', 'gelir')" title="Sil">
+                <i class="bi bi-trash3" style="font-size:10px;"></i>
+              </button>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if can_manage_undoc %}
+        <form class="mt-2 d-flex gap-1 flex-wrap" onsubmit="addUndoc(event,'gelir')">
+          <input type="date" id="undocIncomeDate" class="form-control form-control-sm"
+                 style="width:120px;" value="{{ today }}">
+          <input type="text" id="undocIncomeDesc" class="form-control form-control-sm flex-grow-1"
+                 placeholder="Açıklama" style="min-width:100px;">
+          <input type="number" id="undocIncomeAmt" class="form-control form-control-sm text-end"
+                 placeholder="Tutar" min="0" step="0.01" style="width:100px;">
+          <button type="submit" class="btn btn-sm btn-success px-2">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </form>
+        {% elif not undocumented_entries | selectattr('entry_type','equalto','gelir') | list %}
+        <div class="text-muted mt-1" style="font-size:11px;">—</div>
+        {% endif %}
+      </div>
+
+      {# Belgesiz Gider #}
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span style="font-size:12px; font-weight:600; color:#991b1b;">
+            <i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider
+          </span>
+          <span class="fw-bold text-danger" style="font-size:13px;" id="undocExpenseTotal">
+            ₺{{ '{:,.2f}'.format(undoc_gider_total).replace(',', '.') }}
+          </span>
+        </div>
+        <div id="undocExpenseList">
+          {% for e in undocumented_entries if e.entry_type == 'gider' %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom undoc-row"
+               id="undoc-{{ e.id }}" style="font-size:12px;">
+            <div>
+              <span class="text-muted me-2">{{ e.entry_date or '—' }}</span>
+              {{ e.description or '—' }}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="fw-semibold text-danger">₺{{ '{:,.2f}'.format(e.amount).replace(',', '.') }}</span>
+              {% if can_manage_undoc %}
+              <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
+                      onclick="deleteUndoc('{{ e.id }}', 'gider')" title="Sil">
+                <i class="bi bi-trash3" style="font-size:10px;"></i>
+              </button>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if can_manage_undoc %}
+        <form class="mt-2 d-flex gap-1 flex-wrap" onsubmit="addUndoc(event,'gider')">
+          <input type="date" id="undocExpenseDate" class="form-control form-control-sm"
+                 style="width:120px;" value="{{ today }}">
+          <input type="text" id="undocExpenseDesc" class="form-control form-control-sm flex-grow-1"
+                 placeholder="Açıklama" style="min-width:100px;">
+          <input type="number" id="undocExpenseAmt" class="form-control form-control-sm text-end"
+                 placeholder="Tutar" min="0" step="0.01" style="width:100px;">
+          <button type="submit" class="btn btn-sm btn-danger px-2">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </form>
+        {% elif not undocumented_entries | selectattr('entry_type','equalto','gider') | list %}
+        <div class="text-muted mt-1" style="font-size:11px;">—</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     {# ── Reddedilen Faturalar (gizli, aç/kapa) ── #}
     {% if rejected_invoices %}
     <div class="mt-2">
@@ -1381,115 +1490,6 @@
             </div>
           </form>
         </div>
-      </div>
-    </div>
-    {% endif %}
-
-    {# ─── Belgesiz Gelir / Gider — sadece değer varsa veya yetkiliyse göster ─── #}
-    {% if undoc_gelir_total or undoc_gider_total or can_manage_undoc %}
-    <hr class="my-3">
-    <div class="d-flex align-items-center justify-content-between mb-2">
-      <span class="fw-semibold" style="font-size:13px; color:#92400e;">
-        <i class="bi bi-cash-stack me-1" style="color:#b45309;"></i>Belgesiz Gelir / Gider
-        <span class="badge bg-warning bg-opacity-20 text-warning ms-1" style="font-size:10px;">KDV'siz</span>
-      </span>
-      {% if not can_manage_undoc %}
-      <span class="text-muted" style="font-size:11px;"><i class="bi bi-eye me-1"></i>Salt görüntüleme</span>
-      {% endif %}
-    </div>
-    <div class="row g-3">
-      {# Belgesiz Gelir #}
-      <div class="col-md-6">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <span style="font-size:12px; font-weight:600; color:#166534;">
-            <i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir
-          </span>
-          <span class="fw-bold text-success" style="font-size:13px;" id="undocIncomeTotal">
-            ₺{{ '{:,.2f}'.format(undoc_gelir_total).replace(',', '.') }}
-          </span>
-        </div>
-        <div id="undocIncomeList">
-          {% for e in undocumented_entries if e.entry_type == 'gelir' %}
-          <div class="d-flex justify-content-between align-items-center py-1 border-bottom undoc-row"
-               id="undoc-{{ e.id }}" style="font-size:12px;">
-            <div>
-              <span class="text-muted me-2">{{ e.entry_date or '—' }}</span>
-              {{ e.description or '—' }}
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              <span class="fw-semibold text-success">₺{{ '{:,.2f}'.format(e.amount).replace(',', '.') }}</span>
-              {% if can_manage_undoc %}
-              <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
-                      onclick="deleteUndoc('{{ e.id }}', 'gelir')" title="Sil">
-                <i class="bi bi-trash3" style="font-size:10px;"></i>
-              </button>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        {% if can_manage_undoc %}
-        <form class="mt-2 d-flex gap-1 flex-wrap" onsubmit="addUndoc(event,'gelir')">
-          <input type="date" id="undocIncomeDate" class="form-control form-control-sm"
-                 style="width:120px;" value="{{ today }}">
-          <input type="text" id="undocIncomeDesc" class="form-control form-control-sm flex-grow-1"
-                 placeholder="Açıklama" style="min-width:100px;">
-          <input type="number" id="undocIncomeAmt" class="form-control form-control-sm text-end"
-                 placeholder="Tutar" min="0" step="0.01" style="width:100px;">
-          <button type="submit" class="btn btn-sm btn-success px-2">
-            <i class="bi bi-plus-lg"></i>
-          </button>
-        </form>
-        {% elif not undocumented_entries | selectattr('entry_type','equalto','gelir') | list %}
-        <div class="text-muted mt-1" style="font-size:11px;">—</div>
-        {% endif %}
-      </div>
-
-      {# Belgesiz Gider #}
-      <div class="col-md-6">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <span style="font-size:12px; font-weight:600; color:#991b1b;">
-            <i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider
-          </span>
-          <span class="fw-bold text-danger" style="font-size:13px;" id="undocExpenseTotal">
-            ₺{{ '{:,.2f}'.format(undoc_gider_total).replace(',', '.') }}
-          </span>
-        </div>
-        <div id="undocExpenseList">
-          {% for e in undocumented_entries if e.entry_type == 'gider' %}
-          <div class="d-flex justify-content-between align-items-center py-1 border-bottom undoc-row"
-               id="undoc-{{ e.id }}" style="font-size:12px;">
-            <div>
-              <span class="text-muted me-2">{{ e.entry_date or '—' }}</span>
-              {{ e.description or '—' }}
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              <span class="fw-semibold text-danger">₺{{ '{:,.2f}'.format(e.amount).replace(',', '.') }}</span>
-              {% if can_manage_undoc %}
-              <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
-                      onclick="deleteUndoc('{{ e.id }}', 'gider')" title="Sil">
-                <i class="bi bi-trash3" style="font-size:10px;"></i>
-              </button>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        {% if can_manage_undoc %}
-        <form class="mt-2 d-flex gap-1 flex-wrap" onsubmit="addUndoc(event,'gider')">
-          <input type="date" id="undocExpenseDate" class="form-control form-control-sm"
-                 style="width:120px;" value="{{ today }}">
-          <input type="text" id="undocExpenseDesc" class="form-control form-control-sm flex-grow-1"
-                 placeholder="Açıklama" style="min-width:100px;">
-          <input type="number" id="undocExpenseAmt" class="form-control form-control-sm text-end"
-                 placeholder="Tutar" min="0" step="0.01" style="width:100px;">
-          <button type="submit" class="btn btn-sm btn-danger px-2">
-            <i class="bi bi-plus-lg"></i>
-          </button>
-        </form>
-        {% elif not undocumented_entries | selectattr('entry_type','equalto','gider') | list %}
-        <div class="text-muted mt-1" style="font-size:11px;">—</div>
-        {% endif %}
       </div>
     </div>
     {% endif %}
