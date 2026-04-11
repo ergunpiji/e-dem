@@ -13,8 +13,10 @@ import json
 import os
 import shutil
 
+import json as _json
+
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin_or_edem
@@ -273,6 +275,29 @@ async def venues_delete_doc(
     venue.docs_json = json.dumps(remaining, ensure_ascii=False)
     db.commit()
     return RedirectResponse(url=f"/venues/{venue_id}/edit", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/bulk-delete", name="venues_bulk_delete")
+async def venues_bulk_delete(
+    ids_json: str = Form(...),
+    current_user: User = Depends(require_admin_or_edem),
+    db: Session = Depends(get_db),
+):
+    try:
+        ids = _json.loads(ids_json)
+        if not isinstance(ids, list):
+            raise ValueError
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Geçersiz veri"}, status_code=400)
+
+    deleted = 0
+    for vid in ids:
+        venue = db.query(Venue).filter(Venue.id == str(vid)).first()
+        if venue:
+            db.delete(venue)
+            deleted += 1
+    db.commit()
+    return JSONResponse({"ok": True, "deleted": deleted})
 
 
 @router.post("/{venue_id}/delete", name="venues_delete")
