@@ -353,6 +353,7 @@
                 {% endfor %}
               </tr>
               {% endif %}
+              {% if current_user.role != 'e_dem' %}
               <tr>
                 <td class="ps-3 text-muted" style="padding-left:24px!important;">Satış (KDV hariç)</td>
                 {% for bd in budgets_data %}
@@ -361,6 +362,7 @@
                 <td class="text-end pe-3 fw-semibold">{{ ns_sec.sale | money | replace('₺', bd.totals.offer_sym) if ns_sec.sale else '—' }}</td>
                 {% endfor %}
               </tr>
+              {% endif %}
               {% endfor %}
 
               {# ── Ara toplam ── #}
@@ -370,7 +372,7 @@
                 {% set t = bd.totals %}
                 <td class="text-end pe-3">
                   {% if show_cost %}<div style="color:#94a3b8; font-size:11px;">M: {{ t.cost_ex | money | replace('₺', t.offer_sym) }}</div>{% endif %}
-                  <div>S: {{ t.sale_ex | money | replace('₺', t.offer_sym) }}</div>
+                  {% if current_user.role != 'e_dem' %}<div>S: {{ t.sale_ex | money | replace('₺', t.offer_sym) }}</div>{% endif %}
                 </td>
                 {% endfor %}
               </tr>
@@ -420,8 +422,8 @@
                 {% endfor %}
               </tr>
 
-              {# ── Kâr marjı ── #}
-              {% if show_cost %}
+              {# ── Kâr marjı — sadece admin ve proje yöneticisi ── #}
+              {% if current_user.role in ('admin', 'project_manager') %}
               <tr style="background:#f8fafc;">
                 <td class="ps-3 text-muted fw-semibold" style="font-size:11px;">KÂR MARJI</td>
                 {% for bd in budgets_data %}
@@ -1034,23 +1036,23 @@
   </div>
   <div class="card-body">
 
-    {# Özet Kartlar #}
-    <div class="row g-3 mb-4">
-      {% if current_user.role != 'e_dem' %}
-      {% macro fin_card(label, bgt_val, real_val, color) %}
-      <div class="col-sm-6 col-lg-3">
-        <div class="p-3 rounded border" style="background:#f8fafc;">
-          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">{{ label }}</div>
-          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
-            Bütçe: <span class="fw-semibold text-dark">{{ '₺{:,.0f}'.format(bgt_val).replace(',', '.') }}</span>
-          </div>
-          <div style="font-size:20px; font-weight:800; color:{{ color }}; line-height:1.2;">
-            ₺{{ '{:,.0f}'.format(real_val).replace(',', '.') }}
-          </div>
-          <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
+    {# Özet Kartlar — sadece admin ve proje yöneticisi görebilir #}
+    {% if current_user.role in ('admin', 'project_manager') %}
+    {% macro fin_card(label, bgt_val, real_val, color) %}
+    <div class="col-sm-6 col-lg-3">
+      <div class="p-3 rounded border" style="background:#f8fafc;">
+        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">{{ label }}</div>
+        <div class="mt-1" style="font-size:13px; color:#94a3b8;">
+          Bütçe: <span class="fw-semibold text-dark">{{ '₺{:,.0f}'.format(bgt_val).replace(',', '.') }}</span>
         </div>
+        <div style="font-size:20px; font-weight:800; color:{{ color }}; line-height:1.2;">
+          ₺{{ '{:,.0f}'.format(real_val).replace(',', '.') }}
+        </div>
+        <div style="font-size:11px; color:#94a3b8;">Gerçek (faturadan)</div>
       </div>
-      {% endmacro %}
+    </div>
+    {% endmacro %}
+    <div class="row g-3 mb-4">
       {{ fin_card('Ciro',    budget_sale_excl, invoice_ciro,    '#2563eb') }}
       <div class="col-sm-6 col-lg-3">
         <div class="p-3 rounded border" style="background:#f8fafc;">
@@ -1104,7 +1106,7 @@
         </div>
       </div>
     </div>
-    {% endif %}{# /current_user.role != 'e_dem' #}
+    {% endif %}{# /admin or project_manager only #}
 
     {# ── Makro: fatura satırı ── #}
     {% macro invoice_row(inv, show_actions, show_approve, row_style='') %}

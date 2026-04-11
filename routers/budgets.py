@@ -867,6 +867,26 @@ async def budgets_copy_edem(
     return RedirectResponse(url=f"/budgets/{new_budget.id}/edit", status_code=status.HTTP_302_FOUND)
 
 
+@router.post("/{budget_id}/copy-rows", name="budgets_copy_rows")
+async def budgets_copy_rows(
+    budget_id: str,
+    rows_json: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kaynak bütçenin satırlarını bu bütçeye kopyalar (üzerine yazar)"""
+    if current_user.role not in ("admin", "e_dem"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if not budget:
+        raise HTTPException(404)
+    if rows_json.strip():
+        budget.rows_json = rows_json.strip()
+        budget.updated_at = _now()
+        db.commit()
+    return {"ok": True}
+
+
 @router.post("/{budget_id}/copy", name="budgets_copy")
 async def budgets_copy(
     budget_id: str,

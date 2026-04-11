@@ -38,39 +38,69 @@
 
 {# ─── BÜTÇE SEKMELERİ (sadece edit modunda) ─── #}
 {% if budget and all_request_budgets and all_request_budgets | length > 0 %}
-<div id="budgetTabBar" class="d-flex align-items-center gap-0 mb-3 flex-wrap"
-     style="border-bottom: 2px solid #e2e8f0; padding-bottom: 0;">
-  {% for b in all_request_budgets %}
-  {% set is_active = b.id == budget.id %}
-  {% set sc = status_colors.get(b.budget_status, 'secondary') %}
-  <a href="javascript:void(0)"
-     onclick="switchBudget('{{ b.id }}')"
-     id="tab-{{ b.id }}"
-     class="text-decoration-none budget-tab {{ 'budget-tab-active' if is_active else '' }}"
-     style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px 9px;
-            font-size:13px;font-weight:{{ '700' if is_active else '500' }};
-            color:{{ '#1e293b' if is_active else '#64748b' }};
-            background:{{ '#ffffff' if is_active else '#f8fafc' }};
-            border:1px solid {{ '#e2e8f0' if is_active else 'transparent' }};
-            border-bottom:{{ '2px solid #ffffff' if is_active else '1px solid transparent' }};
-            border-radius:6px 6px 0 0;margin-bottom:-2px;white-space:nowrap;cursor:pointer;">
-    <span class="badge bg-{{ sc }} bg-opacity-{{ '25' if is_active else '15' }} tab-status-badge"
-          style="font-size:9px;padding:2px 5px;color:inherit;">
-      {{ status_labels.get(b.budget_status, b.budget_status) }}
-    </span>
-    <span class="tab-venue-name">{{ b.venue_name or 'Yeni Bütçe' }}</span>
-  </a>
-  {% endfor %}
-  <button type="button" onclick="copyAndOpen()"
-          title="Kopyala ve yeni sekme aç"
-          style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px 9px;
-                 font-size:13px;font-weight:500;color:#64748b;
-                 background:#f1f5f9;border:1px dashed #cbd5e1;
-                 border-bottom:1px solid transparent;
-                 border-radius:6px 6px 0 0;cursor:pointer;
-                 white-space:nowrap;margin-left:4px;">
-    <i class="bi bi-plus-lg"></i> Kopyala
-  </button>
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div id="budgetTabBar" class="d-flex align-items-center gap-0 flex-wrap"
+       style="border-bottom: 2px solid #e2e8f0; padding-bottom: 0; flex:1; min-width:0;">
+    {% for b in all_request_budgets %}
+    {% set is_active = b.id == budget.id %}
+    {% set sc = status_colors.get(b.budget_status, 'secondary') %}
+    <a href="javascript:void(0)"
+       onclick="switchBudget('{{ b.id }}')"
+       id="tab-{{ b.id }}"
+       class="text-decoration-none budget-tab {{ 'budget-tab-active' if is_active else '' }}"
+       style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px 9px;
+              font-size:13px;font-weight:{{ '700' if is_active else '500' }};
+              color:{{ '#1e293b' if is_active else '#64748b' }};
+              background:{{ '#ffffff' if is_active else '#f8fafc' }};
+              border:1px solid {{ '#e2e8f0' if is_active else 'transparent' }};
+              border-bottom:{{ '2px solid #ffffff' if is_active else '1px solid transparent' }};
+              border-radius:6px 6px 0 0;margin-bottom:-2px;white-space:nowrap;cursor:pointer;">
+      <span class="badge bg-{{ sc }} bg-opacity-{{ '25' if is_active else '15' }} tab-status-badge"
+            style="font-size:9px;padding:2px 5px;color:inherit;">
+        {{ status_labels.get(b.budget_status, b.budget_status) }}
+      </span>
+      <span class="tab-venue-name">{{ b.venue_name or 'Yeni Bütçe' }}</span>
+    </a>
+    {% endfor %}
+    <button type="button" onclick="copyAndOpen()"
+            title="Kopyala ve yeni sekme aç"
+            style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px 9px;
+                   font-size:13px;font-weight:500;color:#64748b;
+                   background:#f1f5f9;border:1px dashed #cbd5e1;
+                   border-bottom:1px solid transparent;
+                   border-radius:6px 6px 0 0;cursor:pointer;
+                   white-space:nowrap;margin-left:4px;">
+      <i class="bi bi-plus-lg"></i> Yeni Sekme
+    </button>
+  </div>
+  {# Satırları diğer sekmeye kopyala (birden fazla sekme varsa göster) #}
+  {% if all_request_budgets | length > 1 %}
+  <div class="dropdown flex-shrink-0" style="align-self:center;">
+    <button class="btn btn-sm btn-outline-purple dropdown-toggle" type="button"
+            data-bs-toggle="dropdown" aria-expanded="false"
+            style="font-size:12px; border-color:#8b5cf6; color:#8b5cf6;">
+      <i class="bi bi-copy me-1"></i>Satırları Kopyala →
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end" style="font-size:12px; min-width:200px;">
+      <li><h6 class="dropdown-header" style="font-size:11px;">Hangi sekmeye kopyalansın?</h6></li>
+      {% for b in all_request_budgets %}
+      {% if b.id != budget.id %}
+      <li>
+        {% set tab_label = b.venue_name if b.venue_name else ('Bütçe #' + loop.index|string) %}
+        <a class="dropdown-item" href="javascript:void(0)"
+           onclick="copyRowsToTab('{{ b.id }}', {{ tab_label | tojson }})">
+          <i class="bi bi-box-arrow-right me-1 text-muted"></i>
+          {{ tab_label }}
+          <span class="badge bg-secondary bg-opacity-15 ms-1" style="font-size:9px;">
+            {{ status_labels.get(b.budget_status, b.budget_status) }}
+          </span>
+        </a>
+      </li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -250,11 +280,18 @@
   <input type="hidden" name="next_action" id="nextActionInput" value="">
 
   <div class="d-flex gap-2 align-items-center flex-wrap">
+    {% if budget %}
+    {# Otomatik kayıt — sadece switch tab veya Manager'a Gönder ile tetiklenir #}
+    <span id="autoSaveIndicator" style="font-size:12px; color:#94a3b8; display:none;">
+      <i class="bi bi-check-circle me-1 text-success"></i><span id="autoSaveText">Kaydedildi</span>
+    </span>
+    {% else %}
     <button type="submit" class="btn btn-outline-secondary">
-      <i class="bi bi-save me-1"></i> Taslak Kaydet
+      <i class="bi bi-save me-1"></i> Kaydet
     </button>
+    {% endif %}
     {% if not budget or budget.budget_status in ('draft_edem', 'revision_requested') %}
-    <button type="button" class="btn btn-primary ms-2"
+    <button type="button" class="btn btn-primary {% if budget %}{% else %}ms-2{% endif %}"
             onclick="sendToManager()">
       <i class="bi bi-send me-1"></i> Manager'a Gönder
     </button>
@@ -739,6 +776,8 @@ function saveRows() {
     return r;
   });
   document.getElementById('rowsJson').value = JSON.stringify(toSave);
+  // Mevcut bütçe varsa otomatik AJAX kayıt planla
+  if (typeof _currentBudgetId !== 'undefined') scheduleAutoSave();
 }
 
 // ─── Teklif Karşılaştırma ───
@@ -847,6 +886,14 @@ function sendToManager() {
   document.getElementById('budgetForm').submit();
 }
 
+// Otomatik kayıt (sekme değişimi olmasa bile satır değiştikçe kaydet)
+let _autoSaveTimer = null;
+function scheduleAutoSave() {
+  if (!window._currentBudgetId && typeof _currentBudgetId === 'undefined') return;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => _saveCurrentEdem(true), 3000);
+}
+
 // ─── AJAX Sekme Sistemi (E-dem) ───
 {% if budget %}
 let _currentBudgetId = '{{ budget.id }}';
@@ -878,7 +925,36 @@ async function _saveCurrentEdem(showMsg = false) {
   // Sekme adı güncelle
   const tab = document.getElementById('tab-' + _currentBudgetId);
   if (tab && venueName) { const sp = tab.querySelector('.tab-venue-name'); if (sp) sp.textContent = venueName; }
-  if (showMsg) { /* toast opsiyonel */ }
+  if (showMsg) {
+    const ind = document.getElementById('autoSaveIndicator');
+    const txt = document.getElementById('autoSaveText');
+    if (ind) {
+      if (txt) txt.textContent = 'Kaydedildi';
+      ind.style.display = '';
+      setTimeout(() => { ind.style.display = 'none'; }, 2500);
+    }
+  }
+}
+
+// Mevcut sekmeden başka bir sekmeye satırları kopyala
+async function copyRowsToTab(targetId, targetName) {
+  if (!confirm(`Mevcut sekmedeki tüm satırlar "${targetName}" bütçesine kopyalanacak. Devam edilsin mi?`)) return;
+  await _saveCurrentEdem(false);
+  const rowsJson = document.getElementById('rowsJson')?.value || '[]';
+  const fd = new FormData();
+  fd.append('rows_json', rowsJson);
+  const res = await fetch(`/budgets/${targetId}/copy-rows`, { method: 'POST', body: fd });
+  if (res.ok) {
+    const ind = document.getElementById('autoSaveIndicator');
+    const txt = document.getElementById('autoSaveText');
+    if (ind) {
+      if (txt) txt.textContent = `"${targetName}" sekmesine kopyalandı`;
+      ind.style.display = '';
+      setTimeout(() => { ind.style.display = 'none'; }, 3000);
+    }
+  } else {
+    alert('Kopyalama sırasında hata oluştu.');
+  }
 }
 
 function onVenueSelectEdem(val) {
@@ -901,7 +977,7 @@ function onVenueSelectEdem(val) {
 
 async function switchBudget(budgetId) {
   if (budgetId === _currentBudgetId) return;
-  await _saveCurrentEdem(false);
+  await _saveCurrentEdem(true);
 
   const res = await fetch(`/budgets/${budgetId}/json`);
   if (!res.ok) { alert('Bütçe yüklenemedi.'); return; }
