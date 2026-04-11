@@ -228,6 +228,8 @@ def _row_value(field: str, row: dict, budget, currency: str) -> float | str:
         case "nights":               return nights
         case "vat_rate":             return vat
         case "vat_pct":              return vat / 100
+        # Servis bedeli yüzdesi (is_service_fee satırında sf_percent, diğerlerinde 0)
+        case "sf_pct":               return float(row.get("sf_percent", 0) or budget.service_fee_pct or 0)
         # Offer currency
         case "sale_price":           return round(sale, 2)
         case "sale_price_inc":       return round(sale * (1 + vat / 100), 2)
@@ -415,12 +417,21 @@ def _fill_ws(ws, cell_map: dict, budget, request, customer, creator) -> None:
     # Hizmet bedeli satırı
     if service_fee:
         sf_label = service_fee.get("service_name") or "Hizmet Bedeli"
+        sf_pct   = float(service_fee.get("sf_percent", 0) or budget.service_fee_pct or 0)
         _safe_set(ws, current_row, label_col, sf_label, font=_DAT_FONT())
+        # col_defs: sf_pct alanı buradan okunur (% sütununa atanmışsa gösterilir)
         for col_letter, field_name in col_defs.items():
             val = _row_value(field_name, service_fee, budget, currency)
             _safe_set(ws, current_row, col_letter, val, font=_DAT_FONT())
-        for col_letter, tpl in formula_cols.items():
-            formula = tpl.replace("{row}", str(current_row))
+        # formula_cols: normal satır formülü UYGULANMAZ.
+        # Bunun yerine ara toplam hücrelerinin yüzdesi alınır: =(sub1+sub2+...)*pct/100
+        for col_letter in formula_cols:
+            subs = subtotal_rows.get(col_letter, [])
+            if subs and sf_pct:
+                refs    = "+".join(f"{col_letter}{r}" for r in subs)
+                formula = f"=({refs})*{sf_pct}/100"
+            else:
+                formula = ""
             _safe_set(ws, current_row, col_letter, formula, font=_DAT_FONT())
             subtotal_rows.setdefault(col_letter, []).append(current_row)
         current_row += 1
