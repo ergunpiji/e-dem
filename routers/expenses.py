@@ -400,6 +400,8 @@ async def undocumented_add(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.role not in ("admin", "muhasebe_muduru", "muhasebe"):
+        raise HTTPException(403, detail="Bu işlem için yetkiniz yok.")
     req = db.query(ReqModel).filter(ReqModel.id == request_id).first()
     if not req:
         raise HTTPException(404)
@@ -440,9 +442,9 @@ async def undocumented_delete(
     entry = db.query(UndocumentedEntry).filter(UndocumentedEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(404)
-    # Sadece sahibi veya admin silebilir
-    if current_user.role != "admin" and entry.created_by != current_user.id:
-        raise HTTPException(403)
+    # Sadece muhasebe rolü veya admin silebilir
+    if current_user.role not in ("admin", "muhasebe_muduru", "muhasebe"):
+        raise HTTPException(403, detail="Bu işlem için yetkiniz yok.")
     db.delete(entry)
     db.commit()
     return JSONResponse({"ok": True})

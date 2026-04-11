@@ -436,6 +436,7 @@ async def requests_detail(
     budget_cost_excl = confirmed_budget.grand_cost_excl_vat if confirmed_budget else 0.0
 
     can_manage_invoices = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    can_manage_undoc    = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
     # Onaylama yetkisi: admin veya referansın sahibi (PM)
     can_approve_invoices = (current_user.role == "admin" or req.created_by == current_user.id)
     # Admin referans taşıma için tüm referanslar
@@ -486,6 +487,7 @@ async def requests_detail(
             "budget_cost_excl":  budget_cost_excl,
             "can_manage_invoices":   can_manage_invoices,
             "can_approve_invoices":  can_approve_invoices,
+            "can_manage_undoc":      can_manage_undoc,
             "all_requests":          all_requests,
             "email_templates_json":  email_templates_json,
             "settings_ctx":          settings_ctx,
