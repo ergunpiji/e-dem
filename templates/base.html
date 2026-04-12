@@ -81,9 +81,14 @@
     .tree-header:hover { color: rgba(255,255,255,.75); }
     .tree-header .tree-icon { font-size: 14px; width: 20px; text-align: center; }
     .tree-header .tree-arrow {
-      margin-left: auto; font-size: 10px;
+      font-size: 10px;
       transition: transform .2s;
       color: rgba(255,255,255,.25);
+    }
+    .tree-header .tree-spacer { flex: 1; }
+    .tree-badge {
+      font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+      background: #ef4444; color: #fff; line-height: 1.5; min-width: 18px; text-align: center;
     }
     .tree-group.open > .tree-header .tree-arrow { transform: rotate(90deg); }
     .tree-group.open > .tree-header { color: rgba(255,255,255,.7); }
@@ -220,6 +225,10 @@
   <nav class="sidebar-nav" id="sidebarNav">
     {% set cp = request.url.path %}
     {% set cq = request.url.query %}
+    {% set nc = request.state.nav_counts %}
+    {# nav-badge yardımcı macro'ları #}
+    {% macro nb(n) %}{% if n and n > 0 %}<span class="nav-badge" style="background:#ef4444;color:#fff;font-weight:700;">{{ n }}</span>{% endif %}{% endmacro %}
+    {% macro tb(n) %}{% if n and n > 0 %}<span class="tree-spacer"></span><span class="tree-badge">{{ n }}</span>{% endif %}{% endmacro %}
 
     {# ── Her rol için ortak: Dashboard ── #}
     <a href="/dashboard"
@@ -271,6 +280,7 @@
           <a href="/requests?view=closing"
              class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
+            {{ nb((nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) + (nc.closure_pending_finance or 0)) }}
           </a>
           <a href="/budgets"
              class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
@@ -301,9 +311,11 @@
         </div>
       </div>
 
+      {% set _fin_total = (nc.inv_pending_gm or 0) + (nc.inv_pending_cut or 0) + (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) + (nc.closure_pending_finance or 0) %}
       <div class="tree-group" id="grp-finans">
         <div class="tree-header" onclick="toggleTree('grp-finans')">
           <i class="bi bi-wallet2 tree-icon"></i> Finans
+          {{ tb(_fin_total) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
@@ -314,6 +326,7 @@
           <a href="/invoices"
              class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
             <i class="bi bi-receipt nav-icon"></i> Faturalar
+            {{ nb((nc.inv_pending_gm or 0) + (nc.inv_pending_cut or 0)) }}
           </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
@@ -330,6 +343,7 @@
           <a href="/closure"
              class="sidebar-link {% if cp == '/closure' %}active{% endif %}">
             <i class="bi bi-lock nav-icon"></i> Dosya Kapama
+            {{ nb((nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) + (nc.closure_pending_finance or 0)) }}
           </a>
         </div>
       </div>
@@ -435,6 +449,7 @@
           <a href="/requests?view=closing"
              class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
+            {{ nb((nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0)) }}
           </a>
         </div>
       </div>
@@ -461,28 +476,34 @@
         </div>
       </div>
 
+      {% set _onay_total = (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) %}
       <div class="tree-group" id="grp-onay">
         <div class="tree-header" onclick="toggleTree('grp-onay')">
           <i class="bi bi-check2-square tree-icon"></i> Onaylar
+          {{ tb(_onay_total) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
           <a href="/closure"
              class="sidebar-link {% if cp == '/closure' %}active{% endif %}">
             <i class="bi bi-lock-fill nav-icon"></i> Dosya Kapama
+            {{ nb(_onay_total) }}
           </a>
         </div>
       </div>
 
+      {% set _mudur_fin = (nc.inv_pending_gm or 0) %}
       <div class="tree-group" id="grp-finans">
         <div class="tree-header" onclick="toggleTree('grp-finans')">
           <i class="bi bi-wallet2 tree-icon"></i> Finans
+          {{ tb(_mudur_fin) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
           <a href="/invoices"
              class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
             <i class="bi bi-receipt nav-icon"></i> Faturalar
+            {{ nb(_mudur_fin) }}
           </a>
           <a href="/expenses/new"
              class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
@@ -512,9 +533,11 @@
     {% elif current_user.role == 'yonetici' %}
 
       {# Talepler: yeni & karar bekleyenler #}
+      {% set _pm_talepler = (nc.budgets_pending or 0) %}
       <div class="tree-group" id="grp-talepler">
         <div class="tree-header" onclick="toggleTree('grp-talepler')">
           <i class="bi bi-inbox tree-icon"></i> Talepler
+          {{ tb(_pm_talepler) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
@@ -529,6 +552,7 @@
           <a href="/requests?view=awaiting"
              class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
             <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+            {{ nb(_pm_talepler) }}
           </a>
         </div>
       </div>
@@ -658,15 +682,18 @@
     {% elif current_user.role == 'e_dem' %}
 
       {# Talepler: gelen & işlemdekiler #}
+      {% set _edem_pending = (nc.requests_pending or 0) %}
       <div class="tree-group" id="grp-talepler">
         <div class="tree-header" onclick="toggleTree('grp-talepler')">
           <i class="bi bi-inbox tree-icon"></i> Talepler
+          {{ tb(_edem_pending) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
           <a href="/requests?view=pending_work"
              class="sidebar-link {% if 'view=pending_work' in cq or (cp == '/requests' and 'view=' not in cq) %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
+            {{ nb(_edem_pending) }}
           </a>
           <a href="/requests?view=awaiting"
              class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
@@ -748,9 +775,11 @@
     {# ── MUHASEBE ── #}
     {% elif current_user.role == 'muhasebe' %}
 
+      {% set _muh_inv = (nc.inv_pending_cut or 0) %}
       <div class="tree-group" id="grp-finans">
         <div class="tree-header" onclick="toggleTree('grp-finans')">
           <i class="bi bi-wallet2 tree-icon"></i> Finans
+          {{ tb(_muh_inv) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
@@ -761,6 +790,7 @@
           <a href="/invoices"
              class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
             <i class="bi bi-receipt nav-icon"></i> Faturalar
+            {{ nb(_muh_inv) }}
           </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">

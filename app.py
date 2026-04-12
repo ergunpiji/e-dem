@@ -52,6 +52,75 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Hata yöneticileri
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Nav-badge middleware — her sayfada bekleyen işlem sayaçları
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def nav_counts_middleware(request: Request, call_next):
+    """Cookie'den kullanıcıyı okur, role göre nav badge sayılarını hesaplar."""
+    from auth import decode_token, COOKIE_NAME
+    from database import SessionLocal
+    from sqlalchemy import text as _text
+
+    counts = {}
+    token = request.cookies.get(COOKIE_NAME)
+    if token:
+        payload = decode_token(token)
+        if payload:
+            uid  = payload.get("sub", "")
+            role = payload.get("role", "")
+            db = SessionLocal()
+            try:
+                if role in ("mudur", "admin", "muhasebe_muduru"):
+                    # GM onayı bekleyen fatura talepleri
+                    counts["inv_pending_gm"] = db.execute(
+                        _text("SELECT COUNT(*) FROM invoices WHERE status='pending'")
+                    ).scalar() or 0
+                if role in ("muhasebe", "muhasebe_muduru", "admin"):
+                    # Muhasebe kesmesi bekleyen faturalar
+                    counts["inv_pending_cut"] = db.execute(
+                        _text("SELECT COUNT(*) FROM invoices WHERE status='gm_approved'")
+                    ).scalar() or 0
+                if role in ("mudur", "admin"):
+                    # Kapama onayı — GM adımı bekleyen
+                    counts["closure_pending_gm"] = db.execute(
+                        _text("SELECT COUNT(*) FROM closure_requests WHERE status='pending_gm'")
+                    ).scalar() or 0
+                if role in ("muhasebe_muduru", "admin"):
+                    # Kapama onayı — Muhasebe müdürü adımı
+                    counts["closure_pending_finance"] = db.execute(
+                        _text("SELECT COUNT(*) FROM closure_requests WHERE status='pending_finance'")
+                    ).scalar() or 0
+                if role in ("mudur", "admin"):
+                    # Kapama onayı — Müdür adımı
+                    counts["closure_pending_manager"] = db.execute(
+                        _text("SELECT COUNT(*) FROM closure_requests WHERE status='pending_manager'")
+                    ).scalar() or 0
+                if role == "e_dem":
+                    # E-dem: atanmamış/bekleyen talepler
+                    counts["requests_pending"] = db.execute(
+                        _text("SELECT COUNT(*) FROM requests WHERE status='pending'")
+                    ).scalar() or 0
+                if role in ("yonetici", "asistan", "mudur", "admin"):
+                    # PM: kendi bütçeleri onay bekliyor
+                    counts["budgets_pending"] = db.execute(
+                        _text(
+                            "SELECT COUNT(*) FROM budgets b "
+                            "JOIN requests r ON r.id=b.request_id "
+                            "WHERE b.budget_status='pending_manager' AND r.created_by=:uid"
+                        ), {"uid": uid}
+                    ).scalar() or 0
+            except Exception:
+                pass
+            finally:
+                db.close()
+
+    request.state.nav_counts = counts
+    response = await call_next(request)
+    return response
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 401:

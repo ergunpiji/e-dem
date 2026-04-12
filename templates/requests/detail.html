@@ -282,7 +282,7 @@
         {% endif %}
 
         {# Kapama onay butonları — Genel Müdür (GM) #}
-        {% if req.status == 'closing' and req.closure_request and req.closure_request.status == 'pending_gm'
+        {% if req.closure_request and req.closure_request.status == 'pending_gm'
               and current_user.role in ('admin', 'mudur') %}
         {% set cr = req.closure_request %}
         <form method="post" action="/closure/{{ cr.id }}/approve-gm"
