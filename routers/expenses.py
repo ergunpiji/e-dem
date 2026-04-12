@@ -152,11 +152,11 @@ async def expenses_list(
 # ---------------------------------------------------------------------------
 
 def _all_requests_for_user(db: Session, user):
-    """Form dropdown için tüm aktif referansları döndür (role'e göre filtrele)."""
+    """Form dropdown için tüm aktif referansları döndür.
+    İptal ve kapanmış referanslar hariç — herkes tüm referanslara harcama yapabilir.
+    """
     from models import Request as ReqModel
-    q = db.query(ReqModel).filter(ReqModel.status.notin_(["cancelled", "closing", "closed"]))
-    if user.role in ("yonetici", "asistan", "mudur"):
-        q = q.filter(ReqModel.created_by == user.id)
+    q = db.query(ReqModel).filter(ReqModel.status.notin_(["cancelled", "closed"]))
     return q.order_by(ReqModel.created_at.desc()).all()
 
 
