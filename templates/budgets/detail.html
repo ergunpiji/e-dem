@@ -470,7 +470,7 @@
                     <td class="text-end">{{ row.qty or 1 }}</td>
                     <td class="text-end">{{ '{:,.2f}'.format(row.cost_price | float) }}</td>
                     <td class="text-end">{{ '{:,.2f}'.format(row.sale_price | float) }}</td>
-                    <td class="text-end pe-3">%{{ ((row.vat_rate | float) * 100) | int }}</td>
+                    <td class="text-end pe-3">%{{ (row.vat_rate | float) | int }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>
