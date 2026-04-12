@@ -563,11 +563,12 @@ async def requests_detail(
         })
 
     # ── Finansal veriler ──
-    approved_invoices = [inv for inv in (req.invoices or []) if inv.status == "approved"]
-    pending_invoices  = [inv for inv in (req.invoices or []) if inv.status == "pending"]
-    rejected_invoices = [inv for inv in (req.invoices or []) if inv.status == "rejected"]
+    approved_invoices    = [inv for inv in (req.invoices or []) if inv.status == "approved"]
+    pending_invoices     = [inv for inv in (req.invoices or []) if inv.status == "pending"]
+    gm_approved_invoices = [inv for inv in (req.invoices or []) if inv.status == "gm_approved"]
+    rejected_invoices    = [inv for inv in (req.invoices or []) if inv.status == "rejected"]
     # geriye uyumluluk — eski "active" kayıtlar da dahil
-    active_invoices   = approved_invoices + [inv for inv in (req.invoices or []) if inv.status == "active"]
+    active_invoices      = approved_invoices + [inv for inv in (req.invoices or []) if inv.status == "active"]
 
     invoice_ciro     = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "kesilen")
                       - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_kesilen"))
@@ -594,10 +595,12 @@ async def requests_detail(
     budget_sale_excl = confirmed_budget.grand_sale_excl_vat if confirmed_budget else 0.0
     budget_cost_excl = confirmed_budget.grand_cost_excl_vat if confirmed_budget else 0.0
 
-    can_manage_invoices = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    can_manage_undoc    = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    # Fatura onayı/kesme: admin, mudur, yonetici, muhasebe_muduru, muhasebe
-    can_approve_invoices = current_user.role in ("admin", "mudur", "yonetici", "muhasebe_muduru", "muhasebe")
+    can_manage_invoices  = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    can_manage_undoc     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    # Adım 1 — GM/Müdür onayı (pending → gm_approved)
+    can_approve_invoices = current_user.role in ("admin", "mudur", "muhasebe_muduru")
+    # Adım 2 — Muhasebe keser (gm_approved → approved)
+    can_cut_invoices     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
     # Admin referans taşıma için tüm referanslar
     all_requests = []
     if current_user.role == "admin":
@@ -646,9 +649,10 @@ async def requests_detail(
             "customer":         customer,
             "budgets_json":     budgets_json,
             # Finansal
-            "active_invoices":       active_invoices,
-            "pending_invoices":      pending_invoices,
-            "rejected_invoices":     rejected_invoices,
+            "active_invoices":        active_invoices,
+            "pending_invoices":       pending_invoices,
+            "gm_approved_invoices":   gm_approved_invoices,
+            "rejected_invoices":      rejected_invoices,
             "invoice_ciro":          round(invoice_ciro, 2),
             "invoice_komisyon":      round(invoice_komisyon, 2),
             "invoice_maliyet":       round(invoice_maliyet, 2),
@@ -658,6 +662,7 @@ async def requests_detail(
             "budget_cost_excl":  budget_cost_excl,
             "can_manage_invoices":   can_manage_invoices,
             "can_approve_invoices":  can_approve_invoices,
+            "can_cut_invoices":      can_cut_invoices,
             "can_manage_undoc":      can_manage_undoc,
             "all_requests":          all_requests,
             "email_templates_json":  email_templates_json,

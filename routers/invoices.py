@@ -503,7 +503,11 @@ async def invoices_cut(
     """Muhasebe fatura talebini kesip onaylar. Detayları doldurur + belge ekler + status=approved."""
     _require_finance(current_user)
     inv = _get_invoice_or_404(db, invoice_id)
-    if inv.status != "pending":
+    # muhasebe rolü sadece gm_approved olanı kesebilir; muhasebe_muduru/admin pending'i de kesebilir
+    if current_user.role == "muhasebe":
+        if inv.status != "gm_approved":
+            raise HTTPException(status_code=400, detail="Fatura henüz Genel Müdür tarafından onaylanmadı.")
+    elif inv.status not in ("pending", "gm_approved"):
         raise HTTPException(status_code=400, detail="Bu fatura zaten işlenmiş veya iptal edilmiş.")
 
     if invoice_no.strip():
@@ -541,7 +545,8 @@ async def invoices_approve(
     if inv.status not in ("pending", "rejected"):
         raise HTTPException(status_code=400, detail="Bu fatura zaten onaylanmış veya iptal edilmiş.")
 
-    inv.status      = "approved"
+    # GM/Müdür onayı: pending → gm_approved (muhasebe kesmesi bekliyor)
+    inv.status      = "gm_approved"
     inv.approved_by = current_user.id
     inv.approved_at = _now()
     inv.rejection_note = ""

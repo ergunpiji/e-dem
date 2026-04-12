@@ -1284,7 +1284,7 @@
     {% endif %}{# /admin or project_manager only #}
 
     {# ── Makro: fatura satırı ── #}
-    {% macro invoice_row(inv, show_actions, show_approve, row_style='') %}
+    {% macro invoice_row(inv, show_actions, show_approve, show_cut=false, row_style='') %}
     {% set type_colors = {
       'kesilen':      ('bg-success',  'text-success'),
       'gelen':        ('bg-danger',   'text-danger'),
@@ -1323,23 +1323,25 @@
       </td>
       <td class="text-end" style="white-space:nowrap;">
         {# Onay/red butonları #}
-        {% if show_approve and inv.status == 'pending' %}
-          {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
-          {# Muhasebe: faturayı kes (detay + belge + onay tek adımda) #}
-          <button type="button" class="btn btn-sm btn-success py-0 px-2"
-                  onclick="openCutModal('{{ inv.id }}')"
-                  title="Faturayı Kes & Ekle">
-            <i class="bi bi-scissors me-1"></i>Kes
-          </button>
-          {% else %}
-          {# Mudur/Yonetici: sadece onayla #}
+        {% if inv.status == 'pending' and show_approve %}
+          {# Adım 1: GM/Müdür onaylar — pending → gm_approved #}
           <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
-            <button type="submit" class="btn btn-sm btn-success py-0 px-2"
-                    title="Onayla" onclick="return confirm('Faturayı onaylıyor musunuz?')">
-              <i class="bi bi-check-lg"></i>
+            <button type="submit" class="btn btn-sm btn-primary py-0 px-2"
+                    title="GM Olarak Onayla" onclick="return confirm('Fatura talebini onaylıyor musunuz? Onay sonrası muhasebe kesmesi bekleniyor.')">
+              <i class="bi bi-check-lg me-1"></i>Onayla
             </button>
           </form>
-          {% endif %}
+          <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                  title="Reddet" onclick="openRejectModal('{{ inv.id }}')">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        {% elif inv.status == 'gm_approved' and show_cut %}
+          {# Adım 2: Muhasebe keser — gm_approved → approved #}
+          <button type="button" class="btn btn-sm btn-success py-0 px-2"
+                  onclick="openCutModal('{{ inv.id }}')"
+                  title="Faturayı Kes & Projeye Ekle">
+            <i class="bi bi-scissors me-1"></i>Kes
+          </button>
           <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
                   title="Reddet" onclick="openRejectModal('{{ inv.id }}')">
             <i class="bi bi-x-lg"></i>
@@ -1370,15 +1372,16 @@
     </tr>
     {% endmacro %}
 
-    {# ── Onay Bekleyen Faturalar ── #}
+    {# ── Adım 1: GM Onayı Bekleyen Fatura Talepleri ── #}
     {% if pending_invoices %}
     <div class="mb-3 p-3" style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px;">
       <div class="fw-semibold mb-2" style="font-size:13px; color:#92400e;">
-        <i class="bi bi-hourglass-split me-1"></i> Onay Bekleyen Faturalar ({{ pending_invoices | length }})
+        <i class="bi bi-hourglass-split me-1"></i>
+        GM Onayı Bekleyen Fatura Talepleri ({{ pending_invoices | length }})
         {% if can_approve_invoices %}
-        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Onayladıktan sonra finansal tablolara yansır</span>
+        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Onayladıktan sonra muhasebe kesmesi bekleyecek</span>
         {% else %}
-        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Referans sahibi onaylaması bekleniyor</span>
+        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Genel Müdür/Müdür onayı bekleniyor</span>
         {% endif %}
       </div>
       <div class="table-responsive">
@@ -1393,7 +1396,39 @@
           </thead>
           <tbody>
             {% for inv in pending_invoices %}
-              {{ invoice_row(inv, show_actions=can_manage_invoices, show_approve=can_approve_invoices) }}
+              {{ invoice_row(inv, show_actions=can_manage_invoices, show_approve=can_approve_invoices, show_cut=false) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Adım 2: Muhasebe Kesmesi Bekleyen Faturalar ── #}
+    {% if gm_approved_invoices %}
+    <div class="mb-3 p-3" style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
+      <div class="fw-semibold mb-2" style="font-size:13px; color:#166534;">
+        <i class="bi bi-scissors me-1"></i>
+        Muhasebe Kesmesi Bekleyen Faturalar ({{ gm_approved_invoices | length }})
+        {% if can_cut_invoices %}
+        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— GM onayladı, fatura detaylarını girin ve kesin</span>
+        {% else %}
+        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— GM onayladı, muhasebe kesmesi bekleniyor</span>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" style="font-size:13px;">
+          <thead style="background:#dcfce7;">
+            <tr>
+              <th>Tip</th><th>Fatura No</th><th>Tarih</th><th>Tedarikçi / Müşteri</th>
+              <th>Açıklama</th>
+              <th class="text-end">Tutar (KDV Hariç)</th><th class="text-end">KDV</th>
+              <th class="text-end">Toplam</th><th>Belge</th><th class="text-end">İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in gm_approved_invoices %}
+              {{ invoice_row(inv, show_actions=can_manage_invoices, show_approve=false, show_cut=can_cut_invoices) }}
             {% endfor %}
           </tbody>
         </table>
