@@ -62,7 +62,7 @@ async def expenses_all_list(
     query = db.query(ExpenseReport)
 
     # PM sadece kendi referanslarına ait HBF'leri görür
-    if current_user.role == "project_manager":
+    if current_user.role in ("yonetici", "asistan"):
         query = query.join(ExpenseReport.request).filter(
             ReqModel.created_by == current_user.id
         )
@@ -77,7 +77,7 @@ async def expenses_all_list(
 
     # Onay bekleyen sayısı
     pending_q = db.query(ExpenseReport).filter(ExpenseReport.status == "submitted")
-    if current_user.role == "project_manager":
+    if current_user.role in ("yonetici", "asistan"):
         pending_q = pending_q.join(ExpenseReport.request).filter(
             ReqModel.created_by == current_user.id
         )
@@ -132,7 +132,7 @@ def _all_requests_for_user(db: Session, user):
     """Form dropdown için tüm aktif referansları döndür (role'e göre filtrele)."""
     from models import Request as ReqModel
     q = db.query(ReqModel).filter(ReqModel.status.notin_(["cancelled", "closing", "closed"]))
-    if user.role == "project_manager":
+    if user.role in ("yonetici", "asistan", "mudur"):
         q = q.filter(ReqModel.created_by == user.id)
     return q.order_by(ReqModel.created_at.desc()).all()
 

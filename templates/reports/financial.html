@@ -43,7 +43,7 @@
       <input type="date" name="date_to" value="{{ date_to }}"
              class="form-control form-control-sm" style="min-width:150px;">
     </div>
-    {% if current_user.role not in ('project_manager',) %}
+    {% if current_user.role not in ('yonetici', 'asistan') %}
     <div>
       <label class="form-label fw-semibold mb-1" style="font-size:12px;">Proje Yöneticisi</label>
       <select name="manager_id" class="form-select form-select-sm" style="min-width:200px;">
@@ -146,7 +146,7 @@
 {% endif %}
 
 {# ── PM Özet (admin/muhasebe) ── #}
-{% if current_user.role not in ('project_manager',) and mgr_totals | length > 1 %}
+{% if current_user.role not in ('yonetici', 'asistan') and mgr_totals | length > 1 %}
 <div class="chart-wrap mb-4">
   <div class="chart-title mb-3">
     <i class="bi bi-people text-primary me-2"></i>Proje Yöneticisi Bazlı Özet
@@ -205,7 +205,7 @@
           <th class="ps-3" style="min-width:130px;">Referans No</th>
           <th style="min-width:160px;">Müşteri / Etkinlik</th>
           <th style="white-space:nowrap;">Etkinlik Tarihi</th>
-          {% if current_user.role not in ('project_manager',) %}
+          {% if current_user.role not in ('yonetici', 'asistan') %}
           <th>PM</th>
           {% endif %}
           <th class="text-end" style="white-space:nowrap;">Ciro (KDV hariç)</th>
@@ -229,7 +229,7 @@
           <td style="white-space:nowrap; color:#64748b; font-size:11px;">
             {{ row.req.check_in | date_tr if row.req.check_in else '—' }}
           </td>
-          {% if current_user.role not in ('project_manager',) %}
+          {% if current_user.role not in ('yonetici', 'asistan') %}
           <td style="color:#64748b; font-size:11px;">{{ row.manager_name }}</td>
           {% endif %}
           <td class="text-end fw-semibold" style="color:#2563eb;">
@@ -255,7 +255,7 @@
       </tbody>
       <tfoot style="background:#f8fafc; font-weight:700; border-top:2px solid #e2e8f0;">
         <tr>
-          <td colspan="{% if current_user.role not in ('project_manager',) %}4{% else %}3{% endif %}"
+          <td colspan="{% if current_user.role not in ('yonetici', 'asistan') %}4{% else %}3{% endif %}"
               class="ps-3 text-end">TOPLAM</td>
           <td class="text-end" style="color:#2563eb;">
             ₺{{ '{:,.0f}'.format(total_ciro).replace(',', '.') }}

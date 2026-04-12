@@ -126,7 +126,7 @@ async def dashboard(
             .all()
         )
 
-    elif current_user.role == "project_manager":
+    elif current_user.role in ("yonetici", "asistan"):
         my_req_ids = [
             r.id for r in db.query(ReqModel.id)
             .filter(ReqModel.created_by == current_user.id)

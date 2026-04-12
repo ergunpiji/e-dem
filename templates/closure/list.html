@@ -131,7 +131,7 @@
                      class="btn btn-sm btn-outline-secondary py-0 px-2" title="Referansa Git">
                     <i class="bi bi-box-arrow-up-right" style="font-size:11px;"></i>
                   </a>
-                  {% if cr.status == 'pending_manager' and current_user.role == 'admin' %}
+                  {% if cr.status == 'pending_manager' and current_user.role in ('admin', 'mudur') %}
                   <form method="post" action="/closure/{{ cr.id }}/approve-l1"
                         onsubmit="return confirm('Kapamayı onaylıyorsunuz?')">
                     <button type="submit" class="btn btn-sm btn-success py-0 px-2" title="L1 Onayla">

@@ -84,14 +84,14 @@
               {% endif %}
 
               {# Manager: fiyat gir butonu (pending_manager veya draft_manager ise) #}
-              {% if current_user.role in ('admin', 'project_manager') and bs in ('pending_manager', 'draft_manager') %}
+              {% if current_user.role in ('admin', 'mudur', 'yonetici') and bs in ('pending_manager', 'draft_manager') %}
               <a href="/budgets/{{ budget.id }}/price" class="btn btn-sm btn-warning ms-1" title="Satış Fiyatı Gir">
                 <i class="bi bi-tag"></i> Fiyat Gir
               </a>
               {% endif %}
 
               {# Manager: Excel indir (approved ise) #}
-              {% if current_user.role in ('admin', 'project_manager') and bs == 'approved' %}
+              {% if current_user.role in ('admin', 'mudur', 'yonetici') and bs == 'approved' %}
               <a href="/budgets/{{ budget.id }}/export" class="btn btn-sm btn-outline-success ms-1" title="Excel İndir">
                 <i class="bi bi-file-earmark-excel"></i>
               </a>

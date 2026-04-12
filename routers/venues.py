@@ -47,7 +47,7 @@ async def venues_list(
 
     venues = query.order_by(Venue.name).all()
 
-    can_edit = current_user.role in ("admin", "e_dem")
+    can_edit = current_user.role in ("admin", "e_dem", "muhasebe_muduru")
 
     return templates.TemplateResponse(
         "venues/list.html",
@@ -136,7 +136,7 @@ async def venues_detail(
     if not venue:
         return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)
 
-    can_edit = current_user.role in ("admin", "e_dem")
+    can_edit = current_user.role in ("admin", "e_dem", "muhasebe_muduru")
 
     return templates.TemplateResponse(
         "venues/detail.html",

@@ -384,8 +384,124 @@
         </div>
       </div>
 
-    {# ── PROJE YÖNETİCİSİ ── #}
-    {% elif current_user.role == 'project_manager' %}
+    {# ── MÜDÜR (mudur) ── Tüm referanslar + kapama onayı + tüm PM yetkileri #}
+    {% elif current_user.role == 'mudur' %}
+
+      {# Talepler #}
+      <div class="tree-group" id="grp-talepler">
+        <div class="tree-header" onclick="toggleTree('grp-talepler')">
+          <i class="bi bi-inbox tree-icon"></i> Talepler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests/new"
+             class="sidebar-link {% if cp == '/requests/new' %}active{% endif %}">
+            <i class="bi bi-plus-circle nav-icon"></i> Yeni Talep Oluştur
+          </a>
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' and not cq %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Tüm Referanslar
+          </a>
+          <a href="/requests?view=pending_work"
+             class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
+            <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
+          </a>
+          <a href="/requests?view=awaiting"
+             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
+            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+          </a>
+        </div>
+      </div>
+
+      {# Aktif İşler #}
+      <div class="tree-group" id="grp-aktif">
+        <div class="tree-header" onclick="toggleTree('grp-aktif')">
+          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests?view=ongoing"
+             class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
+            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
+          </a>
+          <a href="/requests?view=closing"
+             class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
+            <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
+          </a>
+        </div>
+      </div>
+
+      {# Arşiv #}
+      <div class="tree-group" id="grp-arsiv">
+        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
+          <i class="bi bi-archive tree-icon"></i> Arşiv
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests?view=completed"
+             class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
+            <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
+          </a>
+          <a href="/requests?view=closed"
+             class="sidebar-link {% if 'view=closed' in cq %}active{% endif %}">
+            <i class="bi bi-lock nav-icon"></i> Kapatılan Dosyalar
+          </a>
+          <a href="/requests?view=cancelled"
+             class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
+            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+          </a>
+        </div>
+      </div>
+
+      <div class="tree-group" id="grp-onay">
+        <div class="tree-header" onclick="toggleTree('grp-onay')">
+          <i class="bi bi-check2-square tree-icon"></i> Onaylar
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/closure"
+             class="sidebar-link {% if cp == '/closure' %}active{% endif %}">
+            <i class="bi bi-lock-fill nav-icon"></i> Dosya Kapama
+          </a>
+        </div>
+      </div>
+
+      <div class="tree-group" id="grp-finans">
+        <div class="tree-header" onclick="toggleTree('grp-finans')">
+          <i class="bi bi-wallet2 tree-icon"></i> Finans
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/invoices"
+             class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
+            <i class="bi bi-receipt nav-icon"></i> Faturalar
+          </a>
+          <a href="/expenses/new"
+             class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
+            <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
+          </a>
+          <a href="/expenses"
+             class="sidebar-link {% if cp == '/expenses' %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formları
+          </a>
+        </div>
+      </div>
+
+      <div class="tree-group" id="grp-bilgi">
+        <div class="tree-header" onclick="toggleTree('grp-bilgi')">
+          <i class="bi bi-building tree-icon"></i> Bilgi
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/venues"
+             class="sidebar-link {% if '/venues' in cp %}active{% endif %}">
+            <i class="bi bi-building nav-icon"></i> Tedarikçi Havuzu
+          </a>
+        </div>
+      </div>
+
+    {# ── YÖNETİCİ (yonetici) ── Kendi referansları + teklif + bütçe onayı #}
+    {% elif current_user.role == 'yonetici' %}
 
       {# Talepler: yeni & karar bekleyenler #}
       <div class="tree-group" id="grp-talepler">
@@ -459,10 +575,53 @@
              class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
             <i class="bi bi-receipt nav-icon"></i> Faturalar
           </a>
-          <a href="/reports/financial"
-             class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
-            <i class="bi bi-graph-up nav-icon"></i> Finansal Raporum
+          <a href="/expenses/new"
+             class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
+            <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
           </a>
+          <a href="/expenses"
+             class="sidebar-link {% if cp == '/expenses' %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formları
+          </a>
+        </div>
+      </div>
+
+      <div class="tree-group" id="grp-bilgi">
+        <div class="tree-header" onclick="toggleTree('grp-bilgi')">
+          <i class="bi bi-building tree-icon"></i> Bilgi
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/venues"
+             class="sidebar-link {% if '/venues' in cp %}active{% endif %}">
+            <i class="bi bi-building nav-icon"></i> Tedarikçi Havuzu
+          </a>
+        </div>
+      </div>
+
+    {# ── ASİSTAN (asistan) ── Görüntüleme + HBF oluştur #}
+    {% elif current_user.role == 'asistan' %}
+
+      {# Talepler: sadece kendi referansları #}
+      <div class="tree-group" id="grp-talepler">
+        <div class="tree-header" onclick="toggleTree('grp-talepler')">
+          <i class="bi bi-inbox tree-icon"></i> Referanslarım
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Referanslarım
+          </a>
+        </div>
+      </div>
+
+      <div class="tree-group" id="grp-finans">
+        <div class="tree-header" onclick="toggleTree('grp-finans')">
+          <i class="bi bi-wallet2 tree-icon"></i> Finans
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
           <a href="/expenses/new"
              class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
             <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur

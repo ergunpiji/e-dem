@@ -30,7 +30,7 @@ router = APIRouter(tags=["closure"])
 
 
 def _can_approve_l1(user: User) -> bool:
-    return user.role in ("admin",)
+    return user.role in ("admin", "mudur")
 
 
 def _can_approve_final(user: User) -> bool:
@@ -71,7 +71,7 @@ async def closure_list(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "muhasebe_muduru"):
+    if current_user.role not in ("admin", "mudur", "muhasebe_muduru"):
         raise HTTPException(403)
 
     query = db.query(ClosureRequest)
@@ -111,9 +111,12 @@ async def closure_submit(
     if not req:
         raise HTTPException(404)
 
-    # Yetki: referans sahibi veya admin
-    if current_user.role != "admin" and req.created_by != current_user.id:
-        raise HTTPException(403, "Sadece referans sahibi kapama başlatabilir.")
+    # Yetki: admin, mudur her referansı kapatabilir; yonetici sadece kendi referansını
+    if current_user.role not in ("admin", "mudur") and req.created_by != current_user.id:
+        raise HTTPException(403, "Kapama başlatmak için yetkiniz yok.")
+    # asistan kapamayı başlatamaz
+    if current_user.role == "asistan":
+        raise HTTPException(403, "Kapama başlatmak için yetkiniz yok.")
 
     # Durum kontrolü
     if req.status not in ("confirmed", "completed"):

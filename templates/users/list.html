@@ -43,7 +43,7 @@
             <td>
               {% if user.role == 'admin' %}
                 <span class="badge bg-danger bg-opacity-10 text-danger">Admin</span>
-              {% elif user.role == 'project_manager' %}
+              {% elif user.role in ('yonetici', 'asistan', 'mudur') %}
                 <span class="badge bg-primary bg-opacity-10 text-primary">Proje Yöneticisi</span>
               {% else %}
                 <span class="badge bg-success bg-opacity-10 text-success">E-dem</span>

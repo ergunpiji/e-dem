@@ -174,7 +174,7 @@
         {% endif %}
 
         {# Proje Durumu — aktif statülerde göster #}
-        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status not in ('cancelled', 'completed', 'postponed') %}
+        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem') and req.status not in ('cancelled', 'completed', 'postponed') %}
         <button type="button" class="btn btn-primary btn-sm"
                 data-bs-toggle="modal" data-bs-target="#projectStatusModal">
           <i class="bi bi-flag me-1"></i> Proje Durumu
@@ -182,7 +182,7 @@
         {% endif %}
 
         {# Etkinliği Tamamla — confirmed #}
-        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status == 'confirmed' %}
+        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem') and req.status == 'confirmed' %}
         <form method="post" action="/requests/{{ req.id }}/complete"
               onsubmit="return confirm('Etkinlik tamamlandı olarak işaretlensin mi?')">
           <button type="submit" class="btn btn-success btn-sm">
@@ -238,7 +238,7 @@
         {% endif %}
 
         {# Tarih değişikliği — offer_sent / budget_ready #}
-        {% if current_user.role in ('admin', 'project_manager', 'e_dem') and req.status in ('offer_sent', 'budget_ready') %}
+        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem') and req.status in ('offer_sent', 'budget_ready') %}
         <button type="button" class="btn btn-outline-warning btn-sm"
                 data-bs-toggle="modal" data-bs-target="#revisionModal">
           <i class="bi bi-calendar-event me-1"></i> Tarih Değişikliği
@@ -326,7 +326,7 @@
         {% set SLABELS = {'accommodation':'🛏 Konaklama','meeting':'🏛 Toplantı','fb':'🍽 F&B',
                           'teknik':'🔧 Teknik','dekor':'🎨 Dekor','transfer':'🚌 Transfer',
                           'tasarim':'🖨 Tasarım','other':'📦 Diğer'} %}
-        {% set show_cost = current_user.role in ('admin', 'e_dem', 'project_manager') %}
+        {% set show_cost = current_user.role in ('admin', 'e_dem', 'mudur', 'yonetici', 'asistan') %}
 
         {# En düşük grand total → vurgu için (TRY bazlı karşılaştırma) #}
         {% set min_grand = namespace(val=999999999) %}
@@ -376,7 +376,7 @@
                   </div>
                   {% endif %}
                   {# Onay / İptal / Export butonları — sadece manager/admin görebilir #}
-                  {% if current_user.role in ('admin','project_manager') %}
+                  {% if current_user.role in ('admin','mudur','yonetici') %}
                   <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
                     {% if bs not in ('approved','cancelled') %}
                     <form method="post" action="/budgets/{{ b.id }}/approve" style="margin:0;">
@@ -495,7 +495,7 @@
               </tr>
 
               {# ── Kâr marjı — sadece admin ve proje yöneticisi ── #}
-              {% if current_user.role in ('admin', 'project_manager') %}
+              {% if current_user.role in ('admin', 'mudur', 'yonetici') %}
               <tr style="background:#f8fafc;">
                 <td class="ps-3 text-muted fw-semibold" style="font-size:11px;">KÂR MARJI</td>
                 {% for bd in budgets_data %}
@@ -524,7 +524,7 @@
 
           {# Tüm onaylıları Excel'e aktar #}
           {% set has_approved = budgets_data | selectattr('budget.budget_status', 'equalto', 'approved') | list %}
-          {% if has_approved and current_user.role in ('admin','project_manager','e_dem') %}
+          {% if has_approved and current_user.role in ('admin','mudur','yonetici','e_dem') %}
           <div class="ms-auto d-flex align-items-center gap-2">
             <div class="btn-group" role="group">
               <a href="/requests/{{ req.id }}/export?vat=exclusive"
@@ -578,7 +578,7 @@
             <i class="bi bi-pencil me-1"></i>Düzenle
           </a>
           {% endif %}
-          {% if current_user.role in ('admin', 'project_manager') and b.budget_status not in ('approved', 'cancelled') %}
+          {% if current_user.role in ('admin', 'mudur', 'yonetici') and b.budget_status not in ('approved', 'cancelled') %}
           <a href="/budgets/{{ b.id }}/price" class="btn btn-outline-warning btn-sm">
             <i class="bi bi-tag me-1"></i>Fiyat Gir
           </a>
@@ -591,7 +591,7 @@
         </div>
 
         {# Mini bütçe tablosu #}
-        {% set show_cost = current_user.role in ('admin', 'e_dem', 'project_manager') %}
+        {% set show_cost = current_user.role in ('admin', 'e_dem', 'mudur', 'yonetici', 'asistan') %}
         {% set col_count = 6 if show_cost else 5 %}
         <div class="table-responsive">
           <table class="table table-sm mb-0" style="font-size:12px;">
@@ -1109,7 +1109,7 @@
   <div class="card-body">
 
     {# Özet Kartlar — sadece admin ve proje yöneticisi görebilir #}
-    {% if current_user.role in ('admin', 'project_manager') %}
+    {% if current_user.role in ('admin', 'mudur', 'yonetici') %}
     {% macro fin_card(label, bgt_val, real_val, color) %}
     <div class="col-sm-6 col-lg-3">
       <div class="p-3 rounded border" style="background:#f8fafc;">

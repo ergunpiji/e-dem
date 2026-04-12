@@ -89,8 +89,14 @@
               {% endif %}
             </div>
 
-            {# Limit formu #}
+            {# Limit + PM Yetki formu #}
             <form method="post" action="/users/org-titles/{{ t.id }}" class="d-flex align-items-center gap-2" style="flex-shrink:0;">
+              <select name="pm_permission_level" class="form-select form-select-sm" style="width:110px; font-size:12px;" title="PM Yetki Grubu">
+                <option value="">— (PM değil)</option>
+                <option value="mudur"    {% if t.pm_permission_level == 'mudur'    %}selected{% endif %}>Müdür</option>
+                <option value="yonetici" {% if t.pm_permission_level == 'yonetici' %}selected{% endif %}>Yönetici</option>
+                <option value="asistan"  {% if t.pm_permission_level == 'asistan'  %}selected{% endif %}>Asistan</option>
+              </select>
               <input type="number" name="budget_limit" class="form-control limit-input"
                      value="{{ t.budget_limit | int if t.budget_limit is not none else '' }}"
                      placeholder="Limitsiz" min="0" step="1000">

@@ -240,7 +240,7 @@
               {% if budget and budget.budget_status == 'confirmed' %}
               <th style="width:130px; background:#d1fae5; color:#065f46;">Kesin Maliyet (KDV hariç)</th>
               {% endif %}
-              {% if current_user.role in ('project_manager', 'admin') %}
+              {% if current_user.role in ('mudur', 'yonetici', 'admin') %}
               <th style="width:130px; background:#eff6ff; color:#1d4ed8;">Satış Fiyatı (KDV hariç)</th>
               {% endif %}
               <th style="width:70px;">KDV %</th>
@@ -271,7 +271,7 @@
             <div class="fw-bold text-primary" style="font-size:22px;" id="totalCostIncVat">₺0,00</div>
           </div>
         </div>
-        {% if current_user.role in ('project_manager', 'admin') %}
+        {% if current_user.role in ('mudur', 'yonetici', 'admin') %}
         <div class="col-md-3">
           <div class="border rounded p-3 text-center" style="background:#eff6ff; border-color:#bfdbfe !important;">
             <div style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px; color:#1d4ed8;">SATIŞ (KDV hariç)</div>
@@ -420,7 +420,7 @@ const USER_ROLE          = '{{ current_user.role }}';
 // ─── Veri ───
 const BUDGET_IS_CONFIRMED = "{{ (budget.budget_status if budget else '') }}" === 'confirmed';
 // Kolon sayısı: PM/Admin için +1 satış fiyatı kolonu
-const NCOLS = (USER_ROLE === 'project_manager' || USER_ROLE === 'admin') ? 9 : 8;
+const NCOLS = (USER_ROLE === 'mudur' || USER_ROLE === 'yonetici' || USER_ROLE === 'admin') ? 9 : 8;
 
 let rows = [];
 try { rows = JSON.parse(document.getElementById('rowsJson').value || '[]'); } catch(e) {}
@@ -707,7 +707,7 @@ function renderTable() {
                      style="background:#f0fdf4;">
             </div>
           </td>` : ''}
-          ${USER_ROLE === 'project_manager' || USER_ROLE === 'admin' ? `<td style="background:#eff6ff;">
+          ${USER_ROLE === 'mudur' || USER_ROLE === 'yonetici' || USER_ROLE === 'admin' ? `<td style="background:#eff6ff;">
             <div class="input-group input-group-sm">
               <span class="input-group-text" style="font-size:11px;padding:2px 5px;background:#dbeafe;color:#1d4ed8;">${currSymbol(rowCur)}</span>
               <input type="number" class="form-control" min="0" step="0.01"

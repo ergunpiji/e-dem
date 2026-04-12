@@ -3,7 +3,7 @@
 {% block page_title_block %}{{ page_title }}{% endblock %}
 
 {% block topbar_actions %}
-{% if current_user.role == 'project_manager' %}
+{% if current_user.role in ('yonetici', 'asistan') %}
 <a href="/requests/new" class="btn btn-primary btn-sm">
   <i class="bi bi-plus-circle me-1"></i> Yeni Talep
 </a>
@@ -111,7 +111,7 @@
               <a href="/requests/{{ req.id }}" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-eye"></i>
               </a>
-              {% if (current_user.role in ('admin', 'project_manager')) and req.status == 'draft' %}
+              {% if (current_user.role in ('admin', 'mudur', 'yonetici')) and req.status == 'draft' %}
               <a href="/requests/{{ req.id }}/edit" class="btn btn-sm btn-outline-primary">
                 <i class="bi bi-pencil"></i>
               </a>
@@ -123,7 +123,7 @@
             <td colspan="9" class="text-center py-5 text-muted">
               <i class="bi bi-inbox" style="font-size:3rem; opacity:.3;"></i>
               <p class="mt-2 mb-0">Henüz talep bulunmuyor.</p>
-              {% if current_user.role == 'project_manager' %}
+              {% if current_user.role in ('yonetici', 'asistan') %}
               <a href="/requests/new" class="btn btn-primary btn-sm mt-3">
                 <i class="bi bi-plus-circle me-1"></i> İlk Talebi Oluştur
               </a>

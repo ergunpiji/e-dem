@@ -88,7 +88,7 @@ def seed_data() -> None:
                     id=_uuid(),
                     email="manager@edem.com",
                     password_hash=pwd_ctx.hash("Manager123"),
-                    role="project_manager",
+                    role="yonetici",
                     name="Proje",
                     surname="Yöneticisi",
                     title="Proje Yöneticisi",
@@ -384,26 +384,26 @@ def seed_data() -> None:
             id_ps   = _uuid(); id_pa   = _uuid()
 
             org_titles = [
-                OrgTitle(id=id_gm,   name="Genel Müdür",                       grade=1, parent_id=None,    budget_limit=None, sort_order=1),
-                OrgTitle(id=id_gmy,  name="Genel Müdür Yardımcısı",            grade=2, parent_id=id_gm,   budget_limit=None, sort_order=2),
-                OrgTitle(id=id_dir,  name="Direktör",                          grade=3, parent_id=id_gmy,  budget_limit=None, sort_order=3),
-                OrgTitle(id=id_egm,  name="Etkinlik Grup Müdürü",              grade=4, parent_id=id_dir,  budget_limit=None, sort_order=4),
-                OrgTitle(id=id_esym, name="Etkinlik Süreç Yönetimi Müdürü",   grade=4, parent_id=id_dir,  budget_limit=None, sort_order=5),
-                OrgTitle(id=id_artd, name="Art Direktör",                      grade=4, parent_id=id_dir,  budget_limit=None, sort_order=6),
-                OrgTitle(id=id_fmbm, name="Finans ve Muhasebe Birimi Müdürü", grade=4, parent_id=id_dir,  budget_limit=None, sort_order=7),
-                OrgTitle(id=id_ebm,  name="Etkinlik Birim Müdürü",             grade=5, parent_id=id_egm,  budget_limit=None, sort_order=8),
-                OrgTitle(id=id_tsyk, name="Teknik Servisler Yetkilisi",        grade=5, parent_id=id_esym, budget_limit=None, sort_order=9),
-                OrgTitle(id=id_dyk,  name="Dekor Yetkilisi",                   grade=5, parent_id=id_esym, budget_limit=None, sort_order=10),
-                OrgTitle(id=id_lok,  name="Lojistik Yetkilisi",                grade=5, parent_id=id_esym, budget_limit=None, sort_order=11),
-                OrgTitle(id=id_gtym, name="Grafik Tasarım Yöneticisi",         grade=5, parent_id=id_artd, budget_limit=None, sort_order=12),
-                OrgTitle(id=id_fm,   name="Finans Müdürü",                     grade=5, parent_id=id_fmbm, budget_limit=None, sort_order=13),
-                OrgTitle(id=id_mm,   name="Muhasebe Müdürü",                   grade=5, parent_id=id_fmbm, budget_limit=None, sort_order=14),
-                OrgTitle(id=id_pym,  name="Proje Yöneticisi",                  grade=6, parent_id=id_ebm,  budget_limit=None, sort_order=15),
-                OrgTitle(id=id_gtyk, name="Grafik Tasarım Yetkilisi",          grade=6, parent_id=id_gtym, budget_limit=None, sort_order=16),
-                OrgTitle(id=id_fy,   name="Finans Yetkilisi",                  grade=6, parent_id=id_fm,   budget_limit=None, sort_order=17),
-                OrgTitle(id=id_my,   name="Muhasebe Yetkilisi",                grade=6, parent_id=id_mm,   budget_limit=None, sort_order=18),
-                OrgTitle(id=id_ps,   name="Proje Sorumlusu",                   grade=7, parent_id=id_pym,  budget_limit=None, sort_order=19),
-                OrgTitle(id=id_pa,   name="Proje Asistanı",                    grade=8, parent_id=id_ps,   budget_limit=None, sort_order=20),
+                OrgTitle(id=id_gm,   name="Genel Müdür",                       grade=1, parent_id=None,    budget_limit=None, sort_order=1,  pm_permission_level="mudur"),
+                OrgTitle(id=id_gmy,  name="Genel Müdür Yardımcısı",            grade=2, parent_id=id_gm,   budget_limit=None, sort_order=2,  pm_permission_level="mudur"),
+                OrgTitle(id=id_dir,  name="Direktör",                          grade=3, parent_id=id_gmy,  budget_limit=None, sort_order=3,  pm_permission_level="mudur"),
+                OrgTitle(id=id_egm,  name="Etkinlik Grup Müdürü",              grade=4, parent_id=id_dir,  budget_limit=None, sort_order=4,  pm_permission_level="mudur"),
+                OrgTitle(id=id_esym, name="Etkinlik Süreç Yönetimi Müdürü",   grade=4, parent_id=id_dir,  budget_limit=None, sort_order=5,  pm_permission_level="mudur"),
+                OrgTitle(id=id_artd, name="Art Direktör",                      grade=4, parent_id=id_dir,  budget_limit=None, sort_order=6,  pm_permission_level="mudur"),
+                OrgTitle(id=id_fmbm, name="Finans ve Muhasebe Birimi Müdürü", grade=4, parent_id=id_dir,  budget_limit=None, sort_order=7,  pm_permission_level=None),
+                OrgTitle(id=id_ebm,  name="Etkinlik Birim Müdürü",             grade=5, parent_id=id_egm,  budget_limit=None, sort_order=8,  pm_permission_level="mudur"),
+                OrgTitle(id=id_tsyk, name="Teknik Servisler Yetkilisi",        grade=5, parent_id=id_esym, budget_limit=None, sort_order=9,  pm_permission_level=None),
+                OrgTitle(id=id_dyk,  name="Dekor Yetkilisi",                   grade=5, parent_id=id_esym, budget_limit=None, sort_order=10, pm_permission_level=None),
+                OrgTitle(id=id_lok,  name="Lojistik Yetkilisi",                grade=5, parent_id=id_esym, budget_limit=None, sort_order=11, pm_permission_level=None),
+                OrgTitle(id=id_gtym, name="Grafik Tasarım Yöneticisi",         grade=5, parent_id=id_artd, budget_limit=None, sort_order=12, pm_permission_level=None),
+                OrgTitle(id=id_fm,   name="Finans Müdürü",                     grade=5, parent_id=id_fmbm, budget_limit=None, sort_order=13, pm_permission_level=None),
+                OrgTitle(id=id_mm,   name="Muhasebe Müdürü",                   grade=5, parent_id=id_fmbm, budget_limit=None, sort_order=14, pm_permission_level=None),
+                OrgTitle(id=id_pym,  name="Proje Yöneticisi",                  grade=6, parent_id=id_ebm,  budget_limit=None, sort_order=15, pm_permission_level="yonetici"),
+                OrgTitle(id=id_gtyk, name="Grafik Tasarım Yetkilisi",          grade=6, parent_id=id_gtym, budget_limit=None, sort_order=16, pm_permission_level=None),
+                OrgTitle(id=id_fy,   name="Finans Yetkilisi",                  grade=6, parent_id=id_fm,   budget_limit=None, sort_order=17, pm_permission_level=None),
+                OrgTitle(id=id_my,   name="Muhasebe Yetkilisi",                grade=6, parent_id=id_mm,   budget_limit=None, sort_order=18, pm_permission_level=None),
+                OrgTitle(id=id_ps,   name="Proje Sorumlusu",                   grade=7, parent_id=id_pym,  budget_limit=None, sort_order=19, pm_permission_level="yonetici"),
+                OrgTitle(id=id_pa,   name="Proje Asistanı",                    grade=8, parent_id=id_ps,   budget_limit=None, sort_order=20, pm_permission_level="asistan"),
             ]
             db.add_all(org_titles)
             db.flush()
@@ -863,6 +863,29 @@ def migrate_db():
             conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_closure_requests_request_id ON closure_requests(request_id)"
             ))
+        conn.commit()
+
+        # OrgTitle — pm_permission_level sütunu
+        _safe_add_column(conn, "org_titles", "pm_permission_level", "TEXT")
+        # OrgTitle grade'e göre varsayılan pm_permission_level ata (zaten atanmamışsa)
+        conn.execute(text(
+            "UPDATE org_titles SET pm_permission_level='mudur' "
+            "WHERE pm_permission_level IS NULL AND grade <= 2"
+        ))
+        conn.execute(text(
+            "UPDATE org_titles SET pm_permission_level='yonetici' "
+            "WHERE pm_permission_level IS NULL AND grade BETWEEN 3 AND 5"
+        ))
+        conn.execute(text(
+            "UPDATE org_titles SET pm_permission_level='asistan' "
+            "WHERE pm_permission_level IS NULL AND grade >= 6"
+        ))
+        conn.commit()
+
+        # project_manager rolünü yonetici'ye rename et (geriye uyumluluk)
+        conn.execute(text(
+            "UPDATE users SET role='yonetici' WHERE role='project_manager'"
+        ))
         conn.commit()
 
         # Eksik seed şablonlarını ekle (idempotent)

@@ -150,12 +150,37 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_pm(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "project_manager"):
+    """Tüm proje tarafı roller (mudur + yonetici + asistan) + admin."""
+    if current_user.role not in ("admin", "mudur", "yonetici", "asistan", "project_manager"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için Proje Yöneticisi yetkisi gereklidir.",
         )
     return current_user
+
+
+def require_pm_yonetici(current_user: User = Depends(get_current_user)) -> User:
+    """Talep oluşturma, teklif gönderme, bütçe onayı gibi işlemler için (mudur + yonetici + admin)."""
+    if current_user.role == "admin":
+        return current_user
+    if current_user.role in ("mudur", "yonetici"):
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Bu işlem için en az Proje Yöneticisi yetkisi gereklidir.",
+    )
+
+
+def require_pm_mudur(current_user: User = Depends(get_current_user)) -> User:
+    """Kapama L1 onayı gibi üst düzey işlemler için (mudur + admin)."""
+    if current_user.role == "admin":
+        return current_user
+    if current_user.role == "mudur":
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Bu işlem için Müdür yetkisi gereklidir.",
+    )
 
 
 def require_edem(current_user: User = Depends(get_current_user)) -> User:
@@ -168,9 +193,54 @@ def require_edem(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_admin_or_edem(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "e_dem"):
+    if current_user.role not in ("admin", "e_dem", "muhasebe_muduru"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bu işlem için Admin veya E-dem yetkisi gereklidir.",
+            detail="Bu işlem için Admin, E-dem veya Muhasebe Müdürü yetkisi gereklidir.",
         )
     return current_user
+
+
+def require_finance(current_user: User = Depends(get_current_user)) -> User:
+    """Fatura girişi için muhasebe + muhasebe_muduru + admin."""
+    if current_user.role not in ("admin", "muhasebe_muduru", "muhasebe"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu işlem için Muhasebe yetkisi gereklidir.",
+        )
+    return current_user
+
+
+def can_approve_invoice(user: User) -> bool:
+    """Fatura onayı: admin, mudur, yonetici, muhasebe_muduru."""
+    return user.role in ("admin", "mudur", "yonetici", "muhasebe_muduru")
+
+
+def can_approve_expense(user: User) -> bool:
+    """HBF onayı: admin, mudur, yonetici."""
+    return user.role in ("admin", "mudur", "yonetici")
+
+
+def can_send_offer(user: User) -> bool:
+    """Müşteriye teklif gönderme: admin, mudur, yonetici."""
+    return user.role in ("admin", "mudur", "yonetici")
+
+
+def can_approve_budget(user: User) -> bool:
+    """Bütçe onayı: admin, mudur, yonetici."""
+    return user.role in ("admin", "mudur", "yonetici")
+
+
+def can_start_closure(user: User) -> bool:
+    """Dosya kapamayı başlatma: admin, mudur, yonetici."""
+    return user.role in ("admin", "mudur", "yonetici")
+
+
+def can_approve_closure_l1(user: User) -> bool:
+    """Kapama L1 onayı: admin, mudur."""
+    return user.role in ("admin", "mudur")
+
+
+def can_approve_closure_final(user: User) -> bool:
+    """Kapama final onayı: admin, muhasebe_muduru."""
+    return user.role in ("admin", "muhasebe_muduru")

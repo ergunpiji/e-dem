@@ -79,6 +79,7 @@ async def org_titles_page(
 async def org_title_update(
     title_id: str,
     budget_limit: str = Form(""),
+    pm_permission_level: str = Form(""),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -86,6 +87,8 @@ async def org_title_update(
     if title:
         val = budget_limit.strip().replace(".", "").replace(",", "")
         title.budget_limit = float(val) if val else None
+        lvl = pm_permission_level.strip()
+        title.pm_permission_level = lvl if lvl in ("mudur", "yonetici", "asistan") else None
         db.commit()
     return RedirectResponse(url="/users/org-titles?saved=1", status_code=status.HTTP_302_FOUND)
 

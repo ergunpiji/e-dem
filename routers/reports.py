@@ -27,7 +27,7 @@ def _require_admin(current_user: User):
 
 
 def _require_finance(current_user: User):
-    if current_user.role not in FINANCE_ROLES and current_user.role != "project_manager":
+    if current_user.role not in FINANCE_ROLES and current_user.role not in ("mudur", "yonetici", "asistan"):
         raise HTTPException(status_code=403, detail="Bu sayfa için yetkiniz yok.")
 
 
@@ -189,8 +189,8 @@ async def reports_financial(
         d_to = today
 
     # PM filtresi
-    pm_users = db.query(User).filter(User.role == "project_manager", User.active == True).all()
-    if current_user.role == "project_manager":
+    pm_users = db.query(User).filter(User.role.in_(["mudur", "yonetici", "asistan"]), User.active == True).all()
+    if current_user.role in ("yonetici", "asistan"):
         manager_id = current_user.id
 
     # Fatura bazlı sorgulama — sadece onaylı faturalar, tarih aralığı invoice_date'e göre
@@ -200,7 +200,7 @@ async def reports_financial(
         Invoice.invoice_date <= d_to.isoformat(),
     )
     # PM yalnızca kendi taleplerinin faturalarını görür
-    if current_user.role == "project_manager":
+    if current_user.role in ("yonetici", "asistan"):
         own_req_ids = [r.id for r in db.query(ReqModel.id)
                        .filter(ReqModel.created_by == current_user.id).all()]
         inv_query = inv_query.filter(Invoice.request_id.in_(own_req_ids))
@@ -293,7 +293,7 @@ async def reports_financial(
 
     # PM bazlı özet (admin/muhasebe için)
     mgr_totals: dict = defaultdict(lambda: {"name": "", "ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
-    if current_user.role not in ("project_manager",):
+    if current_user.role not in ("yonetici", "asistan"):
         for r in rows:
             mid = r["req"].created_by or "_"
             mgr_totals[mid]["name"]    = r["manager_name"]

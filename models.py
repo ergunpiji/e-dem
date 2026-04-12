@@ -135,12 +135,30 @@ EVENT_TYPE_CODES = {
 
 
 USER_ROLES = [
-    {"value": "admin",             "label": "Admin"},
-    {"value": "project_manager",   "label": "Proje Yöneticisi"},
-    {"value": "e_dem",             "label": "E-dem (Satın Alma)"},
-    {"value": "muhasebe_muduru",   "label": "Muhasebe Müdürü"},
-    {"value": "muhasebe",          "label": "Muhasebe Yetkilisi"},
+    {"value": "admin",           "label": "Sistem Yöneticisi"},
+    {"value": "mudur",           "label": "Müdür"},
+    {"value": "yonetici",        "label": "Proje Yöneticisi"},
+    {"value": "asistan",         "label": "Proje Asistanı"},
+    {"value": "e_dem",           "label": "E-dem (Satın Alma)"},
+    {"value": "muhasebe_muduru", "label": "Muhasebe Müdürü"},
+    {"value": "muhasebe",        "label": "Muhasebe Yetkilisi"},
 ]
+
+# Proje tarafı rollerin yetki seviyeleri (yüksek = daha fazla yetki)
+PM_ROLE_LEVELS = {"mudur": 3, "yonetici": 2, "asistan": 1}
+
+# OrgTitle → varsayılan rol önerisi
+ORG_TITLE_PM_LEVELS = {
+    "Genel Müdür":                "mudur",
+    "Genel Müdür Yardımcısı":    "mudur",
+    "Birim Müdürü":               "mudur",
+    "Direktör":                   "mudur",
+    "Kıdemli Proje Yöneticisi":  "yonetici",
+    "Proje Yöneticisi":           "yonetici",
+    "Proje Sorumlusu":            "yonetici",
+    "Proje Asistanı":             "asistan",
+    "Koordinatör":                "asistan",
+}
 
 USER_ROLE_LABELS = {r["value"]: r["label"] for r in USER_ROLES}
 
@@ -193,12 +211,13 @@ class OrgTitle(Base):
     """Organizasyon unvanları — hiyerarşik yapı ve bütçe limitleri"""
     __tablename__ = "org_titles"
 
-    id           = Column(String(36), primary_key=True, default=_uuid)
-    name         = Column(String(150), nullable=False)
-    grade        = Column(Integer, nullable=False, default=1)   # 1=en üst, yüksek=alt
-    parent_id    = Column(String(36), ForeignKey("org_titles.id"), nullable=True)
-    budget_limit = Column(Float, nullable=True)                  # None = limitsiz
-    sort_order   = Column(Integer, default=0)
+    id                 = Column(String(36), primary_key=True, default=_uuid)
+    name               = Column(String(150), nullable=False)
+    grade              = Column(Integer, nullable=False, default=1)   # 1=en üst, yüksek=alt
+    parent_id          = Column(String(36), ForeignKey("org_titles.id"), nullable=True)
+    budget_limit       = Column(Float, nullable=True)                  # None = limitsiz
+    sort_order         = Column(Integer, default=0)
+    pm_permission_level = Column(String(16), nullable=True)            # 'mudur' | 'yonetici' | 'asistan' | None
 
     parent   = relationship("OrgTitle", remote_side="OrgTitle.id", back_populates="children",
                             foreign_keys="OrgTitle.parent_id")
@@ -233,13 +252,13 @@ class EventType(Base):
 
 
 class User(Base):
-    """Kullanıcı modeli — admin / project_manager / e_dem"""
+    """Kullanıcı modeli — admin / mudur / yonetici / asistan / e_dem / muhasebe_muduru / muhasebe"""
     __tablename__ = "users"
 
     id           = Column(String(36), primary_key=True, default=_uuid)
     email        = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
-    role         = Column(String(32), nullable=False, default="project_manager")
+    role         = Column(String(32), nullable=False, default="yonetici")
     name         = Column(String(100), nullable=False)
     surname      = Column(String(100), nullable=False)
     title        = Column(String(100), default="")
@@ -257,6 +276,18 @@ class User(Base):
     @property
     def full_name(self) -> str:
         return f"{self.name} {self.surname}".strip()
+
+    @property
+    def pm_level(self) -> Optional[str]:
+        """Proje tarafı yetki grubu. mudur/yonetici/asistan için anlamlı; diğer roller için None."""
+        if self.role in ("mudur", "yonetici", "asistan"):
+            return self.role
+        return None
+
+    @property
+    def is_pm_side(self) -> bool:
+        """Proje tarafı mı? (mudur/yonetici/asistan)"""
+        return self.role in ("mudur", "yonetici", "asistan")
 
     @property
     def role_label(self) -> str:

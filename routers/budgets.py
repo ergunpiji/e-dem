@@ -122,7 +122,7 @@ async def budgets_list(
     query = db.query(Budget)
     if current_user.role == "e_dem":
         query = query.filter(Budget.created_by == current_user.id)
-    elif current_user.role == "project_manager":
+    elif current_user.role in ("yonetici", "asistan"):
         my_req_ids = [
             r.id for r in db.query(ReqModel)
             .filter(ReqModel.created_by == current_user.id)
@@ -142,7 +142,7 @@ async def budgets_list(
 
 
 def _can_create_budget(user: User) -> bool:
-    return user.role in ("admin", "e_dem", "project_manager")
+    return user.role in ("admin", "e_dem", "mudur", "yonetici", "asistan")
 
 
 SECTION_ORDER = ["accommodation", "meeting", "fb", "teknik", "dekor", "transfer", "tasarim", "other"]
@@ -267,7 +267,7 @@ async def budgets_create(
         raise HTTPException(403)
 
     # Satış fiyatlarını sıfırla — sadece E-dem için (PM/Admin direkt yönetimde sıfırlama)
-    is_direct_manager = current_user.role in ("project_manager", "admin")
+    is_direct_manager = current_user.role in ("mudur", "yonetici", "admin")
     if not is_direct_manager:
         try:
             rows = json.loads(rows_json)
@@ -360,7 +360,7 @@ async def budgets_detail(
         "vat_by_rate":        vat_by_rate_sorted,
         "service_categories": SERVICE_CATEGORIES,
         "can_edem_edit":      _can_edem_edit(budget) and current_user.role in ("admin", "e_dem"),
-        "can_manager_price":  _can_manager_price(budget) and current_user.role in ("admin", "project_manager"),
+        "can_manager_price":  _can_manager_price(budget) and current_user.role in ("admin", "mudur", "yonetici"),
         "status_label":       BUDGET_STATUS_LABELS.get(budget.budget_status, budget.budget_status),
         "status_color":       BUDGET_STATUS_COLORS.get(budget.budget_status, "secondary"),
         "back_url":           back_url,
@@ -441,7 +441,7 @@ async def budgets_update(
     if not budget:
         return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
 
-    is_direct_manager = current_user.role in ("project_manager", "admin")
+    is_direct_manager = current_user.role in ("mudur", "yonetici", "admin")
 
     # E-dem satış fiyatı giremez — mevcut sale_price değerlerini sıfırla (PM/Admin hariç)
     try:
@@ -558,7 +558,7 @@ async def budgets_price(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
@@ -623,7 +623,7 @@ async def budgets_price_save(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
@@ -678,7 +678,7 @@ async def budgets_approve(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if budget:
@@ -701,7 +701,7 @@ async def budgets_request_revision(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if budget:
@@ -736,7 +736,7 @@ async def budgets_cancel(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if budget:
@@ -765,7 +765,7 @@ async def budgets_export(
     - ?vat=exclusive → KDV hariç göster | ?vat=inclusive → KDV dahil göster
     - Müşteriye özel template varsa filler.py, yoksa builder.py kullanılır
     """
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici"):
         raise HTTPException(403)
 
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
@@ -937,7 +937,7 @@ async def budgets_copy(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
@@ -976,7 +976,7 @@ async def budgets_revise_price(
     db: Session = Depends(get_db),
 ):
     """Konfirme bütçenin fiyatlarını revize et (manager veya e_dem)"""
-    if current_user.role not in ("admin", "project_manager", "e_dem"):
+    if current_user.role not in ("admin", "mudur", "yonetici", "e_dem"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
@@ -1027,7 +1027,7 @@ async def budgets_revise_price_save(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "project_manager", "e_dem"):
+    if current_user.role not in ("admin", "mudur", "yonetici", "e_dem"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget or budget.budget_status != "confirmed":

@@ -29,7 +29,7 @@ from templates_config import templates
 
 
 def _check_pm_or_admin(current_user: User):
-    if current_user.role not in ("admin", "project_manager"):
+    if current_user.role not in ("admin", "mudur", "yonetici", "asistan", "project_manager"):
         raise HTTPException(status_code=403, detail="Bu sayfa Proje Yöneticilerine özeldir.")
 
 
@@ -76,20 +76,18 @@ async def requests_list(
     elif view == "pending_work":
         # Yeni & işlemdeki talepler — henüz müşteriye teklif verilmemiş
         base = ["pending", "in_progress", "venues_contacted", "budget_ready"]
-        if current_user.role == "project_manager":
+        if current_user.role in ("yonetici", "asistan"):
             query = query.filter(
                 ReqModel.created_by == current_user.id,
                 ReqModel.status.in_(base),
             )
-        elif current_user.role == "e_dem":
-            query = query.filter(ReqModel.status.in_(base))
         else:
             query = query.filter(ReqModel.status.in_(base))
         page_title = "Yeni & İşlemdeki Talepler"
     elif view == "awaiting":
         # Teklif verilmiş, müşteri kararı bekleniyor
         base = ["offer_sent", "revision", "postponed"]
-        if current_user.role == "project_manager":
+        if current_user.role in ("yonetici", "asistan"):
             query = query.filter(
                 ReqModel.created_by == current_user.id,
                 ReqModel.status.in_(base),
@@ -97,7 +95,8 @@ async def requests_list(
         else:
             query = query.filter(ReqModel.status.in_(base))
         page_title = "Karar Bekleyenler"
-    elif current_user.role == "project_manager":
+    elif current_user.role in ("yonetici", "asistan"):
+        # yonetici ve asistan sadece kendi referanslarını görür
         query = query.filter(ReqModel.created_by == current_user.id)
         page_title = "Referanslarım"
     elif current_user.role == "e_dem":
@@ -107,6 +106,7 @@ async def requests_list(
         )
         page_title = "Gelen Referanslar"
     else:
+        # admin, mudur, muhasebe_muduru → tüm referanslar
         page_title = "Tüm Referanslar"
 
     if status_filter:
@@ -309,13 +309,23 @@ async def requests_detail(
     event_types = db.query(EventType).order_by(EventType.sort_order).all()
     et_map      = {et.code: et.label for et in event_types}
     can_edit_status = current_user.role in ("admin", "e_dem")
-    can_edit_req    = (current_user.role in ("admin", "project_manager") and
-                       (req.created_by == current_user.id or current_user.role == "admin"))
+    # mudur tüm referansları düzenleyebilir; yonetici/asistan sadece kendi talebini
+    can_edit_req = (
+        current_user.role == "admin" or
+        (current_user.role in ("mudur", "yonetici") and
+         (req.created_by == current_user.id or current_user.role == "mudur")) or
+        (current_user.role == "asistan" and req.created_by == current_user.id)
+    )
+    # Teklif gönderme ve bütçe onayı: admin, mudur, yonetici (asistan yapamaz)
+    can_send_offer    = current_user.role in ("admin", "mudur", "yonetici")
+    can_approve_budget = current_user.role in ("admin", "mudur", "yonetici")
+    # Bütçeye fiyat girme: asistan dahil tüm PM tarafı
+    can_price_budget  = current_user.role in ("admin", "mudur", "yonetici", "asistan")
     # PM kendi talebini direkt yönetiyorsa (in_progress) RFQ ve bütçe oluşturabilir
     can_direct_manage = (
-        current_user.role in ("admin", "project_manager") and
+        current_user.role in ("admin", "mudur", "yonetici") and
         req.status in ("in_progress", "venues_contacted", "budget_ready") and
-        (req.created_by == current_user.id or current_user.role == "admin")
+        (req.created_by == current_user.id or current_user.role in ("admin", "mudur"))
     )
 
     # venue id → supplier_type map (RFQ filtrelemesi için)
@@ -478,8 +488,8 @@ async def requests_detail(
 
     can_manage_invoices = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
     can_manage_undoc    = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    # Onaylama yetkisi: admin veya referansın sahibi (PM)
-    can_approve_invoices = (current_user.role == "admin" or req.created_by == current_user.id)
+    # Fatura onayı: admin, mudur, yonetici, muhasebe_muduru
+    can_approve_invoices = current_user.role in ("admin", "mudur", "yonetici", "muhasebe_muduru")
     # Admin referans taşıma için tüm referanslar
     all_requests = []
     if current_user.role == "admin":
@@ -513,8 +523,11 @@ async def requests_detail(
             "venues_map":       venues_map,
             "event_types":      event_types,
             "et_map":           et_map,
-            "can_edit_status":  can_edit_status,
-            "can_edit_req":     can_edit_req,
+            "can_edit_status":   can_edit_status,
+            "can_edit_req":      can_edit_req,
+            "can_send_offer":    can_send_offer,
+            "can_approve_budget": can_approve_budget,
+            "can_price_budget":  can_price_budget,
             "can_direct_manage": can_direct_manage,
             "request_tabs":     REQUEST_TABS,
             "budgets_data":     budgets_data,
@@ -565,8 +578,8 @@ async def requests_edit(
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
 
-    # Admin her talebi düzenleyebilir; PM sadece kendi talebini
-    if current_user.role != "admin" and req.created_by != current_user.id:
+    # Admin ve mudur her talebi düzenleyebilir; yonetici/asistan sadece kendi talebini
+    if current_user.role not in ("admin", "mudur") and req.created_by != current_user.id:
         return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
 
     customers   = db.query(Customer).order_by(Customer.name).all()
@@ -626,7 +639,7 @@ async def requests_update(
     req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
-    if current_user.role != "admin" and req.created_by != current_user.id:
+    if current_user.role not in ("admin", "mudur") and req.created_by != current_user.id:
         return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
 
     try:
@@ -702,8 +715,8 @@ async def requests_update_status(
     # PM direkt yönetim: sadece kendi talebi ve belirli statüler
     is_edem_or_admin = current_user.role in ("admin", "e_dem")
     is_pm_direct = (
-        current_user.role == "project_manager" and
-        req.created_by == current_user.id and
+        current_user.role in ("mudur", "yonetici") and
+        (req.created_by == current_user.id or current_user.role == "mudur") and
         req.status in ("in_progress", "venues_contacted", "budget_ready")
     )
     if not is_edem_or_admin and not is_pm_direct:

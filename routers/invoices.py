@@ -80,13 +80,13 @@ async def invoices_list(
     db: Session = Depends(get_db),
 ):
     # Finans rolleri + PM (kendi referanslarının faturalarını görebilir)
-    if current_user.role not in {"admin", "muhasebe_muduru", "muhasebe", "project_manager", "e_dem"}:
+    if current_user.role not in {"admin", "muhasebe_muduru", "muhasebe", "mudur", "yonetici", "asistan", "e_dem"}:
         raise HTTPException(status_code=403)
 
     query = db.query(Invoice).join(Invoice.request)
 
     # PM sadece kendi referanslarının faturalarını görür
-    if current_user.role == "project_manager":
+    if current_user.role in ("yonetici", "asistan"):
         from models import Request as ReqModel
         query = query.filter(ReqModel.created_by == current_user.id)
 
@@ -100,7 +100,7 @@ async def invoices_list(
     pending_count = db.query(Invoice).join(Invoice.request).filter(
         Invoice.status == "pending"
     )
-    if current_user.role == "project_manager":
+    if current_user.role in ("yonetici", "asistan"):
         from models import Request as ReqModel
         pending_count = pending_count.filter(ReqModel.created_by == current_user.id)
     pending_count = pending_count.count()

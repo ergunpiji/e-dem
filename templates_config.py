@@ -40,9 +40,14 @@ def format_money(value: Any) -> str:
 
 def role_label(role: str) -> str:
     labels = {
-        "admin": "Admin",
-        "project_manager": "Proje Yöneticisi",
-        "e_dem": "E-dem (Satın Alma)",
+        "admin":           "Sistem Yöneticisi",
+        "mudur":           "Müdür",
+        "yonetici":        "Proje Yöneticisi",
+        "asistan":         "Proje Asistanı",
+        "project_manager": "Proje Yöneticisi",   # geriye uyumluluk
+        "e_dem":           "E-dem (Satın Alma)",
+        "muhasebe_muduru": "Muhasebe Müdürü",
+        "muhasebe":        "Muhasebe Yetkilisi",
     }
     return labels.get(role, role)
 
