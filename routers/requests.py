@@ -60,10 +60,37 @@ async def requests_list(
             ReqModel.status == "confirmed",
             ReqModel.confirmed_budget_id.isnot(None),
         )
-        page_title = "Devam Eden İşler"
+        page_title = "Aktif İşler"
+    elif view == "completed":
+        query = query.filter(ReqModel.status == "completed")
+        page_title = "Tamamlanan İşler"
     elif view == "cancelled":
         query = query.filter(ReqModel.status == "cancelled")
         page_title = "İptal İşler"
+    elif view == "pending_work":
+        # Yeni & işlemdeki talepler — henüz müşteriye teklif verilmemiş
+        base = ["pending", "in_progress", "venues_contacted", "budget_ready"]
+        if current_user.role == "project_manager":
+            query = query.filter(
+                ReqModel.created_by == current_user.id,
+                ReqModel.status.in_(base),
+            )
+        elif current_user.role == "e_dem":
+            query = query.filter(ReqModel.status.in_(base))
+        else:
+            query = query.filter(ReqModel.status.in_(base))
+        page_title = "Yeni & İşlemdeki Talepler"
+    elif view == "awaiting":
+        # Teklif verilmiş, müşteri kararı bekleniyor
+        base = ["offer_sent", "revision", "postponed"]
+        if current_user.role == "project_manager":
+            query = query.filter(
+                ReqModel.created_by == current_user.id,
+                ReqModel.status.in_(base),
+            )
+        else:
+            query = query.filter(ReqModel.status.in_(base))
+        page_title = "Karar Bekleyenler"
     elif current_user.role == "project_manager":
         query = query.filter(ReqModel.created_by == current_user.id)
         page_title = "Referanslarım"

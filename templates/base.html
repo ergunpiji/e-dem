@@ -235,19 +235,42 @@
         <i class="bi bi-bar-chart-line nav-icon"></i> Raporlar
       </a>
 
+      {# Talepler: yeni & karar bekleyenler #}
       <div class="tree-group" id="grp-talepler">
         <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-folder2 tree-icon"></i> Talepler
+          <i class="bi bi-inbox tree-icon"></i> Talepler
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
+          <a href="/requests?view=pending_work"
+             class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
+            <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
+          </a>
+          <a href="/requests?view=awaiting"
+             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
+            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+          </a>
           <a href="/requests"
              class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
             <i class="bi bi-list-ul nav-icon"></i> Tüm Referanslar
           </a>
+        </div>
+      </div>
+
+      {# Aktif İşler: konfirme & tamamlanan #}
+      <div class="tree-group" id="grp-aktif">
+        <div class="tree-header" onclick="toggleTree('grp-aktif')">
+          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-arrow-repeat nav-icon"></i> Devam Eden İşler
+            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
+          </a>
+          <a href="/requests?view=completed"
+             class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
+            <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
           </a>
           <a href="/requests?view=cancelled"
              class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
@@ -334,9 +357,10 @@
     {# ── PROJE YÖNETİCİSİ ── #}
     {% elif current_user.role == 'project_manager' %}
 
+      {# Talepler: yeni & karar bekleyenler #}
       <div class="tree-group" id="grp-talepler">
         <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-folder2 tree-icon"></i> Talepler
+          <i class="bi bi-inbox tree-icon"></i> Talepler
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
@@ -344,17 +368,35 @@
              class="sidebar-link {% if cp == '/requests/new' %}active{% endif %}">
             <i class="bi bi-plus-circle nav-icon"></i> Yeni Talep Oluştur
           </a>
-          <a href="/requests"
-             class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
-            <i class="bi bi-list-ul nav-icon"></i> Referanslarım
+          <a href="/requests?view=pending_work"
+             class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
+            <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
           </a>
+          <a href="/requests?view=awaiting"
+             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
+            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+          </a>
+        </div>
+      </div>
+
+      {# Aktif İşler: konfirme & tamamlanan #}
+      <div class="tree-group" id="grp-aktif">
+        <div class="tree-header" onclick="toggleTree('grp-aktif')">
+          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-arrow-repeat nav-icon"></i> Devam Eden İşler
+            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
           </a>
           <a href="/budgets"
              class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
             <i class="bi bi-calculator nav-icon"></i> Bütçeler
+          </a>
+          <a href="/requests?view=completed"
+             class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
+            <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
           </a>
           <a href="/requests?view=cancelled"
              class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
@@ -396,27 +438,42 @@
     {# ── E-DEM ── #}
     {% elif current_user.role == 'e_dem' %}
 
+      {# Talepler: gelen & işlemdekiler #}
       <div class="tree-group" id="grp-talepler">
         <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-folder2 tree-icon"></i> Talepler
+          <i class="bi bi-inbox tree-icon"></i> Talepler
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
-          <a href="/requests"
-             class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
-            <i class="bi bi-inbox nav-icon"></i> Gelen Referanslar
+          <a href="/requests?view=pending_work"
+             class="sidebar-link {% if 'view=pending_work' in cq or (cp == '/requests' and 'view=' not in cq) %}active{% endif %}">
+            <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
           </a>
+          <a href="/requests?view=awaiting"
+             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
+            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+          </a>
+        </div>
+      </div>
+
+      {# Aktif İşler: konfirme edilmiş, bütçe #}
+      <div class="tree-group" id="grp-aktif">
+        <div class="tree-header" onclick="toggleTree('grp-aktif')">
+          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-arrow-repeat nav-icon"></i> Devam Eden İşler
+            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
           </a>
           <a href="/budgets"
              class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
             <i class="bi bi-calculator nav-icon"></i> Bütçe Yönetimi
           </a>
-          <a href="/requests?view=cancelled"
-             class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
-            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+          <a href="/requests?view=completed"
+             class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
+            <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
           </a>
         </div>
       </div>
