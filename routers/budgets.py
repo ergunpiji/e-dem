@@ -359,7 +359,7 @@ async def budgets_detail(
         "rows_by_section":    rows_by_section,
         "vat_by_rate":        vat_by_rate_sorted,
         "service_categories": SERVICE_CATEGORIES,
-        "can_edem_edit":      _can_edem_edit(budget) and current_user.role in ("admin", "e_dem"),
+        "can_edem_edit":      _can_edem_edit(budget) and current_user.role in ("admin", "e_dem", "asistan"),
         "can_manager_price":  _can_manager_price(budget) and current_user.role in ("admin", "mudur", "yonetici"),
         "status_label":       BUDGET_STATUS_LABELS.get(budget.budget_status, budget.budget_status),
         "status_color":       BUDGET_STATUS_COLORS.get(budget.budget_status, "secondary"),
@@ -382,7 +382,7 @@ async def budgets_edit(
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
-    if not _can_edem_edit(budget) and current_user.role != "admin":
+    if not _can_edem_edit(budget) and current_user.role not in ("admin", "asistan"):
         return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
     req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
     services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
@@ -484,7 +484,7 @@ async def budgets_send_to_manager(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in ("admin", "e_dem"):
+    if current_user.role not in ("admin", "e_dem", "asistan"):
         raise HTTPException(403)
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if budget and budget.budget_status in ("draft_edem", "revision_requested"):
