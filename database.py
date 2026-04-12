@@ -869,9 +869,9 @@ def migrate_db():
         _safe_add_column(conn, "org_titles", "pm_permission_level", "TEXT")
 
         # Dosya kapama — Genel Müdür onay adımı
-        _safe_add_column(conn, "closure_requests", "needs_gm",       "BOOLEAN", "0")
+        _safe_add_column(conn, "closure_requests", "needs_gm",       "BOOLEAN", "FALSE")
         _safe_add_column(conn, "closure_requests", "gm_approver_id", "TEXT")
-        _safe_add_column(conn, "closure_requests", "gm_approved_at", "DATETIME")
+        _safe_add_column(conn, "closure_requests", "gm_approved_at", "TIMESTAMP")
         _safe_add_column(conn, "closure_requests", "gm_note",        "TEXT", "''")
         # OrgTitle grade'e göre varsayılan pm_permission_level ata (zaten atanmamışsa)
         conn.execute(text(
