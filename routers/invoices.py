@@ -30,8 +30,8 @@ def _require_finance(current_user: User):
 
 
 def _require_approval_permission(current_user: User, inv):
-    """Onay/red için: admin veya faturanın bağlı olduğu referansın sahibi."""
-    if current_user.role == "admin":
+    """Onay/red için: admin, mudur, muhasebe_muduru veya referans sahibi."""
+    if current_user.role in ("admin", "mudur", "muhasebe_muduru"):
         return
     if inv.request and inv.request.created_by == current_user.id:
         return
