@@ -63,6 +63,20 @@
               enctype="multipart/form-data"
               id="invoiceForm">
 
+          {# ── Hesap Dökümü Banner ── #}
+          {% if statement_prefill %}
+          <div class="alert mb-4 d-flex align-items-center gap-3"
+               style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
+            <i class="bi bi-receipt text-success fs-5"></i>
+            <div>
+              <div class="fw-bold text-success" style="font-size:14px;">Hesap Dökümünden Otomatik Dolduruldu</div>
+              <div class="text-muted" style="font-size:12px;">
+                Satırlar onaylanan hesap dökümünden aktarılmıştır. İnceleyip gerekirse düzenleyin.
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
           {# ── AI ile Doldur ── #}
           <div class="ai-zone mb-4" id="aiZone"
                ondragover="aiDragOver(event)" ondragleave="aiDragLeave(event)" ondrop="aiDrop(event)">
@@ -356,6 +370,21 @@ try { lines = {{ invoice.lines | tojson }}; } catch(e) {}
   {% if invoice.amount and invoice.amount > 0 %}
   lines = [{ description: {{ (invoice.description or '') | tojson }}, amount: {{ invoice.amount }}, vat_rate: {{ invoice.vat_rate or 20 }}, vat_amount: {{ invoice.vat_amount or 0 }} }];
   {% endif %}
+{% endif %}
+{% if statement_prefill %}
+// ── Hesap dökümünden ön doldurma ─────────────────────────────────────────────
+(function() {
+  const prefill = {{ statement_prefill | tojson }};
+  if (prefill.vendor_name) document.getElementById('fVendorName').value = prefill.vendor_name;
+  if (prefill.description) document.getElementById('fDescription') && (document.getElementById('fDescription').value = prefill.description);
+  if (prefill.invoice_type) {
+    const sel = document.getElementById('invoiceTypeSelect');
+    if (sel) { sel.value = prefill.invoice_type; sel.dispatchEvent(new Event('change')); }
+  }
+  if (prefill.lines_json) {
+    try { lines = JSON.parse(prefill.lines_json); } catch(e) {}
+  }
+})();
 {% endif %}
 if (lines.length === 0) addLine();
 else renderLines();

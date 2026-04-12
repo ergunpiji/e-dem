@@ -221,10 +221,32 @@
         {% set ns_stmt = namespace(existing=none) %}
         {% for b in req.budgets %}{% if b.budget_type == 'statement' %}{% set ns_stmt.existing = b %}{% endif %}{% endfor %}
         {% if ns_stmt.existing %}
-        <a href="/budgets/{{ ns_stmt.existing.id }}/statement"
-           class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
-          <i class="bi bi-receipt me-1"></i> Hesap Dökümü
-        </a>
+          {% set stmt = ns_stmt.existing %}
+          {% if stmt.statement_status == 'customer_approved' %}
+          {# Onaylandı — fatura oluştur #}
+          <a href="/budgets/{{ stmt.id }}/statement"
+             class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
+            <i class="bi bi-receipt me-1"></i> Hesap Dökümü
+          </a>
+          {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
+          <a href="/invoices/new?request_id={{ req.id }}&statement_id={{ stmt.id }}"
+             class="btn btn-success btn-sm">
+            <i class="bi bi-file-earmark-text me-1"></i> Fatura Oluştur
+          </a>
+          {% endif %}
+          {% elif stmt.statement_status == 'sent' %}
+          {# Gönderildi — düzenle veya onay al #}
+          <a href="/budgets/{{ stmt.id }}/statement"
+             class="btn btn-sm" style="background:#0d9488; color:white; border-color:#0d9488;">
+            <i class="bi bi-send-check me-1"></i> Hesap Dökümü Gönderildi
+          </a>
+          {% else %}
+          {# Taslak — düzenle #}
+          <a href="/budgets/{{ stmt.id }}/statement"
+             class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
+            <i class="bi bi-receipt me-1"></i> Hesap Dökümü Düzenle
+          </a>
+          {% endif %}
         {% else %}
         <form method="post" action="/requests/{{ req.id }}/create-statement" style="display:inline;">
           <button type="submit" class="btn btn-sm"

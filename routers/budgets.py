@@ -1115,6 +1115,10 @@ async def budgets_statement_editor(
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
 
+    stmt_sent_label = None
+    if budget.statement_sent_at:
+        stmt_sent_label = budget.statement_sent_at.strftime("%d.%m.%Y %H:%M")
+
     return templates.TemplateResponse("budgets/manager_editor.html", {
         "request":             request,
         "current_user":        current_user,
@@ -1133,6 +1137,8 @@ async def budgets_statement_editor(
         "offer_currency":      budget.offer_currency or "TRY",
         "exchange_rates":      budget.exchange_rates,
         "statement_mode":      True,
+        "statement_status":    budget.statement_status,
+        "statement_sent_label": stmt_sent_label,
     })
 
 
@@ -1178,9 +1184,30 @@ async def budgets_send_statement(
     if not budget:
         raise HTTPException(404)
 
-    req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
-    if req:
-        req.updated_at = _now()
-        db.commit()
+    budget.statement_status  = "sent"
+    budget.statement_sent_at = _now()
+    budget.updated_at        = _now()
+    db.commit()
 
-    return RedirectResponse(url=f"/requests/{budget.request_id}#tab-summary", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=f"/budgets/{budget_id}/statement", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{budget_id}/approve-statement", name="budgets_approve_statement")
+async def budgets_approve_statement(
+    budget_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşteri hesap dökümünü onayladı"""
+    if current_user.role not in ("admin", "mudur", "yonetici"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id, Budget.budget_type == "statement").first()
+    if not budget:
+        raise HTTPException(404)
+
+    budget.statement_status      = "customer_approved"
+    budget.statement_approved_at = _now()
+    budget.updated_at            = _now()
+    db.commit()
+
+    return RedirectResponse(url=f"/budgets/{budget_id}/statement", status_code=status.HTTP_302_FOUND)

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, User, _uuid, _now
+from models import Budget, Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, User, _uuid, _now
 from templates_config import templates
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -126,6 +126,7 @@ async def invoices_list(
 async def invoices_new_form(
     request: Request,
     request_id: str = "",
+    statement_id: str = "",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -139,16 +140,66 @@ async def invoices_new_form(
         ReqModel.status.notin_(["cancelled", "closing", "closed"])
     ).order_by(ReqModel.created_at.desc()).all()
     undoc_entries = req.undocumented_entries if req else []
+
+    # Hesap dökümünden ön doldurma
+    statement_prefill = None
+    if statement_id:
+        stmt = db.query(Budget).filter(Budget.id == statement_id, Budget.budget_type == "statement").first()
+        if stmt:
+            # İstemciye göndermek için satırları fatura line'larına dönüştür
+            invoice_lines = []
+            for row in stmt.rows:
+                if row.get("is_service_fee"):
+                    sale = float(row.get("sale_price", 0))
+                    vat  = float(row.get("vat_rate", 20))
+                    if sale > 0:
+                        invoice_lines.append({
+                            "description": row.get("service_name", "Hizmet Bedeli"),
+                            "amount":      round(sale, 2),
+                            "vat_rate":    vat,
+                            "vat_amount":  round(sale * vat / 100, 2),
+                        })
+                else:
+                    sale   = float(row.get("sale_price", 0))
+                    qty    = float(row.get("qty", 1))
+                    nights = float(row.get("nights", 1))
+                    vat    = float(row.get("vat_rate", 20))
+                    total  = round(sale * qty * nights, 2)
+                    if total > 0:
+                        invoice_lines.append({
+                            "description": row.get("service_name", row.get("description", "")),
+                            "amount":      total,
+                            "vat_rate":    vat,
+                            "vat_amount":  round(total * vat / 100, 2),
+                        })
+
+            customer_name = ""
+            if req and req.customer_id:
+                from models import Customer
+                cust = db.query(Customer).filter(Customer.id == req.customer_id).first()
+                if cust:
+                    customer_name = cust.name
+            if not customer_name and req:
+                customer_name = req.client_name or ""
+
+            statement_prefill = {
+                "vendor_name":  customer_name,
+                "invoice_type": "kesilen",
+                "description":  f"Hesap Dökümü — {stmt.venue_name} / {req.request_no if req else ''}",
+                "lines_json":   json.dumps(invoice_lines, ensure_ascii=False),
+            }
+
     return templates.TemplateResponse("invoices/form.html", {
-        "request":       request,
-        "current_user":  current_user,
-        "page_title":    "Yeni Fatura",
-        "invoice":       None,
-        "selected_req":  req,
-        "all_requests":  all_requests,
-        "undoc_entries": undoc_entries,
-        "invoice_types": INVOICE_TYPES,
-        "edit_mode":     False,
+        "request":           request,
+        "current_user":      current_user,
+        "page_title":        "Yeni Fatura",
+        "invoice":           None,
+        "selected_req":      req,
+        "all_requests":      all_requests,
+        "undoc_entries":     undoc_entries,
+        "invoice_types":     INVOICE_TYPES,
+        "edit_mode":         False,
+        "statement_prefill": statement_prefill,
     })
 
 
