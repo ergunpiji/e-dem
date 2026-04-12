@@ -31,10 +31,8 @@ def _require_finance(current_user: User):
 
 
 def _require_approval_permission(current_user: User, inv):
-    """Onay/red için: admin, mudur, muhasebe_muduru veya referans sahibi."""
+    """Onay/red için: sadece admin, mudur, muhasebe_muduru."""
     if current_user.role in ("admin", "mudur", "muhasebe_muduru"):
-        return
-    if inv.request and inv.request.created_by == current_user.id:
         return
     raise HTTPException(status_code=403, detail="Bu faturayı onaylamak/reddetmek için yetkiniz yok.")
 
