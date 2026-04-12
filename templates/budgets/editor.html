@@ -174,7 +174,7 @@
         <div id="eurRateBlock" style="display:none;">
           <label class="form-label fw-semibold mb-1" style="font-size:12px; color:#64748b;">1 EUR =</label>
           <div class="input-group input-group-sm" style="width:150px;">
-            <input type="number" id="eurRate" class="form-control" min="0" step="0.01" placeholder="0,00"
+            <input type="number" id="eurRate" class="form-control" min="0" step="any" placeholder="0,00"
                    oninput="onRateChange()">
             <span class="input-group-text">₺</span>
           </div>
@@ -182,7 +182,7 @@
         <div id="usdRateBlock" style="display:none;">
           <label class="form-label fw-semibold mb-1" style="font-size:12px; color:#64748b;">1 USD =</label>
           <div class="input-group input-group-sm" style="width:150px;">
-            <input type="number" id="usdRate" class="form-control" min="0" step="0.01" placeholder="0,00"
+            <input type="number" id="usdRate" class="form-control" min="0" step="any" placeholder="0,00"
                    oninput="onRateChange()">
             <span class="input-group-text">₺</span>
           </div>
@@ -432,13 +432,13 @@ rows = rows.filter(r => !r.is_service_fee);
     const data = await resp.json();
     let loaded = false;
     if (data.EUR && eurEl && !(parseFloat(eurEl.value) > 0)) {
-      eurEl.value = data.EUR;
-      exchangeRates['EUR'] = data.EUR;
+      eurEl.value = Math.round(data.EUR * 100) / 100;
+      exchangeRates['EUR'] = Math.round(data.EUR * 100) / 100;
       loaded = true;
     }
     if (data.USD && usdEl && !(parseFloat(usdEl.value) > 0)) {
-      usdEl.value = data.USD;
-      exchangeRates['USD'] = data.USD;
+      usdEl.value = Math.round(data.USD * 100) / 100;
+      exchangeRates['USD'] = Math.round(data.USD * 100) / 100;
       loaded = true;
     }
     if (loaded) {
