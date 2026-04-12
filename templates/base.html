@@ -227,8 +227,8 @@
       <i class="bi bi-speedometer2 nav-icon"></i> Dashboard
     </a>
 
-    {# ── ADMIN ── #}
-    {% if current_user.role == 'admin' %}
+    {# ── ADMIN / GENEL MÜDÜR ── #}
+    {% if current_user.role in ('admin', 'mudur') %}
 
       <a href="/reports"
          class="sidebar-link {% if cp == '/reports' %}active{% endif %}">
