@@ -1034,12 +1034,12 @@ document.addEventListener('DOMContentLoaded', function() {
       {% set rbs = bd.rows_by_section %}
       <div class="tab-pane fade" id="btpane-{{ b.id }}">
 
-        {# Aksiyon butonları #}
+        {# Aksiyon butonları — kapalı dosyada gösterme #}
+        {% if req.status != 'closed' %}
         <div class="d-flex gap-2 px-3 pt-3 pb-2 border-bottom">
           <a href="/budgets/{{ b.id }}" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-eye me-1"></i>Detay
           </a>
-          {% if req.status != 'closed' %}
           {% if current_user.role in ('admin', 'e_dem', 'asistan') and b.budget_status in ('draft_edem', 'revision_requested') %}
           <a href="/budgets/{{ b.id }}/edit" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-pencil me-1"></i>Düzenle
@@ -1050,13 +1050,13 @@ document.addEventListener('DOMContentLoaded', function() {
             <i class="bi bi-tag me-1"></i>Fiyat Gir
           </a>
           {% endif %}
-          {% endif %}
           {% if b.budget_status == 'approved' %}
           <a href="/budgets/{{ b.id }}/export" class="btn btn-outline-success btn-sm">
             <i class="bi bi-file-earmark-excel me-1"></i>Excel
           </a>
           {% endif %}
         </div>
+        {% endif %}
 
         {# Mini bütçe tablosu #}
         {% set show_cost = current_user.role in ('admin', 'e_dem', 'mudur', 'yonetici', 'asistan') %}
