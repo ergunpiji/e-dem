@@ -591,6 +591,19 @@
             </button>
           </div>
           {% endif %}
+
+          {# Hesap Dökümü — confirmed / completed / closing / closed #}
+          {% set has_confirmed = budgets_data | selectattr('budget.budget_status', 'equalto', 'confirmed') | list %}
+          {% set has_approved_too = has_approved %}
+          {% if (has_confirmed or has_approved_too) and req.status in ('confirmed','completed','closing','closed')
+                and current_user.role in ('admin','mudur','yonetici','muhasebe_muduru') %}
+          <div class="ms-auto">
+            <a href="/requests/{{ req.id }}/statement" target="_blank"
+               class="btn btn-sm" style="font-size:11px; background:#1a3a5c; color:white; border-color:#1a3a5c;">
+              <i class="bi bi-receipt me-1"></i>Hesap Dökümü
+            </a>
+          </div>
+          {% endif %}
         </div>
       </div>
 

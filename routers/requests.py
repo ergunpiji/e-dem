@@ -1200,6 +1200,88 @@ async def requests_preview(
 
 
 # ---------------------------------------------------------------------------
+# Hesap Dökümü — onaylı bütçe + faturalar + HBF özeti
+# ---------------------------------------------------------------------------
+
+@router.get("/{req_id}/statement", response_class=HTMLResponse, name="requests_statement")
+async def requests_statement(
+    req_id:    str,
+    request:   Request,
+    budget_id: str = "",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşteriye gönderilecek hesap dökümü: bütçe + faturalar + HBF özeti."""
+    from models import Settings as SettingsModel, Invoice, ExpenseReport
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        raise HTTPException(404)
+
+    if current_user.role not in ("admin", "mudur", "yonetici", "muhasebe_muduru"):
+        raise HTTPException(403)
+
+    # Onaylı / müşteri seçili bütçeler
+    eligible = [b for b in req.budgets if b.budget_status in ("approved", "confirmed")]
+    if not eligible:
+        raise HTTPException(404, "Bu talep için onaylı bütçe bulunamadı.")
+
+    # Önce confirmed varsa onu seç, yoksa approved
+    confirmed_budgets = [b for b in eligible if b.budget_status == "confirmed"]
+    budget = next(
+        (b for b in eligible if b.id == budget_id),
+        confirmed_budgets[0] if confirmed_budgets else eligible[0]
+    )
+
+    customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
+                if req.customer_id else None)
+    settings  = db.query(SettingsModel).filter(SettingsModel.id == 1).first()
+    manager   = db.query(User).filter(User.id == req.created_by).first() if req.created_by else None
+
+    # Bütçe kalemleri (teklif mantığıyla aynı)
+    data_excl = _preview_budget_data(budget, "exclusive")
+    data_incl = _preview_budget_data(budget, "inclusive")
+
+    # Onaylı faturalar — müşteriye kesilen (kesilen) ve iade
+    approved_invoices = [i for i in req.invoices if i.status == "approved"]
+    kesilen   = [i for i in approved_invoices if i.invoice_type == "kesilen"]
+    iade_kesilen = [i for i in approved_invoices if i.invoice_type == "iade_kesilen"]
+    total_kesilen     = sum(i.total_amount for i in kesilen)
+    total_iade        = sum(i.total_amount for i in iade_kesilen)
+    net_fatura_total  = round(total_kesilen - total_iade, 2)
+
+    # Onaylı HBF'ler
+    approved_hbf = [r for r in req.expense_reports if r.status == "approved"]
+    total_hbf    = round(sum(r.grand_total for r in approved_hbf), 2)
+
+    # Finansal özet
+    budgeted_total = data_excl["final_total"]  # teklif edilen (KDV hariç, SF dahil)
+    budgeted_incl  = data_incl["final_total"]  # teklif edilen (KDV dahil, SF dahil)
+
+    return templates.TemplateResponse("requests/statement.html", {
+        "request":         request,
+        "current_user":    current_user,
+        "req":             req,
+        "budget":          budget,
+        "eligible_budgets": eligible,
+        "customer":        customer,
+        "settings":        settings,
+        "manager":         manager,
+        "data_excl":       data_excl,
+        "data_incl":       data_incl,
+        "kesilen":         kesilen,
+        "iade_kesilen":    iade_kesilen,
+        "total_kesilen":   total_kesilen,
+        "total_iade":      total_iade,
+        "net_fatura_total": net_fatura_total,
+        "approved_hbf":    approved_hbf,
+        "total_hbf":       total_hbf,
+        "budgeted_total":  budgeted_total,
+        "budgeted_incl":   budgeted_incl,
+        "page_title":      f"Hesap Dökümü — {req.request_no}",
+    })
+
+
+# ---------------------------------------------------------------------------
 # Çoklu bütçe → tek Excel (özet sayfasından export)
 # ---------------------------------------------------------------------------
 
