@@ -208,10 +208,10 @@ async def reports_financial(
 
     filtered_req_ids = {r.id for r in all_reqs if _req_year(r) == selected_year}
 
-    # Faturalar
+    # Faturalar — approved (eski "active" de dahil geriye uyumluluk için)
     invoices = db.query(Invoice).filter(
         Invoice.request_id.in_(list(filtered_req_ids)),
-        Invoice.status == "active",
+        Invoice.status.in_(["approved", "active"]),
     ).all()
 
     # Referans bazlı finansal özet

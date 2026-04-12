@@ -710,16 +710,24 @@ async function uploadDoc(rowIdx, input) {
   if (!file) return;
   const rid = REPORT_ID;
   if (!rid) {
-    // Önce formu kaydet
+    alert('Önce "Taslak Kaydet" ile formu kaydedin, sonra belge yükleyin.');
+    return;
+  }
+
+  // Satır henüz kaydedilmemişse önce sync-rows ile kaydet
+  if (!rows[rowIdx].id) {
     saveItems();
-    alert('Önce formu kaydedin, sonra belge yükleyin.');
-    return;
+    const syncFd = new FormData();
+    syncFd.append('items_json', JSON.stringify(rows));
+    const syncRes = await fetch(`/expenses/${rid}/sync-rows`, { method: 'POST', body: syncFd });
+    const syncData = await syncRes.json();
+    if (!syncData.ok) { alert('Satırlar kaydedilemedi.'); return; }
+    syncData.items.forEach(({ idx, id }) => { if (rows[idx]) rows[idx].id = id; });
   }
+
   const itemId = rows[rowIdx].id;
-  if (!itemId) {
-    alert('Bu satır için önce kaydedin.');
-    return;
-  }
+  if (!itemId) { alert('Satır ID alınamadı.'); return; }
+
   const fd = new FormData();
   fd.append('file', file);
   const res = await fetch(`/expenses/${rid}/upload/${itemId}`, { method: 'POST', body: fd });

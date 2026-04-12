@@ -342,6 +342,35 @@ async def expenses_reject(
 # Kalem belge yükleme
 # ---------------------------------------------------------------------------
 
+@router.post("/{report_id}/sync-rows", name="expenses_sync_rows")
+async def expenses_sync_rows(
+    report_id: str,
+    items_json: str = Form("[]"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Satırları kaydet ve item ID'lerini döndür (belge yükleme öncesi auto-save)."""
+    report = db.query(ExpenseReport).filter(ExpenseReport.id == report_id).first()
+    if not report:
+        raise HTTPException(404)
+    if not _can_edit(report, current_user):
+        raise HTTPException(403)
+
+    for item in list(report.items):
+        db.delete(item)
+    db.flush()
+    _save_items_from_json(db, report_id, items_json)
+    db.commit()
+    db.refresh(report)
+
+    return JSONResponse({
+        "ok": True,
+        "items": [{"idx": i, "id": item.id} for i, item in enumerate(
+            sorted(report.items, key=lambda x: x.sort_order)
+        )],
+    })
+
+
 @router.post("/{report_id}/upload/{item_id}", name="expenses_upload_doc")
 async def expenses_upload_doc(
     report_id: str,
@@ -492,6 +521,9 @@ def _save_items_from_json(db: Session, report_id: str, items_json: str):
             vat_amount=vat_amount,
             total_amount=total,
             sort_order=idx,
+            # Daha önce yüklenen belgeyi koru
+            document_path=it.get("document_path") or None,
+            document_name=it.get("document_name") or None,
             created_at=_now(),
         )
         db.add(item)
