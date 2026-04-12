@@ -240,6 +240,9 @@
               {% if budget and budget.budget_status == 'confirmed' %}
               <th style="width:130px; background:#d1fae5; color:#065f46;">Kesin Maliyet (KDV hariç)</th>
               {% endif %}
+              {% if current_user.role in ('project_manager', 'admin') %}
+              <th style="width:130px; background:#eff6ff; color:#1d4ed8;">Satış Fiyatı (KDV hariç)</th>
+              {% endif %}
               <th style="width:70px;">KDV %</th>
               <th style="width:110px;">Maliyet (KDV dahil)</th>
               <th style="width:36px;"></th>
@@ -256,24 +259,40 @@
   <div class="card mb-4">
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <div class="border rounded p-3 text-center">
             <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;" id="labelCostEx">Maliyet (KDV hariç)</div>
             <div class="fw-bold text-secondary" style="font-size:18px;" id="totalCostExVat">₺0,00</div>
           </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <div class="border rounded p-3 text-center bg-primary bg-opacity-10">
             <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;" id="labelCostInc">TOPLAM MALİYET (KDV dahil) — TL</div>
             <div class="fw-bold text-primary" style="font-size:22px;" id="totalCostIncVat">₺0,00</div>
           </div>
         </div>
-        <div class="col-md-4" id="totalOfferBlock" style="display:none;">
+        {% if current_user.role in ('project_manager', 'admin') %}
+        <div class="col-md-3">
+          <div class="border rounded p-3 text-center" style="background:#eff6ff; border-color:#bfdbfe !important;">
+            <div style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px; color:#1d4ed8;">SATIŞ (KDV hariç)</div>
+            <div class="fw-bold" style="font-size:18px; color:#1d4ed8;" id="totalSaleExVat">₺0,00</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-3 text-center" style="background:#f0fdf4; border-color:#86efac !important;">
+            <div style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px; color:#15803d;" id="labelSaleInc">SATIŞ (KDV dahil) — KAR</div>
+            <div class="fw-bold" style="font-size:22px; color:#15803d;" id="totalSaleIncVat">₺0,00</div>
+            <div style="font-size:11px; color:#6b7280;" id="karLabel"></div>
+          </div>
+        </div>
+        {% else %}
+        <div class="col-md-6" id="totalOfferBlock" style="display:none;">
           <div class="border rounded p-3 text-center bg-success bg-opacity-10">
             <div class="text-muted" style="font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:.5px;" id="totalOfferLabel">TOPLAM MALİYET — OFFER</div>
             <div class="fw-bold text-success" style="font-size:22px;" id="totalCostOffer">—</div>
           </div>
         </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -391,13 +410,17 @@ function updateRateBlockVisibility() {
 }
 
 // Talepten gelen default tarihler
-const REQ_ACCOM_IN  = '{{ req.accom_check_in  or req.check_in  or "" if req else "" }}';
-const REQ_ACCOM_OUT = '{{ req.accom_check_out or req.check_out or "" if req else "" }}';
-const REQ_MTG_IN    = '{{ req.check_in  or "" if req else "" }}';
-const REQ_MTG_OUT   = '{{ req.check_out or "" if req else "" }}';
+const REQ_ACCOM_IN      = '{{ req.accom_check_in  or req.check_in  or "" if req else "" }}';
+const REQ_ACCOM_OUT     = '{{ req.accom_check_out or req.check_out or "" if req else "" }}';
+const REQ_MTG_IN        = '{{ req.check_in  or "" if req else "" }}';
+const REQ_MTG_OUT       = '{{ req.check_out or "" if req else "" }}';
+const REQ_ATTENDEE_COUNT = {{ req.attendee_count or 1 if req else 1 }};
+const USER_ROLE          = '{{ current_user.role }}';
 
 // ─── Veri ───
 const BUDGET_IS_CONFIRMED = "{{ (budget.budget_status if budget else '') }}" === 'confirmed';
+// Kolon sayısı: PM/Admin için +1 satış fiyatı kolonu
+const NCOLS = (USER_ROLE === 'project_manager' || USER_ROLE === 'admin') ? 9 : 8;
 
 let rows = [];
 try { rows = JSON.parse(document.getElementById('rowsJson').value || '[]'); } catch(e) {}
@@ -529,7 +552,7 @@ function renderTable() {
     const dates    = hasDates ? getSectionDates(sec) : null;
 
     html += `<tr class="section-header-row">
-      <td colspan="8">
+      <td colspan="${NCOLS}">
         <div class="d-flex align-items-center justify-content-between">
           <span>${SECTION_LABELS[sec] || sec}</span>
           <div class="d-flex gap-1">
@@ -559,7 +582,7 @@ function renderTable() {
         ? `${calcNights(dates.date_from, dates.date_to)} ${sec==='accommodation'?'gece':'gün'}`
         : '';
       html += `<tr class="date-subrow">
-        <td colspan="8" class="px-3 py-2">
+        <td colspan="${NCOLS}" class="px-3 py-2">
           <div class="d-flex align-items-center gap-3 flex-wrap">
             <span style="font-size:11px; font-weight:700; color:#0369a1; text-transform:uppercase; letter-spacing:.4px;">
               <i class="bi bi-calendar-range me-1"></i>${label} Tarihleri:
@@ -583,7 +606,7 @@ function renderTable() {
     }
 
     if (secRows.length === 0) {
-      html += `<tr><td colspan="8" class="text-center text-muted py-2" style="font-size:12px; background:#fafafa;">
+      html += `<tr><td colspan="${NCOLS}" class="text-center text-muted py-2" style="font-size:12px; background:#fafafa;">
         <em>Boş — katalogdan veya boş satır ekleyin</em></td></tr>`;
     } else {
       secRows.forEach(row => {
@@ -684,6 +707,16 @@ function renderTable() {
                      style="background:#f0fdf4;">
             </div>
           </td>` : ''}
+          ${USER_ROLE === 'project_manager' || USER_ROLE === 'admin' ? `<td style="background:#eff6ff;">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text" style="font-size:11px;padding:2px 5px;background:#dbeafe;color:#1d4ed8;">${currSymbol(rowCur)}</span>
+              <input type="number" class="form-control" min="0" step="0.01"
+                     value="${row.sale_price > 0 ? row.sale_price : ''}"
+                     placeholder="0,00" id="saleInput-${i}"
+                     oninput="rows[${i}].sale_price=parseFloat(this.value)||0;updateTotals();saveRows()"
+                     style="background:#eff6ff;">
+            </div>
+          </td>` : ''}
           <td>${vatCell}</td>
           <td class="text-end fw-semibold" style="font-size:12px; white-space:nowrap;" id="total-${i}">
             ${fmtCurrency(total, rowCur)}
@@ -695,13 +728,13 @@ function renderTable() {
           </td>
         </tr>
         ${isRevFlagged && row.revision_note ? `<tr class="revision-note-inline">
-          <td colspan="8" class="px-3 py-1" style="font-size:12px; color:#9a3412;">
+          <td colspan="${NCOLS}" class="px-3 py-1" style="font-size:12px; color:#9a3412;">
             <i class="bi bi-flag-fill me-1 text-danger"></i>
             <strong>Revizyon:</strong> ${escHtml(row.revision_note)}
           </td>
         </tr>` : ''}
         <tr class="quotes-panel-tr" id="quotesPanel-${i}">
-          <td colspan="8">
+          <td colspan="${NCOLS}">
             <div style="max-width: 640px;">
               <table class="table table-sm quotes-table mb-2">
                 <thead>
@@ -731,7 +764,7 @@ function renderTable() {
 
 function addRow(section) {
   const vat = defaultVat(section);
-  rows.push({section, service_name:'', unit:'Adet', qty:1, nights:1,
+  rows.push({section, service_name:'', unit:'Kişi', qty: REQ_ATTENDEE_COUNT, nights:1,
              cost_price:0, sale_price:0, vat_rate: vat, currency: offerCurrency || 'TRY', commission_pct:0});
   renderTable();
   updateTotals();
@@ -747,29 +780,48 @@ function removeRow(i) {
 
 function addFromCatalog(id, name, unit, section) {
   const vat = defaultVat(section);
-  rows.push({section, service_name: name, unit, qty:1, nights:1,
+  rows.push({section, service_name: name, unit, qty: REQ_ATTENDEE_COUNT, nights:1,
              cost_price:0, sale_price:0, vat_rate: vat, service_id: id, currency: offerCurrency || 'TRY'});
   renderTable();
   updateTotals();
   saveRows();
 }
 
-// ─── Toplamlar (sadece maliyet) ───
+// ─── Toplamlar ───
 function updateTotals() {
-  let costExTry = 0, costIncTry = 0;
+  let costExTry = 0, costIncTry = 0, saleExTry = 0, saleIncTry = 0;
   rows.forEach(row => {
     if (row.is_service_fee) return;
     const qty    = parseFloat(row.qty)        || 1;
     const nights = parseFloat(row.nights)     || 1;
     const cost   = parseFloat(row.cost_price) || 0;
+    const sale   = parseFloat(row.sale_price) || 0;
     const vat    = parseFloat(row.vat_rate)   || 0;
     const cur    = row.currency || 'TRY';
     const costSub    = cost * qty * nights;
     const costSubTry = amountToTry(costSub, cur);
-    const vatAmt     = costSubTry * (vat / 100);
+    const saleSub    = sale * qty * nights;
+    const saleSubTry = amountToTry(saleSub, cur);
     costExTry  += costSubTry;
-    costIncTry += costSubTry + vatAmt;
+    costIncTry += costSubTry * (1 + vat / 100);
+    saleExTry  += saleSubTry;
+    saleIncTry += saleSubTry * (1 + vat / 100);
   });
+
+  // Satış toplamlarını göster (PM/Admin)
+  const saleExEl  = document.getElementById('totalSaleExVat');
+  const saleIncEl = document.getElementById('totalSaleIncVat');
+  const karLbl    = document.getElementById('karLabel');
+  if (saleExEl)  saleExEl.textContent  = fmtMoney(saleExTry);
+  if (saleIncEl) saleIncEl.textContent = fmtMoney(saleIncTry);
+  if (karLbl && costIncTry > 0) {
+    const kar = saleIncTry - costIncTry;
+    const pct = (kar / saleIncTry * 100).toFixed(1);
+    karLbl.textContent = kar >= 0
+      ? `Kar: ${fmtMoney(kar)} (%${pct})`
+      : `Zarar: ${fmtMoney(Math.abs(kar))}`;
+    karLbl.style.color = kar >= 0 ? '#16a34a' : '#dc2626';
+  }
 
   const oc = offerCurrency || 'TRY';
   const offerBlock = document.getElementById('totalOfferBlock');
@@ -800,13 +852,10 @@ function updateTotals() {
 }
 
 function saveRows() {
-  // sale_price = 0 for all non-service-fee rows (E-dem cannot enter sale price)
-  const toSave = rows.map(r => {
-    if (!r.is_service_fee) {
-      return {...r, sale_price: 0};
-    }
-    return r;
-  });
+  // E-dem satış fiyatı giremez — sadece e_dem rolünde sıfırla
+  const toSave = (USER_ROLE === 'e_dem')
+    ? rows.map(r => r.is_service_fee ? r : {...r, sale_price: 0})
+    : rows;
   document.getElementById('rowsJson').value = JSON.stringify(toSave);
   // Mevcut bütçe varsa otomatik AJAX kayıt planla
   if (typeof _currentBudgetId !== 'undefined') scheduleAutoSave();
