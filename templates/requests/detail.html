@@ -336,7 +336,7 @@
 {% set _cr = req.closure_request %}
 {% set _closed_at = (_cr.gm_approved_at or _cr.l2_approved_at or _cr.updated_at) if _cr else none %}
 {% set _closed_by = (_cr.gm_approver or _cr.l2_approver) if _cr else none %}
-<div class="mb-4 p-4 rounded-3 text-center" style="background:#dcfce7; border:2px solid #16a34a;">
+<div id="closedBanner" class="mb-4 p-4 rounded-3 text-center" style="background:#dcfce7; border:2px solid #16a34a;">
   <i class="bi bi-lock-fill text-success" style="font-size:2rem;"></i>
   <h5 class="fw-bold text-success mt-2 mb-1">Dosya Kapandı</h5>
   <div class="text-muted" style="font-size:13px;">
@@ -345,6 +345,13 @@
     {% if _cr and _cr.gm_note %}<br><em>Not: {{ _cr.gm_note }}</em>{% endif %}
   </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const banner = document.getElementById('closedBanner');
+  const financial = document.getElementById('tab-financial');
+  if (banner && financial) { banner.after(financial); }
+});
+</script>
 {% endif %}
 
 <div class="row g-4">
@@ -1036,6 +1043,7 @@
           <a href="/budgets/{{ b.id }}" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-eye me-1"></i>Detay
           </a>
+          {% if req.status != 'closed' %}
           {% if current_user.role in ('admin', 'e_dem', 'asistan') and b.budget_status in ('draft_edem', 'revision_requested') %}
           <a href="/budgets/{{ b.id }}/edit" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-pencil me-1"></i>Düzenle
@@ -1045,6 +1053,7 @@
           <a href="/budgets/{{ b.id }}/price" class="btn btn-outline-warning btn-sm">
             <i class="bi bi-tag me-1"></i>Fiyat Gir
           </a>
+          {% endif %}
           {% endif %}
           {% if b.budget_status == 'approved' %}
           <a href="/budgets/{{ b.id }}/export" class="btn btn-outline-success btn-sm">
@@ -1697,10 +1706,12 @@
         <span class="badge bg-primary bg-opacity-10 text-primary ms-1" style="font-size:10px;">{{ expense_reports | length }}</span>
         {% endif %}
       </span>
+      {% if req.status != 'closed' %}
       <a href="/expenses/new?request_id={{ req.id }}" class="btn btn-sm btn-outline-primary py-0 px-2"
          style="font-size:12px;">
         <i class="bi bi-plus me-1"></i>Yeni HBF
       </a>
+      {% endif %}
     </div>
     {% if expense_reports %}
     <div class="table-responsive">
@@ -1743,6 +1754,7 @@
               <a href="/expenses/{{ rpt.id }}" class="btn btn-xs btn-outline-secondary py-0 px-1" title="Görüntüle">
                 <i class="bi bi-eye"></i>
               </a>
+              {% if req.status != 'closed' %}
               {% if rpt.status in ('draft','rejected') and (current_user.role == 'admin' or rpt.submitted_by == current_user.id) %}
               <a href="/expenses/{{ rpt.id }}/edit" class="btn btn-xs btn-outline-primary py-0 px-1 ms-1" title="Düzenle">
                 <i class="bi bi-pencil"></i>
@@ -1755,6 +1767,7 @@
                   <i class="bi bi-check-lg"></i>
                 </button>
               </form>
+              {% endif %}
               {% endif %}
             </td>
           </tr>

@@ -568,6 +568,17 @@ async def requests_detail(
     can_approve_invoices = current_user.role in ("admin", "mudur", "muhasebe_muduru")
     # Adım 2 — Muhasebe keser (gm_approved → approved)
     can_cut_invoices     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+
+    # Kapanan dosyada tüm aksiyon izinleri devre dışı (salt görüntüleme)
+    if req.status == "closed":
+        can_edit_req        = False
+        can_edit_status     = False
+        can_direct_manage   = False
+        can_budget_ops      = False
+        can_manage_invoices = False
+        can_approve_invoices = False
+        can_cut_invoices    = False
+        can_manage_undoc    = False
     # Admin referans taşıma için tüm referanslar
     all_requests = []
     if current_user.role == "admin":
