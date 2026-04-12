@@ -392,6 +392,50 @@ async def requests_detail(
         )
     )
 
+    # Onay bekleyen kişi bilgisi
+    def _find_next_approver(user_id: str | None) -> User | None:
+        """Bir kullanıcının zincirindeki ilk mudur'u bul."""
+        if not user_id:
+            return None
+        visited: set = set()
+        current = db.query(User).filter(User.id == user_id).first()
+        while current and current.manager_id and current.manager_id not in visited:
+            visited.add(current.manager_id)
+            mgr = db.query(User).filter(User.id == current.manager_id, User.active == True).first()
+            if not mgr:
+                break
+            if mgr.role in ("mudur", "admin"):
+                return mgr
+            current = mgr
+        return db.query(User).filter(User.role == "mudur", User.active == True).first()
+
+    def _find_gm_approver() -> User | None:
+        users = db.query(User).filter(User.role == "mudur", User.active == True).all()
+        best, best_grade = None, 999
+        for u in users:
+            if u.org_title and u.org_title.grade < best_grade:
+                best_grade = u.org_title.grade
+                best = u
+        return best or db.query(User).filter(User.role == "mudur", User.active == True).first()
+
+    def _find_muhasebe_muduru() -> User | None:
+        return db.query(User).filter(User.role == "muhasebe_muduru", User.active == True).first()
+
+    # Kapama için beklenen onaylayıcı
+    closure_pending_approver: User | None = None
+    if req.closure_request and req.closure_request.status == "pending_manager":
+        closure_pending_approver = _find_next_approver(req.closure_request.submitted_by)
+    elif req.closure_request and req.closure_request.status == "pending_gm":
+        closure_pending_approver = _find_gm_approver()
+    elif req.closure_request and req.closure_request.status == "pending_finance":
+        closure_pending_approver = _find_muhasebe_muduru()
+
+    # Bütçeler için beklenen onaylayıcı (pending_manager)
+    budget_pending_approvers: dict = {}  # budget_id → User
+    for b in req.budgets:
+        if b.budget_status == "pending_manager":
+            budget_pending_approvers[b.id] = _find_next_approver(req.created_by)
+
     # venue id → supplier_type map (RFQ filtrelemesi için)
     venues_map = {v.id: {"name": v.name, "city": v.city,
                           "supplier_type": v.supplier_type,
@@ -594,6 +638,8 @@ async def requests_detail(
             "can_price_budget":  can_price_budget,
             "can_direct_manage": can_direct_manage,
             "can_budget_ops":    can_budget_ops,
+            "closure_pending_approver":  closure_pending_approver,
+            "budget_pending_approvers":  budget_pending_approvers,
             "request_tabs":     REQUEST_TABS,
             "budgets_data":     budgets_data,
             "all_sections":     all_sections_set,

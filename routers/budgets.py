@@ -350,6 +350,23 @@ async def budgets_detail(
         back_url = "/budgets"
         back_label = "Bütçe Listesine Dön"
 
+    # Onay bekleyen kişiyi bul
+    pending_approver = None
+    if budget.budget_status == "pending_manager" and req:
+        visited: set = set()
+        current_u = db.query(User).filter(User.id == req.created_by).first() if req.created_by else None
+        while current_u and current_u.manager_id and current_u.manager_id not in visited:
+            visited.add(current_u.manager_id)
+            mgr = db.query(User).filter(User.id == current_u.manager_id, User.active == True).first()
+            if not mgr:
+                break
+            if mgr.role in ("mudur", "admin"):
+                pending_approver = mgr
+                break
+            current_u = mgr
+        if not pending_approver:
+            pending_approver = db.query(User).filter(User.role == "mudur", User.active == True).first()
+
     return templates.TemplateResponse("budgets/detail.html", {
         "request":            request,
         "current_user":       current_user,
@@ -367,6 +384,7 @@ async def budgets_detail(
         "back_label":         back_label,
         "offer_currency":     _offer_currency,
         "exchange_rates":     _ex_rates,
+        "pending_approver":   pending_approver,
     })
 
 

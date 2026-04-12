@@ -79,13 +79,22 @@
           <strong>Kapama Onayında</strong> —
           {% if cr.status == 'pending_manager' %}
             Müdür onayı bekleniyor
+            {% if closure_pending_approver %}
+              — <strong>{{ closure_pending_approver.full_name }}</strong>
+            {% endif %}
           {% elif cr.status == 'pending_gm' %}
             <i class="bi bi-check2 text-success me-1"></i>Müdür onayladı →
             <span style="color:#7c3aed; font-weight:600;">Genel Müdür onayı bekleniyor</span>
+            {% if closure_pending_approver %}
+              — <strong style="color:#7c3aed;">{{ closure_pending_approver.full_name }}</strong>
+            {% endif %}
           {% elif cr.status == 'pending_finance' %}
             <i class="bi bi-check2 text-success me-1"></i>
             {% if cr.needs_gm %}Müdür + Genel Müdür onayladı{% else %}Müdür onayladı{% endif %} →
             Muhasebe Müdürü final onayı bekleniyor
+            {% if closure_pending_approver %}
+              — <strong>{{ closure_pending_approver.full_name }}</strong>
+            {% endif %}
           {% endif %}
           ({{ cr.submitted_at.strftime('%d.%m.%Y') if cr.submitted_at else '' }})
         </div>
@@ -331,6 +340,11 @@
                 type="button" style="white-space:nowrap;">
           <i class="bi bi-building me-1"></i>{{ b.venue_name or ('Bütçe #' + loop.index|string) }}
           <span class="badge bg-{{ scolor }} ms-1" style="font-size:10px;">{{ {'draft_edem':'Taslak','pending_manager':'Onayda','draft_manager':'Düzenleniyor','approved':'Onaylandı','confirmed':'Müşteri Seçti ✓','revision_requested':'Revizyon','cancelled':'İptal'}.get(bs, bs) }}</span>
+          {% if bs == 'pending_manager' and budget_pending_approvers.get(b.id) %}
+          <span class="ms-1" style="font-size:10px; color:#92400e;" title="Onay bekleyen kişi">
+            <i class="bi bi-person-fill"></i> {{ budget_pending_approvers[b.id].full_name }}
+          </span>
+          {% endif %}
         </button>
       </li>
       {% endfor %}
