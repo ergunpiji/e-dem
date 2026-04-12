@@ -254,7 +254,7 @@
             <tr>
               <th class="ps-3" style="min-width:150px;">Hizmet</th>
               <th style="width:60px;">Birim</th>
-              <th style="width:{% if statement_mode %}90{% else %}45{% endif %}px;">{% if statement_mode %}Satış<br>Miktar{% else %}Miktar{% endif %}</th>
+              {% if not statement_mode %}<th style="width:45px;">Miktar</th>{% endif %}
               <th style="width:110px;">Başlangıç</th>
               <th style="width:110px;">Bitiş</th>
               <th style="width:45px;">Gece</th>
@@ -822,18 +822,17 @@ function renderTable() {
         ? `<input type="text" class="form-control form-control-sm" value="${escHtml(rows[i].unit||'Adet')}" style="width:65px;" oninput="rows[${i}].unit=this.value;saveRows()">`
         : escHtml(rows[i].unit || 'Adet');
       const costQty = parseFloat(rows[i].cost_qty != null ? rows[i].cost_qty : qty) || qty;
-      const qtyCellHtml = STATEMENT_MODE
-        ? `<div style="display:flex;flex-direction:column;gap:2px;">
-             <input type="number" class="form-control form-control-sm text-center" style="width:55px;font-size:10px;" min="0" step="0.1" value="${qty}" title="Satış miktarı"
+      // Statement modunda: miktar td'si yok, fiyat hücrelerine inline eklenecek
+      const qtyTd = STATEMENT_MODE
+        ? ''  // ayrı sütun yok
+        : `<td class="text-center" style="font-size:12px;">
+             <input type="number" class="form-control form-control-sm text-center" style="width:55px;" min="1" value="${qty}"
                     oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">
-             <input type="number" class="form-control form-control-sm text-center" style="width:55px;font-size:10px;background:#f0f9ff;color:#0369a1;" min="0" step="0.1" value="${costQty}" title="Maliyet miktarı"
-                    oninput="rows[${i}].cost_qty=parseFloat(this.value)||0;calcServiceFee();updateRowSaleSub(${i})">
-           </div>`
-        : `<input type="number" class="form-control form-control-sm text-center" style="width:55px;" min="1" value="${qty}" oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">`;
+           </td>`;
       html += `<tr style="${isFlagged ? 'background:#fff7ed;' : ''}">
         <td class="ps-3 ${isManagerRow ? '' : 'fw-semibold'}" style="font-size:13px;">${nameCellHtml}</td>
         <td style="color:#64748b; font-size:12px;">${unitCellHtml}</td>
-        <td class="text-center" style="font-size:12px;">${qtyCellHtml}</td>
+        ${qtyTd}
         ${dateCells}
         <td style="padding:3px 4px;">
           <input type="number" class="form-control form-control-sm text-center" style="font-size:11px; width:50px;"
@@ -853,6 +852,11 @@ function renderTable() {
             <input type="number" class="form-control form-control-sm" min="0" step="0.01"
                    value="${cost || ''}" placeholder="0,00" style="${isManagerRow ? '' : 'background:#f8fafc;'}"
                    oninput="rows[${i}].cost_price=parseFloat(this.value)||0;calcServiceFee();updateRowSaleSub(${i})">
+            ${STATEMENT_MODE ? `<span class="input-group-text" style="font-size:10px;padding:2px 4px;background:#e0f2fe;color:#0369a1;">×</span>
+            <input type="number" class="form-control form-control-sm text-center" min="0" step="0.1"
+                   value="${costQty || ''}" placeholder="1" style="width:44px;max-width:44px;background:#f0f9ff;color:#0369a1;"
+                   title="Maliyet miktarı"
+                   oninput="rows[${i}].cost_qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">` : ''}
           </div>
           ${(rows[i].commission_pct > 0) ? `<div class="mt-1" style="font-size:10px;color:#6366f1;">
             Kom. %${rows[i].commission_pct} = −${fmtCurrency(cost*rows[i].commission_pct/100, rowCur)}
@@ -873,10 +877,19 @@ function renderTable() {
             : '<span class="text-muted">—</span>'}
         </td>
         <td>
-          <div class="d-flex align-items-center gap-1">
-            <input type="number" class="form-control form-control-sm"
+          <div class="d-flex align-items-center gap-1 flex-wrap">
+            ${STATEMENT_MODE ? `<div class="input-group input-group-sm" style="width:auto;flex-wrap:nowrap;">
+              <input type="number" class="form-control form-control-sm"
+                     min="0" step="0.01" value="${sale || ''}" placeholder="0,00"
+                     oninput="blockBelowCost(this,${i})">
+              <span class="input-group-text" style="font-size:10px;padding:2px 4px;">×</span>
+              <input type="number" class="form-control form-control-sm text-center" min="0" step="0.1"
+                     value="${qty || ''}" placeholder="1" style="width:44px;max-width:44px;"
+                     title="Satış miktarı"
+                     oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">
+            </div>` : `<input type="number" class="form-control form-control-sm"
                    min="0" step="0.01" value="${sale || ''}" placeholder="0,00"
-                   oninput="blockBelowCost(this,${i})">
+                   oninput="blockBelowCost(this,${i})">`}
             <span class="badge bg-secondary bg-opacity-10 text-secondary flex-shrink-0" style="font-size:10px;">%${vat}</span>
           </div>
         </td>

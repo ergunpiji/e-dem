@@ -216,15 +216,15 @@
              class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
             <i class="bi bi-receipt me-1"></i> Hesap Dökümü
           </a>
-          {# Fatura Oluştur: muhasebe kesiyor ama butonu tüm yöneticiler görsün #}
-          {% if current_user.role in ('admin', 'mudur', 'yonetici', 'muhasebe_muduru', 'muhasebe') %}
+          {# Fatura Oluştur: sadece muhasebe/admin açabilir #}
+          {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
           <a href="/invoices/new?request_id={{ req.id }}&statement_id={{ stmt.id }}"
              class="btn btn-success btn-sm">
             <i class="bi bi-file-earmark-text me-1"></i> Fatura Oluştur
           </a>
           {% else %}
           <span class="badge bg-success px-2 py-2" style="font-size:11px;">
-            <i class="bi bi-check2-circle me-1"></i>Müşteri Onayladı — Fatura Bekleniyor
+            <i class="bi bi-check2-circle me-1"></i>Müşteri Onayladı
           </span>
           {% endif %}
           {% elif stmt.statement_status == 'sent' %}
