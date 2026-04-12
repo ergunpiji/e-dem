@@ -105,65 +105,86 @@ async def dashboard(
     financial = {}
     recent_requests = []
 
-    if current_user.role == "admin":
+    if current_user.role in ("admin", "mudur", "muhasebe_muduru"):
+        # Müdür: takımındaki referanslar; takımsız veya admin/muhasebe_muduru: tümü
+        if current_user.role == "mudur" and current_user.team_id:
+            team_ids = [u.id for u in db.query(User).filter(
+                User.team_id == current_user.team_id, User.active == True).all()]
+            req_filter = ReqModel.created_by.in_(team_ids + [current_user.id])
+            req_id_filter = [r.id for r in db.query(ReqModel.id).filter(req_filter).all()]
+            base_q = db.query(ReqModel).filter(req_filter)
+        else:
+            req_id_filter = None
+            base_q = db.query(ReqModel)
+
         stats = {
             "total_venues":    db.query(Venue).filter(Venue.active == True).count(),
-            "total_requests":  db.query(ReqModel).count(),
+            "total_requests":  base_q.count(),
             "total_users":     db.query(User).filter(User.active == True).count(),
             "total_customers": db.query(Customer).count(),
-            "total_services":  db.query(Service).filter(Service.active == True).count(),
             "total_budgets":   db.query(Budget).count(),
-            "open_requests":   db.query(ReqModel).filter(
+            "open_requests":   base_q.filter(
                 ReqModel.status.in_(["pending", "in_progress", "venues_contacted",
                                      "budget_ready", "offer_sent", "revision"])
             ).count(),
         }
-        financial = _build_financial_stats(db)
+        financial = _build_financial_stats(db, req_id_filter=req_id_filter)
         recent_requests = (
-            db.query(ReqModel)
-            .order_by(ReqModel.created_at.desc())
-            .limit(8)
-            .all()
+            base_q.order_by(ReqModel.created_at.desc()).limit(8).all()
         )
 
-    elif current_user.role in ("yonetici", "asistan"):
-        my_req_ids = [
-            r.id for r in db.query(ReqModel.id)
-            .filter(ReqModel.created_by == current_user.id)
-            .all()
-        ]
-        my_requests = db.query(ReqModel).filter(ReqModel.created_by == current_user.id)
+    elif current_user.role == "yonetici":
+        from routers.requests import _get_subtree_ids
+        sub_ids = _get_subtree_ids(current_user.id, db)
+        visible_ids = [current_user.id] + sub_ids
+        base_q = db.query(ReqModel).filter(ReqModel.created_by.in_(visible_ids))
+        req_id_filter = [r.id for r in db.query(ReqModel.id).filter(
+            ReqModel.created_by.in_(visible_ids)).all()]
         stats = {
-            "my_total":     my_requests.count(),
-            "my_draft":     my_requests.filter(ReqModel.status == "draft").count(),
+            "my_total":     base_q.count(),
+            "my_draft":     base_q.filter(ReqModel.status == "draft").count(),
             "my_pending":   db.query(ReqModel).filter(
-                ReqModel.created_by == current_user.id,
-                ReqModel.status == "pending",
-            ).count(),
+                ReqModel.created_by.in_(visible_ids), ReqModel.status == "pending").count(),
             "budget_ready": db.query(ReqModel).filter(
-                ReqModel.created_by == current_user.id,
-                ReqModel.status == "budget_ready",
-            ).count(),
+                ReqModel.created_by.in_(visible_ids), ReqModel.status == "budget_ready").count(),
             "my_confirmed": db.query(ReqModel).filter(
-                ReqModel.created_by == current_user.id,
-                ReqModel.status == "confirmed",
+                ReqModel.created_by.in_(visible_ids), ReqModel.status == "confirmed").count(),
+            "open_requests": db.query(ReqModel).filter(
+                ReqModel.created_by.in_(visible_ids),
+                ReqModel.status.in_(["pending", "in_progress", "venues_contacted",
+                                     "budget_ready", "offer_sent", "revision"])
             ).count(),
+        }
+        financial = _build_financial_stats(db, req_id_filter=req_id_filter)
+        recent_requests = (
+            base_q.order_by(ReqModel.created_at.desc()).limit(8).all()
+        )
+
+    elif current_user.role == "asistan":
+        # Asistan: sadece kendi referanslarının sayısal istatistikleri — finansal veri yok
+        my_q = db.query(ReqModel).filter(ReqModel.created_by == current_user.id)
+        stats = {
+            "my_total":     my_q.count(),
+            "my_draft":     db.query(ReqModel).filter(
+                ReqModel.created_by == current_user.id, ReqModel.status == "draft").count(),
+            "my_pending":   db.query(ReqModel).filter(
+                ReqModel.created_by == current_user.id, ReqModel.status == "pending").count(),
+            "budget_ready": db.query(ReqModel).filter(
+                ReqModel.created_by == current_user.id, ReqModel.status == "budget_ready").count(),
+            "my_confirmed": db.query(ReqModel).filter(
+                ReqModel.created_by == current_user.id, ReqModel.status == "confirmed").count(),
             "open_requests": db.query(ReqModel).filter(
                 ReqModel.created_by == current_user.id,
                 ReqModel.status.in_(["pending", "in_progress", "venues_contacted",
                                      "budget_ready", "offer_sent", "revision"])
             ).count(),
         }
-        financial = _build_financial_stats(db, req_id_filter=my_req_ids if my_req_ids else None)
+        financial = {}   # asistan finansal veri görmez
         recent_requests = (
-            db.query(ReqModel)
-            .filter(ReqModel.created_by == current_user.id)
-            .order_by(ReqModel.created_at.desc())
-            .limit(8)
-            .all()
+            my_q.order_by(ReqModel.created_at.desc()).limit(8).all()
         )
 
-    else:  # e_dem — sadece iş yükü, finansal bilgi yok
+    else:  # e_dem, muhasebe — sadece iş yükü, finansal bilgi yok
         stats = {
             "pending":          db.query(ReqModel).filter(ReqModel.status == "pending").count(),
             "in_progress":      db.query(ReqModel).filter(ReqModel.status == "in_progress").count(),
@@ -174,7 +195,7 @@ async def dashboard(
                 ReqModel.status.in_(["pending", "in_progress", "venues_contacted", "budget_ready"])
             ).count(),
         }
-        financial = {}   # e_dem finansal veri görmez
+        financial = {}
         recent_requests = (
             db.query(ReqModel)
             .filter(ReqModel.status.in_(["pending", "in_progress", "venues_contacted"]))
