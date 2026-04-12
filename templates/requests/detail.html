@@ -194,19 +194,7 @@
         </button>
         {% endif %}
 
-        {# Etkinliği Tamamla — confirmed #}
-        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem') and req.status == 'confirmed' %}
-        <form method="post" action="/requests/{{ req.id }}/complete"
-              onsubmit="return confirm('Etkinlik tamamlandı olarak işaretlensin mi?')">
-          <button type="submit" class="btn btn-success btn-sm">
-            <i class="bi bi-trophy me-1"></i> Etkinliği Tamamla
-          </button>
-        </form>
-        <button type="button" class="btn btn-outline-warning btn-sm"
-                data-bs-toggle="modal" data-bs-target="#revisionModal">
-          <i class="bi bi-calendar-event me-1"></i> Tarih Değişikliği
-        </button>
-        {% endif %}
+        {# Etkinliği Tamamla kaldırıldı — Dosyayı Kapat o işi yapıyor #}
 
         {# Hesap Dökümü — confirmed/completed/closing/closed, onaylı bütçe varsa #}
         {% set ns_offer_bgt = namespace(found=false) %}
@@ -228,11 +216,16 @@
              class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
             <i class="bi bi-receipt me-1"></i> Hesap Dökümü
           </a>
-          {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
+          {# Fatura Oluştur: muhasebe kesiyor ama butonu tüm yöneticiler görsün #}
+          {% if current_user.role in ('admin', 'mudur', 'yonetici', 'muhasebe_muduru', 'muhasebe') %}
           <a href="/invoices/new?request_id={{ req.id }}&statement_id={{ stmt.id }}"
              class="btn btn-success btn-sm">
             <i class="bi bi-file-earmark-text me-1"></i> Fatura Oluştur
           </a>
+          {% else %}
+          <span class="badge bg-success px-2 py-2" style="font-size:11px;">
+            <i class="bi bi-check2-circle me-1"></i>Müşteri Onayladı — Fatura Bekleniyor
+          </span>
           {% endif %}
           {% elif stmt.statement_status == 'sent' %}
           {# Gönderildi — düzenle veya onay al #}
@@ -315,8 +308,9 @@
         </button>
         {% endif %}
 
-        {# Tarih değişikliği — offer_sent / budget_ready #}
-        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem') and req.status in ('offer_sent', 'budget_ready') %}
+        {# Tarih değişikliği — aktif statülerde her zaman mevcut #}
+        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem')
+              and req.status not in ('draft', 'cancelled', 'postponed', 'closing', 'closed') %}
         <button type="button" class="btn btn-outline-warning btn-sm"
                 data-bs-toggle="modal" data-bs-target="#revisionModal">
           <i class="bi bi-calendar-event me-1"></i> Tarih Değişikliği

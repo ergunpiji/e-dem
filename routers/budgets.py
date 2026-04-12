@@ -1119,6 +1119,12 @@ async def budgets_statement_editor(
     if budget.statement_sent_at:
         stmt_sent_label = budget.statement_sent_at.strftime("%d.%m.%Y %H:%M")
 
+    customer_email = ""
+    if customer:
+        customer_email = customer.email or ""
+    elif req:
+        customer_email = ""  # fallback: client_name only, no email
+
     return templates.TemplateResponse("budgets/manager_editor.html", {
         "request":             request,
         "current_user":        current_user,
@@ -1139,6 +1145,7 @@ async def budgets_statement_editor(
         "statement_mode":      True,
         "statement_status":    budget.statement_status,
         "statement_sent_label": stmt_sent_label,
+        "customer_email":       customer_email,
     })
 
 

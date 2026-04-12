@@ -1465,12 +1465,20 @@ async def requests_create_statement(
     if not src:
         return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
 
+    # Satırlara cost_qty = qty başlangıç değeri ata (maliyet ve satış miktarı başta aynı)
+    src_rows = src.rows
+    for row in src_rows:
+        if "cost_qty" not in row:
+            row["cost_qty"] = row.get("qty", 1)
+    import json as _json
+    stmt_rows_json = _json.dumps(src_rows, ensure_ascii=False)
+
     # Yeni statement bütçesi oluştur
     stmt_budget = Budget(
         id=_uuid(),
         request_id=req_id,
         venue_name=src.venue_name,
-        rows_json=src.rows_json,
+        rows_json=stmt_rows_json,
         budget_status="confirmed",
         budget_type="statement",
         service_fee_pct=src.service_fee_pct,

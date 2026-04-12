@@ -45,17 +45,40 @@
 </div>
 
 {% if statement_mode %}
+{% if statement_status == 'customer_approved' %}
+<div class="alert mb-3 d-flex align-items-center gap-3"
+     style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
+  <i class="bi bi-check2-circle text-success fs-4"></i>
+  <div class="flex-grow-1">
+    <div class="fw-bold text-success" style="font-size:15px;">Müşteri Hesap Dökümünü Onayladı</div>
+    <div class="text-muted" style="font-size:12px;">
+      Artık muhasebe yetkilisi fatura oluşturabilir.
+      {% if req %}<a href="/requests/{{ req.id }}#tab-financial" class="alert-link">→ Referans sayfasına git ve "Fatura Oluştur" butonunu tıkla</a>{% endif %}
+    </div>
+  </div>
+</div>
+{% elif statement_status == 'sent' %}
+<div class="alert mb-3 d-flex align-items-center gap-3"
+     style="background:#f0fdfa; border:1px solid #99f6e4; border-radius:8px;">
+  <i class="bi bi-send-check" style="color:#0d9488; font-size:22px;"></i>
+  <div>
+    <div class="fw-bold" style="font-size:14px; color:#0d9488;">Gönderildi — {{ statement_sent_label }}</div>
+    <div style="font-size:12px; color:#64748b;">Müşteri onayı bekleniyor. Değişiklik yapmak için kaydedin.</div>
+  </div>
+</div>
+{% else %}
 <div class="alert mb-3 d-flex align-items-center gap-3"
      style="background:#1a3a5c; color:#ffffff; border:none; border-radius:8px;">
   <i class="bi bi-receipt fs-4"></i>
   <div>
     <div class="fw-bold" style="font-size:15px;">Hesap Dökümü</div>
     <div style="font-size:12px; opacity:.85;">
-      Müşteriye gönderilecek hesap dökümünü bu sayfada düzenleyebilirsiniz.
-      Satır ekleyip çıkarabilir, fiyatları güncelleyebilirsiniz.
+      Satış miktarını ve maliyet miktarını ayrı girebilirsiniz (mavi = maliyet, beyaz = satış).
+      Hazır olduğunda "Müşteriye Hesap Dökümü Gönder" butonunu tıklayın.
     </div>
   </div>
 </div>
+{% endif %}
 {% endif %}
 
 {# ─── BÜTÇE SEKMELERİ ─── #}
@@ -231,7 +254,7 @@
             <tr>
               <th class="ps-3" style="min-width:150px;">Hizmet</th>
               <th style="width:60px;">Birim</th>
-              <th style="width:45px;">Miktar</th>
+              <th style="width:{% if statement_mode %}90{% else %}45{% endif %}px;">{% if statement_mode %}Satış<br>Miktar{% else %}Miktar{% endif %}</th>
               <th style="width:110px;">Başlangıç</th>
               <th style="width:110px;">Bitiş</th>
               <th style="width:45px;">Gece</th>
@@ -386,7 +409,7 @@
       <i class="bi bi-send-check me-1"></i> Gönderildi — {{ statement_sent_label }}
     </span>
     <button type="button" class="btn btn-outline-secondary btn-sm"
-            onclick="submitSendStatement()">
+            onclick="sendStatementEmail()">
       <i class="bi bi-arrow-repeat me-1"></i> Yeniden Gönder
     </button>
     <button type="button" class="btn btn-success"
@@ -395,8 +418,8 @@
     </button>
     {% else %}
     <button type="button" class="btn btn-success"
-            onclick="submitSendStatement()">
-      <i class="bi bi-send me-1"></i> Müşteriye Hesap Dökümü Gönder
+            onclick="sendStatementEmail()">
+      <i class="bi bi-envelope-arrow-up me-1"></i> Müşteriye Hesap Dökümü Gönder
     </button>
     {% endif %}
 
@@ -768,8 +791,9 @@ function renderTable() {
       const sale     = parseFloat(rows[i].sale_price) || 0;
       const vat      = parseFloat(rows[i].vat_rate)   || defaultVat(sec);
       const rowCur   = rows[i].currency || 'TRY';
-      // Statement modunda maliyet = toplam (qty/nights'tan bağımsız)
-      const costSub    = STATEMENT_MODE ? cost : cost * qty * nights;
+      // Statement modunda maliyet: cost_qty × cost_price (nights ayrı, qty satış için)
+      const cQty       = STATEMENT_MODE ? (parseFloat(rows[i].cost_qty != null ? rows[i].cost_qty : qty) || qty) : qty;
+      const costSub    = STATEMENT_MODE ? cost * cQty * nights : cost * qty * nights;
       const costSubTry = amountToTry(costSub, rowCur);   // TRY cinsinden
       const saleSub    = sale * qty * nights;
       const saleSubTry = amountToTry(saleSub, rowCur);   // TRY cinsinden
@@ -797,7 +821,15 @@ function renderTable() {
       const unitCellHtml = isManagerRow
         ? `<input type="text" class="form-control form-control-sm" value="${escHtml(rows[i].unit||'Adet')}" style="width:65px;" oninput="rows[${i}].unit=this.value;saveRows()">`
         : escHtml(rows[i].unit || 'Adet');
-      const qtyCellHtml = `<input type="number" class="form-control form-control-sm text-center" style="width:55px;" min="1" value="${qty}" oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">`;
+      const costQty = parseFloat(rows[i].cost_qty != null ? rows[i].cost_qty : qty) || qty;
+      const qtyCellHtml = STATEMENT_MODE
+        ? `<div style="display:flex;flex-direction:column;gap:2px;">
+             <input type="number" class="form-control form-control-sm text-center" style="width:55px;font-size:10px;" min="0" step="0.1" value="${qty}" title="Satış miktarı"
+                    oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">
+             <input type="number" class="form-control form-control-sm text-center" style="width:55px;font-size:10px;background:#f0f9ff;color:#0369a1;" min="0" step="0.1" value="${costQty}" title="Maliyet miktarı"
+                    oninput="rows[${i}].cost_qty=parseFloat(this.value)||0;calcServiceFee();updateRowSaleSub(${i})">
+           </div>`
+        : `<input type="number" class="form-control form-control-sm text-center" style="width:55px;" min="1" value="${qty}" oninput="rows[${i}].qty=parseFloat(this.value)||1;calcServiceFee();updateRowSaleSub(${i})">`;
       html += `<tr style="${isFlagged ? 'background:#fff7ed;' : ''}">
         <td class="ps-3 ${isManagerRow ? '' : 'fw-semibold'}" style="font-size:13px;">${nameCellHtml}</td>
         <td style="color:#64748b; font-size:12px;">${unitCellHtml}</td>
@@ -830,9 +862,8 @@ function renderTable() {
           ${cost > 0
             ? (() => {
                 const netCost = cost * (1 - (rows[i].commission_pct||0)/100);
-                const netSub  = STATEMENT_MODE
-                  ? netCost
-                  : netCost * (parseFloat(rows[i].qty)||1) * (parseFloat(rows[i].nights)||1);
+                const _cq     = STATEMENT_MODE ? (parseFloat(rows[i].cost_qty != null ? rows[i].cost_qty : rows[i].qty) || parseFloat(rows[i].qty)||1) : (parseFloat(rows[i].qty)||1);
+                const netSub  = netCost * _cq * (parseFloat(rows[i].nights)||1);
                 const netSubTry = rowCur !== 'TRY' ? amountToTry(netSub, rowCur) : netSub;
                 return (rowCur !== 'TRY'
                   ? `<div>${fmtCurrency(netSub, rowCur)}</div><div style="font-size:10px;color:#94a3b8;">${fmtMoney(netSubTry)}</div>`
@@ -957,7 +988,8 @@ function updateRowSaleSub(rowIdx) {
   const cost   = parseFloat(row.cost_price) || 0;
   const sale   = parseFloat(row.sale_price) || 0;
   const rowCur     = row.currency || 'TRY';
-  const costSub    = STATEMENT_MODE ? cost : cost * qty * nights;
+  const cqty2      = STATEMENT_MODE ? (parseFloat(row.cost_qty != null ? row.cost_qty : row.qty) || qty) : qty;
+  const costSub    = cost * cqty2 * nights;
   const costSubTry = amountToTry(costSub, rowCur);
   const saleSub    = sale * qty * nights;
   const saleSubTry = amountToTry(saleSub, rowCur);
@@ -1061,7 +1093,8 @@ function updateTotals() {
       if (vat > 0 && sfVatAmt > 0) vatByRate[vat] = (vatByRate[vat] || 0) + sfVatAmt;
     } else {
       const sec      = row.section || 'other';
-      const costSub  = STATEMENT_MODE ? amountToTry(cost, cur) : amountToTry(cost * qty * n, cur);
+      const cqty     = STATEMENT_MODE ? (parseFloat(row.cost_qty != null ? row.cost_qty : row.qty) || qty) : qty;
+      const costSub  = amountToTry(cost * cqty * n, cur);
       const saleSub  = amountToTry(sale * qty * n, cur);
       const vatAmt   = saleSub * (vat / 100);
       costEx += costSub;
@@ -1387,19 +1420,53 @@ function submitCopy() {
   document.getElementById('copyForm').submit();
 }
 
-async function submitSendStatement() {
-  if (!confirm('Hesap dökümünü müşteriye gönderildi olarak işaretlemek istiyor musunuz?')) return;
-  // Önce kaydet
+async function _saveStatementNow() {
   saveRows();
   document.getElementById('serviceFeePctInput').value =
     parseFloat(document.getElementById('serviceFeePercent').value) || 0;
   document.getElementById('offerCurrencyHidden').value = offerCurrency;
   document.getElementById('exchangeRatesJson').value   = JSON.stringify(exchangeRates);
   const fd = new FormData(document.getElementById('managerForm'));
-  try {
-    await fetch(`/budgets/{{ budget.id }}/statement`, { method: 'POST', body: fd });
-  } catch(e) { /* ignore */ }
-  // Gönder
+  try { await fetch(`/budgets/{{ budget.id }}/statement`, { method: 'POST', body: fd }); } catch(e) {}
+}
+
+async function submitSendStatement() {
+  await _saveStatementNow();
+  document.getElementById('sendStatementForm').submit();
+}
+
+async function sendStatementEmail() {
+  if (!confirm('Hesap dökümü kaydedilip müşteriye gönderilecek. Devam edilsin mi?')) return;
+
+  // 1) Kaydet
+  await _saveStatementNow();
+
+  // 2) Excel indir
+  const a = document.createElement('a');
+  a.href = `/budgets/{{ budget.id }}/export`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // 3) Mail aç
+  const customerEmail = '{{ customer_email | default("") | e }}';
+  const eventName     = '{{ (req.event_name if req else "") | e }}';
+  const refNo         = '{{ (req.request_no if req else "") | e }}';
+  const venueName     = '{{ budget.venue_name | e }}';
+  const subject = encodeURIComponent(`Hesap Dökümü: ${eventName} — ${refNo}`);
+  const body    = encodeURIComponent(
+    `Sayın Yetkili,\n\n${eventName} etkinliğinize ait hesap dökümü ekte sunulmaktadır.\n\nReferans No: ${refNo}\nMekan: ${venueName}\n\nHesap dökümünü inceleyip onaylamanızı rica ederiz.\n\nSaygılarımızla`
+  );
+
+  if (customerEmail) {
+    setTimeout(() => window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank'), 800);
+    showToast('Gönderildi olarak işaretlendi. Excel indiriliyor, mail uygulamanız açılıyor.');
+  } else {
+    showToast('Gönderildi olarak işaretlendi. Excel indiriliyor. Müşteri e-posta adresi tanımlı değil.');
+  }
+
+  // 4) Durumu güncelle
   document.getElementById('sendStatementForm').submit();
 }
 
