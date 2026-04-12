@@ -191,6 +191,9 @@
           Kur bilgileri maliyet ve satış toplamlarını TL'ye çevirmek için kullanılır.
           TL dışında para birimi kullanacaksanız kur girişi gereklidir.
         </div>
+        <div id="tcmbLabel" style="display:none; font-size:10px; color:#16a34a; margin-top:4px;">
+          <i class="bi bi-check-circle-fill me-1"></i>TCMB bugünkü kur yüklendi
+        </div>
       </div>
     </div>
   </div>
@@ -415,6 +418,35 @@ rows = rows.filter(r => !r.is_service_fee);
   if (usdVal > 0 && !(exchangeRates['USD'] > 0)) exchangeRates['USD'] = usdVal;
   document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
   updateRateBlockVisibility();
+})();
+
+// TCMB günlük kur otomatik yükleme — sadece kurlar boşsa doldurur
+(async function loadTcmbRates() {
+  const eurEl = document.getElementById('eurRate');
+  const usdEl = document.getElementById('usdRate');
+  // Zaten kayıtlı kur varsa dokunma
+  if ((exchangeRates['EUR'] > 0) || (exchangeRates['USD'] > 0)) return;
+  try {
+    const resp = await fetch('/exchange-rates/today');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    let loaded = false;
+    if (data.EUR && eurEl && !(parseFloat(eurEl.value) > 0)) {
+      eurEl.value = data.EUR;
+      exchangeRates['EUR'] = data.EUR;
+      loaded = true;
+    }
+    if (data.USD && usdEl && !(parseFloat(usdEl.value) > 0)) {
+      usdEl.value = data.USD;
+      exchangeRates['USD'] = data.USD;
+      loaded = true;
+    }
+    if (loaded) {
+      document.getElementById('exchangeRatesJson').value = JSON.stringify(exchangeRates);
+      document.getElementById('tcmbLabel').style.display = '';
+      updateTotals();
+    }
+  } catch(e) { /* TCMB erişilemez — kullanıcı manuel girer */ }
 })();
 
 // Section bazında tarih bilgisi (rows'tan veya req'den)
