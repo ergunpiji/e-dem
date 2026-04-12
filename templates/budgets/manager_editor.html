@@ -1456,15 +1456,7 @@ async function sendStatementEmail() {
   // 1) Kaydet
   await _saveStatementNow();
 
-  // 2) Excel indir
-  const a = document.createElement('a');
-  a.href = `/budgets/{{ budget.id }}/export`;
-  a.download = '';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  // 3) Mail aç
+  // 2) Mail aç — form submit öncesinde, sayfa yönlendirilmeden
   const customerEmail = '{{ customer_email | default("") | e }}';
   const eventName     = '{{ (req.event_name if req else "") | e }}';
   const refNo         = '{{ (req.request_no if req else "") | e }}';
@@ -1475,14 +1467,22 @@ async function sendStatementEmail() {
   );
 
   if (customerEmail) {
-    setTimeout(() => window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank'), 800);
+    window.location.href = `mailto:${customerEmail}?subject=${subject}&body=${body}`;
     showToast('Gönderildi olarak işaretlendi. Excel indiriliyor, mail uygulamanız açılıyor.');
   } else {
     showToast('Gönderildi olarak işaretlendi. Excel indiriliyor. Müşteri e-posta adresi tanımlı değil.');
   }
 
-  // 4) Durumu güncelle
-  document.getElementById('sendStatementForm').submit();
+  // 3) Excel indir
+  const a = document.createElement('a');
+  a.href = `/budgets/{{ budget.id }}/export`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // 4) Durumu güncelle — kısa gecikme ile Excel'in başlamasına izin ver
+  setTimeout(() => document.getElementById('sendStatementForm').submit(), 1200);
 }
 
 function submitApproveStatement() {

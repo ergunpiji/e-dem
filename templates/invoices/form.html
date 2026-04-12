@@ -66,7 +66,7 @@
           {# ── Hesap Dökümü / Fatura Talebi Banner ── #}
           {% if statement_prefill %}
           <input type="hidden" name="from_statement" value="{{ from_statement or '' }}">
-          <div class="alert mb-4 d-flex align-items-center gap-3"
+          <div class="alert mb-3 d-flex align-items-center gap-3"
                style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
             <i class="bi bi-receipt text-success fs-5"></i>
             <div>
@@ -76,6 +76,20 @@
               <div class="text-muted" style="font-size:12px;">
                 Müşteri adı, kalemler ve KDV oranları onaylanan hesap dökümünden aktarıldı.
                 İnceleyip gerekirse düzenleyin, ardından kaydedin — muhasebe onaylayacak.
+              </div>
+            </div>
+          </div>
+          {# PO Numarası #}
+          <div class="row g-3 mb-4">
+            <div class="col-md-5">
+              <label class="form-label fw-semibold" style="font-size:13px;">
+                PO Numarası
+                <span class="text-muted fw-normal ms-1" style="font-size:11px;">(varsa — kalem adına otomatik eklenir)</span>
+              </label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text" style="font-size:12px;">PO:</span>
+                <input type="text" id="fPoNumber" class="form-control" placeholder="örn. 2024-00123"
+                       oninput="onPoChange()" style="font-size:13px;">
               </div>
             </div>
           </div>
@@ -237,10 +251,19 @@
           <div class="mb-3" id="linesSection">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <label class="form-label fw-semibold mb-0">Fatura Kalemleri</label>
-              <button type="button" class="btn btn-outline-primary btn-sm"
-                      onclick="addLine()">
-                <i class="bi bi-plus-lg me-1"></i> Kalem Ekle
-              </button>
+              <div class="d-flex gap-2 align-items-center">
+                {% if statement_prefill %}
+                <button type="button" id="btnToggleGrouped" class="btn btn-sm btn-outline-secondary"
+                        onclick="toggleGrouped()" title="KDV grupları veya tüm kalemler ayrı ayrı">
+                  <i class="bi bi-list-ul me-1"></i>
+                  <span id="btnToggleLabel">Tüm Kalemler Ayrı Kesilsin</span>
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-outline-primary btn-sm"
+                        onclick="addLine()">
+                  <i class="bi bi-plus-lg me-1"></i> Kalem Ekle
+                </button>
+              </div>
             </div>
             <div class="table-responsive">
               <table class="table lines-table mb-0" style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
@@ -377,18 +400,60 @@ try { lines = {{ invoice.lines | tojson }}; } catch(e) {}
 {% endif %}
 {% if statement_prefill %}
 // ── Hesap dökümünden ön doldurma ─────────────────────────────────────────────
+const PREFILL_DATA = {{ statement_prefill | tojson }};
+let detailedLines = [];
+let groupedLines  = [];
+let groupedMode   = true;   // başlangıçta gruplu
+
 (function() {
-  const prefill = {{ statement_prefill | tojson }};
-  if (prefill.vendor_name) document.getElementById('fVendorName').value = prefill.vendor_name;
-  if (prefill.description) document.getElementById('fDescription') && (document.getElementById('fDescription').value = prefill.description);
-  if (prefill.invoice_type) {
+  if (PREFILL_DATA.vendor_name) document.getElementById('fVendorName').value = PREFILL_DATA.vendor_name;
+  if (PREFILL_DATA.description) {
+    const d = document.getElementById('fDescription');
+    if (d) d.value = PREFILL_DATA.description;
+  }
+  if (PREFILL_DATA.invoice_type) {
     const sel = document.getElementById('invoiceTypeSelect');
-    if (sel) { sel.value = prefill.invoice_type; sel.dispatchEvent(new Event('change')); }
+    if (sel) { sel.value = PREFILL_DATA.invoice_type; sel.dispatchEvent(new Event('change')); }
   }
-  if (prefill.lines_json) {
-    try { lines = JSON.parse(prefill.lines_json); } catch(e) {}
-  }
+  try { detailedLines = JSON.parse(PREFILL_DATA.lines_json || '[]'); } catch(e) {}
+  try { groupedLines  = JSON.parse(PREFILL_DATA.grouped_lines_json || '[]'); } catch(e) {}
+  // Gruplu mod ile başla (ya da gruplu yoksa detaylı)
+  lines = groupedLines.length ? groupedLines.map(l => Object.assign({}, l)) : detailedLines.map(l => Object.assign({}, l));
+  if (!groupedLines.length) groupedMode = false;
 })();
+
+function getPrefixedLines(srcLines) {
+  const po = (document.getElementById('fPoNumber')?.value || '').trim();
+  if (!po) return srcLines.map(l => Object.assign({}, l));
+  return srcLines.map(l => {
+    const copy = Object.assign({}, l);
+    // PO prefix ekle — eğer zaten yoksa
+    if (!copy.description.startsWith('PO:')) {
+      copy.description = `PO: ${po} — ${copy.description}`;
+    }
+    return copy;
+  });
+}
+
+function onPoChange() {
+  // PO değişince mevcut satırların description'ını yenile
+  const base = groupedMode ? groupedLines : detailedLines;
+  lines = getPrefixedLines(base);
+  renderLines();
+}
+
+function toggleGrouped() {
+  groupedMode = !groupedMode;
+  const base = groupedMode ? groupedLines : detailedLines;
+  lines = getPrefixedLines(base);
+  document.getElementById('btnToggleLabel').textContent =
+    groupedMode ? 'Tüm Kalemler Ayrı Kesilsin' : 'KDV Gruplu Göster';
+  document.getElementById('btnToggleGrouped').classList.toggle('btn-outline-secondary', groupedMode);
+  document.getElementById('btnToggleGrouped').classList.toggle('btn-warning', !groupedMode);
+  renderLines();
+}
+{% else %}
+const groupedMode = false;
 {% endif %}
 if (lines.length === 0) addLine();
 else renderLines();

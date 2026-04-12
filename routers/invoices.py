@@ -152,12 +152,19 @@ async def invoices_new_form(
     if statement_id:
         stmt = db.query(Budget).filter(Budget.id == statement_id, Budget.budget_type == "statement").first()
         if stmt:
-            # İstemciye göndermek için satırları fatura line'larına dönüştür
+            from collections import defaultdict
+            ACCOM_SECTIONS = {"accommodation"}
+
+            # Detaylı satırlar (tüm kalemler ayrı)
             invoice_lines = []
+            # Gruplu satırlar için toplama
+            accom_groups = defaultdict(float)   # vat_rate(int) -> total_amount
+            other_groups = defaultdict(float)   # vat_rate(int) -> total_amount
+
             for row in stmt.rows:
                 if row.get("is_service_fee"):
                     sale = float(row.get("sale_price", 0))
-                    vat  = float(row.get("vat_rate", 20))
+                    vat  = int(float(row.get("vat_rate", 20)))
                     if sale > 0:
                         invoice_lines.append({
                             "description": row.get("service_name", "Hizmet Bedeli"),
@@ -165,11 +172,12 @@ async def invoices_new_form(
                             "vat_rate":    vat,
                             "vat_amount":  round(sale * vat / 100, 2),
                         })
+                        other_groups[vat] += sale
                 else:
                     sale   = float(row.get("sale_price", 0))
                     qty    = float(row.get("qty", 1))
                     nights = float(row.get("nights", 1))
-                    vat    = float(row.get("vat_rate", 20))
+                    vat    = int(float(row.get("vat_rate", 20)))
                     total  = round(sale * qty * nights, 2)
                     if total > 0:
                         invoice_lines.append({
@@ -178,6 +186,30 @@ async def invoices_new_form(
                             "vat_rate":    vat,
                             "vat_amount":  round(total * vat / 100, 2),
                         })
+                        section = row.get("section", "")
+                        if section in ACCOM_SECTIONS:
+                            accom_groups[vat] += total
+                        else:
+                            other_groups[vat] += total
+
+            # KDV gruplu satırlar oluştur
+            grouped_lines = []
+            for vat, amount in sorted(accom_groups.items()):
+                amount = round(amount, 2)
+                grouped_lines.append({
+                    "description": "Konaklama Bedeli",
+                    "amount":      amount,
+                    "vat_rate":    vat,
+                    "vat_amount":  round(amount * vat / 100, 2),
+                })
+            for vat, amount in sorted(other_groups.items()):
+                amount = round(amount, 2)
+                grouped_lines.append({
+                    "description": f"Organizasyon Hizmet Bedeli (%{vat} KDV)",
+                    "amount":      amount,
+                    "vat_rate":    vat,
+                    "vat_amount":  round(amount * vat / 100, 2),
+                })
 
             customer_name = ""
             if req and req.customer_id:
@@ -189,10 +221,11 @@ async def invoices_new_form(
                 customer_name = req.client_name or ""
 
             statement_prefill = {
-                "vendor_name":  customer_name,
-                "invoice_type": "kesilen",
-                "description":  f"Hesap Dökümü — {stmt.venue_name} / {req.request_no if req else ''}",
-                "lines_json":   json.dumps(invoice_lines, ensure_ascii=False),
+                "vendor_name":       customer_name,
+                "invoice_type":      "kesilen",
+                "description":       f"Hesap Dökümü — {stmt.venue_name} / {req.request_no if req else ''}",
+                "lines_json":        json.dumps(invoice_lines, ensure_ascii=False),
+                "grouped_lines_json": json.dumps(grouped_lines, ensure_ascii=False),
             }
 
     page_title = "Fatura Talebi Oluştur" if statement_prefill else "Yeni Fatura"
