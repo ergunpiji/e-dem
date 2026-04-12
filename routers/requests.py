@@ -596,8 +596,8 @@ async def requests_detail(
 
     can_manage_invoices = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
     can_manage_undoc    = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    # Fatura onayı: admin, mudur, yonetici, muhasebe_muduru
-    can_approve_invoices = current_user.role in ("admin", "mudur", "yonetici", "muhasebe_muduru")
+    # Fatura onayı/kesme: admin, mudur, yonetici, muhasebe_muduru, muhasebe
+    can_approve_invoices = current_user.role in ("admin", "mudur", "yonetici", "muhasebe_muduru", "muhasebe")
     # Admin referans taşıma için tüm referanslar
     all_requests = []
     if current_user.role == "admin":

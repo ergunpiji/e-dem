@@ -1324,16 +1324,26 @@
       <td class="text-end" style="white-space:nowrap;">
         {# Onay/red butonları #}
         {% if show_approve and inv.status == 'pending' %}
-        <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
-          <button type="submit" class="btn btn-sm btn-success py-0 px-2"
-                  title="Onayla" onclick="return confirm('Faturayı onaylıyor musunuz?')">
-            <i class="bi bi-check-lg"></i>
+          {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
+          {# Muhasebe: faturayı kes (detay + belge + onay tek adımda) #}
+          <button type="button" class="btn btn-sm btn-success py-0 px-2"
+                  onclick="openCutModal('{{ inv.id }}')"
+                  title="Faturayı Kes & Ekle">
+            <i class="bi bi-scissors me-1"></i>Kes
           </button>
-        </form>
-        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
-                title="Reddet" onclick="openRejectModal('{{ inv.id }}')">
-          <i class="bi bi-x-lg"></i>
-        </button>
+          {% else %}
+          {# Mudur/Yonetici: sadece onayla #}
+          <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
+            <button type="submit" class="btn btn-sm btn-success py-0 px-2"
+                    title="Onayla" onclick="return confirm('Faturayı onaylıyor musunuz?')">
+              <i class="bi bi-check-lg"></i>
+            </button>
+          </form>
+          {% endif %}
+          <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                  title="Reddet" onclick="openRejectModal('{{ inv.id }}')">
+            <i class="bi bi-x-lg"></i>
+          </button>
         {% endif %}
         {# Düzenle/iptal #}
         {% if show_actions %}
@@ -1629,6 +1639,54 @@
       </div>
     </div>
 
+    {# ── Faturayı Kes Modalı (muhasebe) ── #}
+    {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
+    <div class="modal fade" id="cutInvoiceModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title"><i class="bi bi-scissors me-2 text-success"></i>Faturayı Kes & Projeye Ekle</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form method="post" id="cutInvoiceForm" enctype="multipart/form-data">
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label fw-semibold" style="font-size:13px;">Fatura No</label>
+                <input type="text" name="invoice_no" class="form-control form-control-sm"
+                       placeholder="Fatura numarası">
+              </div>
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label fw-semibold" style="font-size:13px;">Fatura Tarihi</label>
+                  <input type="date" name="invoice_date" class="form-control form-control-sm">
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold" style="font-size:13px;">Vade Tarihi</label>
+                  <input type="date" name="due_date" class="form-control form-control-sm">
+                </div>
+              </div>
+              <div class="mb-1">
+                <label class="form-label fw-semibold" style="font-size:13px;">
+                  Fatura PDF / Belge
+                  <span class="text-muted fw-normal ms-1">(isteğe bağlı)</span>
+                </label>
+                <input type="file" name="document" class="form-control form-control-sm"
+                       accept=".pdf,.jpg,.jpeg,.png,.gif,.webp">
+                <div class="form-text" style="font-size:11px;">PDF veya resim — maks. 10 MB</div>
+              </div>
+            </div>
+            <div class="modal-footer py-2">
+              <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
+              <button type="submit" class="btn btn-sm btn-success">
+                <i class="bi bi-scissors me-1"></i>Faturayı Kes & Ekle
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {# ── Referans Taşıma Modalı (admin) ── #}
     {% if current_user.role == 'admin' %}
     <div class="modal fade" id="reassignModal" tabindex="-1">
@@ -1763,6 +1821,13 @@ function openRejectModal(invoiceId) {
   document.getElementById('rejectForm').action = '/invoices/' + invoiceId + '/reject';
   document.querySelector('#rejectModal textarea[name=rejection_note]').value = '';
   new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+function openCutModal(invoiceId) {
+  const form = document.getElementById('cutInvoiceForm');
+  if (!form) return;
+  form.action = '/invoices/' + invoiceId + '/cut';
+  form.reset();
+  new bootstrap.Modal(document.getElementById('cutInvoiceModal')).show();
 }
 function openClosureRejectModal(closureId) {
   document.getElementById('closureRejectForm').action = '/closure/' + closureId + '/reject';

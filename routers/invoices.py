@@ -486,6 +486,47 @@ async def invoices_parse_pdf(
 # ---------------------------------------------------------------------------
 # POST /invoices/{id}/approve  — referans sahibi (PM) veya admin onaylar
 # ---------------------------------------------------------------------------
+# POST /invoices/{id}/cut  — Muhasebe faturayı keser (detayları doldurur + onaylar)
+# ---------------------------------------------------------------------------
+
+@router.post("/{invoice_id}/cut", name="invoices_cut")
+async def invoices_cut(
+    invoice_id:   str,
+    request:      Request,
+    current_user: User = Depends(get_current_user),
+    db:           Session = Depends(get_db),
+    invoice_no:   str = Form(""),
+    invoice_date: str = Form(""),
+    due_date:     str = Form(""),
+    document:     UploadFile = File(None),
+):
+    """Muhasebe fatura talebini kesip onaylar. Detayları doldurur + belge ekler + status=approved."""
+    _require_finance(current_user)
+    inv = _get_invoice_or_404(db, invoice_id)
+    if inv.status != "pending":
+        raise HTTPException(status_code=400, detail="Bu fatura zaten işlenmiş veya iptal edilmiş.")
+
+    if invoice_no.strip():
+        inv.invoice_no = invoice_no.strip()
+    if invoice_date:
+        inv.invoice_date = invoice_date
+    if due_date:
+        inv.due_date = due_date
+
+    if document and document.filename:
+        doc_path, doc_name = _save_document(document, inv.id)
+        inv.document_path = doc_path
+        inv.document_name = doc_name
+
+    inv.status      = "approved"
+    inv.approved_by = current_user.id
+    inv.approved_at = _now()
+    inv.updated_at  = _now()
+    db.commit()
+    return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+
+
+# ---------------------------------------------------------------------------
 
 @router.post("/{invoice_id}/approve", name="invoices_approve")
 async def invoices_approve(
