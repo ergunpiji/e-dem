@@ -315,14 +315,6 @@
         </button>
         {% endif %}
 
-        {# Tarih değişikliği — aktif statülerde her zaman mevcut #}
-        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem')
-              and req.status not in ('draft', 'cancelled', 'postponed', 'closing', 'closed') %}
-        <button type="button" class="btn btn-outline-warning btn-sm"
-                data-bs-toggle="modal" data-bs-target="#revisionModal">
-          <i class="bi bi-calendar-event me-1"></i> Tarih Değişikliği
-        </button>
-        {% endif %}
 
         {# İşi İptal Et butonu kaldırıldı — "Proje Durumu" modalına taşındı #}
 
@@ -355,6 +347,359 @@
 </div>
 {% endif %}
 
+<div class="row g-4">
+
+  {# ─── SOL: Bilgi Kartı + Durum ─── #}
+  <div class="col-lg-4">
+
+    {# Bilgi kartı #}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">
+          <i class="bi bi-info-circle me-2 text-primary"></i>Etkinlik Bilgileri
+        </h6>
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <td class="info-label" style="width:130px;">Müşteri</td>
+              <td class="info-value">{{ req.client_name }}</td>
+            </tr>
+            {% set cp = req.contact_person %}
+            {% if cp and cp.name %}
+            <tr>
+              <td class="info-label">Kontak</td>
+              <td class="info-value">
+                {{ cp.name }}
+                {% if cp.title %}<div class="text-muted" style="font-size:11px;">{{ cp.title }}</div>{% endif %}
+                {% if cp.email %}<div style="font-size:11px;"><a href="mailto:{{ cp.email }}">{{ cp.email }}</a></div>{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+            <tr>
+              <td class="info-label">Etkinlik Tipi</td>
+              <td class="info-value">{{ et_map.get(req.event_type, req.event_type) }}</td>
+            </tr>
+            <tr>
+              <td class="info-label">Şehir(ler)</td>
+              <td class="info-value">{{ req.cities_display or '—' }}</td>
+            </tr>
+            <tr>
+              <td class="info-label">Katılımcı</td>
+              <td class="info-value">{{ req.attendee_count or '—' }} kişi</td>
+            </tr>
+            <tr>
+              <td class="info-label">Etkinlik Başlangıç</td>
+              <td class="info-value">{% if req.check_in %}{{ req.check_in | date_tr }}{% else %}—{% endif %}</td>
+            </tr>
+            <tr>
+              <td class="info-label">Etkinlik Bitiş</td>
+              <td class="info-value">{% if req.check_out %}{{ req.check_out | date_tr }}{% else %}—{% endif %}</td>
+            </tr>
+            {% if req.quote_deadline %}
+            <tr>
+              <td class="info-label">Teklif Son Tarihi</td>
+              <td class="info-value fw-semibold text-danger">{{ req.quote_deadline | date_tr }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+              <td class="info-label">Oluşturan</td>
+              <td class="info-value">{{ req.creator.full_name if req.creator else '—' }}</td>
+            </tr>
+            <tr>
+              <td class="info-label">Oluşturma</td>
+              <td class="info-value" style="font-size:12px;">{{ req.created_at | date_tr }}</td>
+            </tr>
+          </tbody>
+        </table>
+        {% if req.description %}
+        <hr>
+        <p class="text-muted mb-1" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.5px;">Açıklama</p>
+        <p style="font-size:13px;" class="mb-0">{{ req.description }}</p>
+        {% endif %}
+        {% if req.notes %}
+        <hr>
+        <p class="text-muted mb-1" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.5px;">Notlar</p>
+        <p style="font-size:13px;" class="mb-0">{{ req.notes }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Durum Güncelle (E-dem veya direkt yöneten PM) #}
+    {% if can_edit_status or can_direct_manage %}
+    <div class="card">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">
+          <i class="bi bi-arrow-repeat me-2 text-warning"></i>Durum Güncelle
+        </h6>
+        <form method="post" action="/requests/{{ req.id }}/status">
+          <div class="mb-3">
+            <select name="new_status" class="form-select form-select-sm">
+              {% for s in statuses %}
+              {# PM direkt yönetimde sadece ilgili durumlara geçiş yapabilir #}
+              {% if can_edit_status or s.value in ('in_progress', 'venues_contacted', 'budget_ready', 'completed', 'cancelled') %}
+              <option value="{{ s.value }}" {% if req.status == s.value %}selected{% endif %}>
+                {{ s.label }}
+              </option>
+              {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-warning btn-sm w-100">
+            <i class="bi bi-check-lg me-1"></i>Durumu Güncelle
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ─── SAĞ: Hizmetler + Mekanlar + RFQ ─── #}
+  <div class="col-lg-8">
+
+    {# Talep Edilen Hizmetler #}
+    {% set items = req.items %}
+    {% set pref_venues = req.preferred_venues %}
+    {% set can_rfq = (can_edit_status or can_direct_manage) and req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
+
+    <div class="card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between py-2"
+           style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+        <h6 class="fw-bold mb-0">
+          <i class="bi bi-list-check me-2 text-success"></i>Talep Edilen Hizmetler
+        </h6>
+        <div class="d-flex gap-2">
+          {% if can_edit_req %}
+          <a href="/requests/{{ req.id }}/edit" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-pencil me-1"></i> Düzenle
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body">
+
+        {% if items %}
+        <ul class="nav nav-tabs mb-3" id="detailTabs" role="tablist">
+          {% set first_shown = namespace(val=true) %}
+          {% for tab in request_tabs %}
+          {% for section in tab.sections %}
+          {% if items.get(section) %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {% if first_shown.val %}active{% set first_shown.val = false %}{% endif %}"
+                    data-bs-toggle="tab"
+                    data-bs-target="#dtpane-{{ section }}"
+                    data-section="{{ section }}"
+                    type="button"
+                    onclick="onSectionTabClick('{{ section }}')">
+              {% if section == 'accommodation' %}🛏 Konaklama
+              {% elif section == 'meeting' %}🏛 Toplantı
+              {% elif section == 'fb' %}🍽 F&B
+              {% elif section == 'teknik' %}🔧 Teknik
+              {% elif section == 'dekor' %}🎨 Dekor
+              {% elif section == 'transfer' %}🚌 Transfer
+              {% elif section == 'tasarim' %}🖨 Tasarım
+              {% else %}📦 Diğer{% endif %}
+              <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ items[section] | length }}</span>
+            </button>
+          </li>
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+        </ul>
+
+        <div class="tab-content">
+          {% set first_pane = namespace(val=true) %}
+          {% for tab in request_tabs %}
+          {% for section in tab.sections %}
+          {% if items.get(section) %}
+          <div class="tab-pane fade {% if first_pane.val %}show active{% set first_pane.val = false %}{% endif %}"
+               id="dtpane-{{ section }}">
+
+            {# Konaklama tarih bandı #}
+            {% if section == 'accommodation' and (req.accom_check_in or req.accom_check_out) %}
+            <div class="d-flex align-items-center gap-2 mb-2 px-1"
+                 style="background:#eff6ff; border-left:3px solid #3b82f6; padding:6px 10px; border-radius:0 4px 4px 0; font-size:12px;">
+              <i class="bi bi-calendar-range text-primary"></i>
+              <span class="text-primary fw-semibold">Konaklama:</span>
+              <span>{{ req.accom_check_in | date_tr if req.accom_check_in else '?' }} →
+                    {{ req.accom_check_out | date_tr if req.accom_check_out else '?' }}</span>
+            </div>
+            {% endif %}
+
+            {# Bu sekme için ilgili tedarikçiler #}
+            {% if pref_venues %}
+            {% set sec_suppliers = [] %}
+            {% for venue in venues %}
+            {% if venue.id in pref_venues %}
+            {# section → supplier_type eşleştirmesi #}
+            {% if (section == 'accommodation' and venue.supplier_type in ('otel', 'etkinlik'))
+               or (section == 'meeting'       and venue.supplier_type in ('otel', 'etkinlik'))
+               or (section == 'fb'            and venue.supplier_type in ('otel', 'etkinlik', 'restaurant'))
+               or (section == 'teknik'        and venue.supplier_type == 'teknik')
+               or (section == 'dekor'         and venue.supplier_type in ('dekor', 'susleme'))
+               or (section == 'transfer'      and venue.supplier_type == 'transfer')
+               or (section == 'tasarim'       and venue.supplier_type == 'tasarim')
+               or (section == 'other'         and venue.supplier_type in ('ik', 'diger', 'restaurant', 'susleme')) %}
+            <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1 mb-1"
+                  style="font-size:11px; padding:4px 10px;">
+              <i class="bi bi-building me-1"></i>{{ venue.name }}
+              {% if can_rfq %}
+              <span class="text-muted"> · {{ venue.city }}</span>
+              {% endif %}
+            </span>
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+
+            <div class="table-responsive mt-2">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Hizmet / Açıklama</th>
+                    <th>Miktar</th>
+                    <th>Birim</th>
+                    <th>Tarih</th>
+                    <th>Notlar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in items[section] %}
+                  <tr>
+                    <td style="font-size:13px;">{{ row.description or '—' }}</td>
+                    <td style="font-size:13px; color:#64748b;">{{ row.qty or 1 }}</td>
+                    <td style="font-size:13px; color:#64748b;">{{ row.unit or '—' }}</td>
+                    <td style="font-size:12px; color:#94a3b8;">{{ row.date_from or '' }}{% if row.date_to and row.date_to != row.date_from %} — {{ row.date_to }}{% endif %}</td>
+                    <td style="font-size:12px; color:#94a3b8;">{{ row.notes or '' }}</td>
+                  </tr>
+                  {% if section == 'meeting' and row.daily_attendees %}
+                  <tr style="background:#fefce8;">
+                    <td colspan="5" style="padding:4px 12px;">
+                      <div style="font-size:10px; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px;">
+                        📅 Günlük Detay
+                      </div>
+                      <table style="font-size:11px; border-collapse:collapse; width:auto;">
+                        <tr>
+                          <th style="padding:2px 10px; background:#fde68a; border:1px solid #fcd34d;">Tarih</th>
+                          <th style="padding:2px 10px; background:#fde68a; border:1px solid #fcd34d;">Kişi</th>
+                          <th style="padding:2px 10px; background:#fde68a; border:1px solid #fcd34d;">Oturma Düzeni</th>
+                        </tr>
+                        {% for da in row.daily_attendees %}
+                        <tr>
+                          <td style="padding:2px 10px; border:1px solid #fcd34d;">{{ da.date }}</td>
+                          <td style="padding:2px 10px; border:1px solid #fcd34d; text-align:center;">{{ da.qty }}</td>
+                          <td style="padding:2px 10px; border:1px solid #fcd34d;">{{ da.seating_layout }}</td>
+                        </tr>
+                        {% endfor %}
+                      </table>
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            {% if can_rfq %}
+            <div class="mt-2 text-end">
+              <button type="button" class="btn btn-sm btn-outline-warning"
+                      onclick="openRfqModal('{{ section }}')">
+                <i class="bi bi-envelope me-1"></i>Bu Sekmenin Tedarikçilerine Mail Hazırla
+              </button>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0" style="font-size:13px;">Henüz hizmet kalemi eklenmemiş.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Seçilen Tedarikçiler (kompakt, aktif sekmeye göre filtrelenir) #}
+    {% if pref_venues %}
+    <div class="card mb-4" id="selectedVenuesCard">
+      <div class="card-body py-2">
+        <span class="text-muted fw-semibold me-2" style="font-size:11px; text-transform:uppercase; letter-spacing:.4px;">
+          <i class="bi bi-building me-1"></i>Seçilen Tedarikçiler:
+        </span>
+        {% for venue in venues %}
+        {% if venue.id in pref_venues %}
+        <a href="/venues/{{ venue.id }}" class="text-decoration-none selected-venue-badge"
+           data-supplier-type="{{ venue.supplier_type }}">
+          <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1"
+                style="font-size:12px; padding:4px 10px;">
+            {{ venue.name }} <span class="text-muted">· {{ venue.city }}</span>
+          </span>
+        </a>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# RFQ Modal (her zaman render et, JS ile kontrol edilir) #}
+    {% if can_rfq %}
+    <div class="modal fade" id="rfqModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header" style="background:#1e293b; color:#fff; border:none;">
+            <div>
+              <h5 class="modal-title mb-0">
+                <i class="bi bi-envelope-open me-2"></i>Teklif İstek E-postaları
+              </h5>
+              <div id="rfqSectionLabel" class="mt-1" style="font-size:12px; opacity:.8;"></div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body p-0">
+            <div class="alert alert-info py-2 mx-3 mt-3 mb-0" style="font-size:12px;">
+              <i class="bi bi-info-circle me-1"></i>
+              Her tedarikçi için e-posta içeriği otomatik oluşturulur.
+              <strong>Zengin Metin Kopyala</strong> ile Outlook/Gmail'e yapıştırabilirsiniz.
+            </div>
+            {# Inline tedarikçi ekleme alanı (başta gizli) #}
+            <div id="rfqAddVenueArea" class="px-3 pt-3" style="display:none;">
+              <div class="border rounded p-3" style="background:#f8fafc;">
+                <div class="fw-semibold mb-2" style="font-size:12px; color:#1e293b;">
+                  <i class="bi bi-plus-circle me-1 text-primary"></i>Tedarikçi Ekle
+                </div>
+                <div class="vs-wrapper mb-2">
+                  <div class="position-relative">
+                    <i class="bi bi-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:12px;pointer-events:none;"></i>
+                    <input type="text" id="rfqAddSearch" class="form-control form-control-sm"
+                           style="padding-left:30px;"
+                           placeholder="Tedarikçi ara..."
+                           oninput="filterRfqAddDrop(this.value)"
+                           onfocus="openRfqAddDrop()">
+                  </div>
+                  <div class="vs-dropdown" id="rfqAddDrop" style="display:none;"></div>
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-1"
+                        onclick="document.getElementById('rfqAddVenueArea').style.display='none';">
+                  İptal
+                </button>
+              </div>
+            </div>
+            <div id="rfqVenueCards" class="p-3"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-primary btn-sm me-auto"
+                    onclick="toggleRfqAddVenueArea()">
+              <i class="bi bi-plus-circle me-1"></i>Tedarikçi Ekle
+            </button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
 {# ─── İKİ SÜTUN ─── #}
 {# ─── BÜTÇE TABLARI (birden fazlaysa yan yana) ─── #}
 {% if budgets_data and budgets_data | length > 1 %}
@@ -371,17 +716,22 @@
 {% set SECTIONS_ORDER = ['accommodation', 'meeting', 'fb', 'teknik', 'dekor', 'transfer', 'tasarim', 'other'] %}
 <div class="card mb-4">
   <div class="card-header d-flex align-items-center justify-content-between py-2"
-       style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+       style="background:#f8fafc; border-bottom:1px solid #e2e8f0; cursor:pointer;"
+       data-bs-toggle="collapse" data-bs-target="#budgetCompareCollapse">
     <h6 class="fw-bold mb-0">
       <i class="bi bi-calculator me-2 text-success"></i>Bütçe Karşılaştırması
       <span class="badge bg-secondary ms-1" style="font-size:11px;">{{ budgets_data | length }}</span>
     </h6>
+    <div class="d-flex align-items-center gap-2" onclick="event.stopPropagation()">
     {% if (can_edit_status or can_budget_ops) and req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
     <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">
       <i class="bi bi-plus me-1"></i>Yeni Bütçe
     </a>
     {% endif %}
+    <i class="bi bi-chevron-down text-muted"></i>
+    </div>
   </div>
+  <div class="collapse show" id="budgetCompareCollapse">
   <div class="card-body p-0">
 
     {# Tab başlıkları #}
@@ -808,6 +1158,7 @@
     </div>
 
   </div>
+  </div>
 </div>
 {% endif %}
 
@@ -851,358 +1202,6 @@
 </script>
 {% endif %}
 
-<div class="row g-4">
-
-  {# ─── SOL: Bilgi Kartı + Durum ─── #}
-  <div class="col-lg-4">
-
-    {# Bilgi kartı #}
-    <div class="card mb-4">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">
-          <i class="bi bi-info-circle me-2 text-primary"></i>Etkinlik Bilgileri
-        </h6>
-        <table class="table table-sm mb-0">
-          <tbody>
-            <tr>
-              <td class="info-label" style="width:130px;">Müşteri</td>
-              <td class="info-value">{{ req.client_name }}</td>
-            </tr>
-            {% set cp = req.contact_person %}
-            {% if cp and cp.name %}
-            <tr>
-              <td class="info-label">Kontak</td>
-              <td class="info-value">
-                {{ cp.name }}
-                {% if cp.title %}<div class="text-muted" style="font-size:11px;">{{ cp.title }}</div>{% endif %}
-                {% if cp.email %}<div style="font-size:11px;"><a href="mailto:{{ cp.email }}">{{ cp.email }}</a></div>{% endif %}
-              </td>
-            </tr>
-            {% endif %}
-            <tr>
-              <td class="info-label">Etkinlik Tipi</td>
-              <td class="info-value">{{ et_map.get(req.event_type, req.event_type) }}</td>
-            </tr>
-            <tr>
-              <td class="info-label">Şehir(ler)</td>
-              <td class="info-value">{{ req.cities_display or '—' }}</td>
-            </tr>
-            <tr>
-              <td class="info-label">Katılımcı</td>
-              <td class="info-value">{{ req.attendee_count or '—' }} kişi</td>
-            </tr>
-            <tr>
-              <td class="info-label">Etkinlik Başlangıç</td>
-              <td class="info-value">{% if req.check_in %}{{ req.check_in | date_tr }}{% else %}—{% endif %}</td>
-            </tr>
-            <tr>
-              <td class="info-label">Etkinlik Bitiş</td>
-              <td class="info-value">{% if req.check_out %}{{ req.check_out | date_tr }}{% else %}—{% endif %}</td>
-            </tr>
-            {% if req.quote_deadline %}
-            <tr>
-              <td class="info-label">Teklif Son Tarihi</td>
-              <td class="info-value fw-semibold text-danger">{{ req.quote_deadline | date_tr }}</td>
-            </tr>
-            {% endif %}
-            <tr>
-              <td class="info-label">Oluşturan</td>
-              <td class="info-value">{{ req.creator.full_name if req.creator else '—' }}</td>
-            </tr>
-            <tr>
-              <td class="info-label">Oluşturma</td>
-              <td class="info-value" style="font-size:12px;">{{ req.created_at | date_tr }}</td>
-            </tr>
-          </tbody>
-        </table>
-        {% if req.description %}
-        <hr>
-        <p class="text-muted mb-1" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.5px;">Açıklama</p>
-        <p style="font-size:13px;" class="mb-0">{{ req.description }}</p>
-        {% endif %}
-        {% if req.notes %}
-        <hr>
-        <p class="text-muted mb-1" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.5px;">Notlar</p>
-        <p style="font-size:13px;" class="mb-0">{{ req.notes }}</p>
-        {% endif %}
-      </div>
-    </div>
-
-    {# Durum Güncelle (E-dem veya direkt yöneten PM) #}
-    {% if can_edit_status or can_direct_manage %}
-    <div class="card">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">
-          <i class="bi bi-arrow-repeat me-2 text-warning"></i>Durum Güncelle
-        </h6>
-        <form method="post" action="/requests/{{ req.id }}/status">
-          <div class="mb-3">
-            <select name="new_status" class="form-select form-select-sm">
-              {% for s in statuses %}
-              {# PM direkt yönetimde sadece ilgili durumlara geçiş yapabilir #}
-              {% if can_edit_status or s.value in ('in_progress', 'venues_contacted', 'budget_ready', 'completed', 'cancelled') %}
-              <option value="{{ s.value }}" {% if req.status == s.value %}selected{% endif %}>
-                {{ s.label }}
-              </option>
-              {% endif %}
-              {% endfor %}
-            </select>
-          </div>
-          <button type="submit" class="btn btn-warning btn-sm w-100">
-            <i class="bi bi-check-lg me-1"></i>Durumu Güncelle
-          </button>
-        </form>
-      </div>
-    </div>
-    {% endif %}
-  </div>
-
-  {# ─── SAĞ: Hizmetler + Mekanlar + RFQ ─── #}
-  <div class="col-lg-8">
-
-    {# Talep Edilen Hizmetler #}
-    {% set items = req.items %}
-    {% set pref_venues = req.preferred_venues %}
-    {% set can_rfq = (can_edit_status or can_direct_manage) and req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
-
-    <div class="card mb-4">
-      <div class="card-header d-flex align-items-center justify-content-between py-2"
-           style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-        <h6 class="fw-bold mb-0">
-          <i class="bi bi-list-check me-2 text-success"></i>Talep Edilen Hizmetler
-        </h6>
-        <div class="d-flex gap-2">
-          {% if can_edit_req %}
-          <a href="/requests/{{ req.id }}/edit" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-pencil me-1"></i> Düzenle
-          </a>
-          {% endif %}
-        </div>
-      </div>
-      <div class="card-body">
-
-        {% if items %}
-        <ul class="nav nav-tabs mb-3" id="detailTabs" role="tablist">
-          {% set first_shown = namespace(val=true) %}
-          {% for tab in request_tabs %}
-          {% for section in tab.sections %}
-          {% if items.get(section) %}
-          <li class="nav-item" role="presentation">
-            <button class="nav-link {% if first_shown.val %}active{% set first_shown.val = false %}{% endif %}"
-                    data-bs-toggle="tab"
-                    data-bs-target="#dtpane-{{ section }}"
-                    data-section="{{ section }}"
-                    type="button"
-                    onclick="onSectionTabClick('{{ section }}')">
-              {% if section == 'accommodation' %}🛏 Konaklama
-              {% elif section == 'meeting' %}🏛 Toplantı
-              {% elif section == 'fb' %}🍽 F&B
-              {% elif section == 'teknik' %}🔧 Teknik
-              {% elif section == 'dekor' %}🎨 Dekor
-              {% elif section == 'transfer' %}🚌 Transfer
-              {% elif section == 'tasarim' %}🖨 Tasarım
-              {% else %}📦 Diğer{% endif %}
-              <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ items[section] | length }}</span>
-            </button>
-          </li>
-          {% endif %}
-          {% endfor %}
-          {% endfor %}
-        </ul>
-
-        <div class="tab-content">
-          {% set first_pane = namespace(val=true) %}
-          {% for tab in request_tabs %}
-          {% for section in tab.sections %}
-          {% if items.get(section) %}
-          <div class="tab-pane fade {% if first_pane.val %}show active{% set first_pane.val = false %}{% endif %}"
-               id="dtpane-{{ section }}">
-
-            {# Konaklama tarih bandı #}
-            {% if section == 'accommodation' and (req.accom_check_in or req.accom_check_out) %}
-            <div class="d-flex align-items-center gap-2 mb-2 px-1"
-                 style="background:#eff6ff; border-left:3px solid #3b82f6; padding:6px 10px; border-radius:0 4px 4px 0; font-size:12px;">
-              <i class="bi bi-calendar-range text-primary"></i>
-              <span class="text-primary fw-semibold">Konaklama:</span>
-              <span>{{ req.accom_check_in | date_tr if req.accom_check_in else '?' }} →
-                    {{ req.accom_check_out | date_tr if req.accom_check_out else '?' }}</span>
-            </div>
-            {% endif %}
-
-            {# Bu sekme için ilgili tedarikçiler #}
-            {% if pref_venues %}
-            {% set sec_suppliers = [] %}
-            {% for venue in venues %}
-            {% if venue.id in pref_venues %}
-            {# section → supplier_type eşleştirmesi #}
-            {% if (section == 'accommodation' and venue.supplier_type in ('otel', 'etkinlik'))
-               or (section == 'meeting'       and venue.supplier_type in ('otel', 'etkinlik'))
-               or (section == 'fb'            and venue.supplier_type in ('otel', 'etkinlik', 'restaurant'))
-               or (section == 'teknik'        and venue.supplier_type == 'teknik')
-               or (section == 'dekor'         and venue.supplier_type in ('dekor', 'susleme'))
-               or (section == 'transfer'      and venue.supplier_type == 'transfer')
-               or (section == 'tasarim'       and venue.supplier_type == 'tasarim')
-               or (section == 'other'         and venue.supplier_type in ('ik', 'diger', 'restaurant', 'susleme')) %}
-            <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1 mb-1"
-                  style="font-size:11px; padding:4px 10px;">
-              <i class="bi bi-building me-1"></i>{{ venue.name }}
-              {% if can_rfq %}
-              <span class="text-muted"> · {{ venue.city }}</span>
-              {% endif %}
-            </span>
-            {% endif %}
-            {% endif %}
-            {% endfor %}
-            {% endif %}
-
-            <div class="table-responsive mt-2">
-              <table class="table table-sm mb-0">
-                <thead>
-                  <tr>
-                    <th>Hizmet / Açıklama</th>
-                    <th>Miktar</th>
-                    <th>Birim</th>
-                    <th>Tarih</th>
-                    <th>Notlar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in items[section] %}
-                  <tr>
-                    <td style="font-size:13px;">{{ row.description or '—' }}</td>
-                    <td style="font-size:13px; color:#64748b;">{{ row.qty or 1 }}</td>
-                    <td style="font-size:13px; color:#64748b;">{{ row.unit or '—' }}</td>
-                    <td style="font-size:12px; color:#94a3b8;">{{ row.date_from or '' }}{% if row.date_to and row.date_to != row.date_from %} — {{ row.date_to }}{% endif %}</td>
-                    <td style="font-size:12px; color:#94a3b8;">{{ row.notes or '' }}</td>
-                  </tr>
-                  {% if section == 'meeting' and row.daily_attendees %}
-                  <tr style="background:#fefce8;">
-                    <td colspan="5" style="padding:4px 12px;">
-                      <div style="font-size:10px; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px;">
-                        📅 Günlük Detay
-                      </div>
-                      <table style="font-size:11px; border-collapse:collapse; width:auto;">
-                        <tr>
-                          <th style="padding:2px 10px; background:#fde68a; border:1px solid #fcd34d;">Tarih</th>
-                          <th style="padding:2px 10px; background:#fde68a; border:1px solid #fcd34d;">Kişi</th>
-                          <th style="padding:2px 10px; background:#fde68a; border:1px solid #fcd34d;">Oturma Düzeni</th>
-                        </tr>
-                        {% for da in row.daily_attendees %}
-                        <tr>
-                          <td style="padding:2px 10px; border:1px solid #fcd34d;">{{ da.date }}</td>
-                          <td style="padding:2px 10px; border:1px solid #fcd34d; text-align:center;">{{ da.qty }}</td>
-                          <td style="padding:2px 10px; border:1px solid #fcd34d;">{{ da.seating_layout }}</td>
-                        </tr>
-                        {% endfor %}
-                      </table>
-                    </td>
-                  </tr>
-                  {% endif %}
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-
-            {% if can_rfq %}
-            <div class="mt-2 text-end">
-              <button type="button" class="btn btn-sm btn-outline-warning"
-                      onclick="openRfqModal('{{ section }}')">
-                <i class="bi bi-envelope me-1"></i>Bu Sekmenin Tedarikçilerine Mail Hazırla
-              </button>
-            </div>
-            {% endif %}
-          </div>
-          {% endif %}
-          {% endfor %}
-          {% endfor %}
-        </div>
-        {% else %}
-        <p class="text-muted mb-0" style="font-size:13px;">Henüz hizmet kalemi eklenmemiş.</p>
-        {% endif %}
-      </div>
-    </div>
-
-    {# Seçilen Tedarikçiler (kompakt, aktif sekmeye göre filtrelenir) #}
-    {% if pref_venues %}
-    <div class="card mb-4" id="selectedVenuesCard">
-      <div class="card-body py-2">
-        <span class="text-muted fw-semibold me-2" style="font-size:11px; text-transform:uppercase; letter-spacing:.4px;">
-          <i class="bi bi-building me-1"></i>Seçilen Tedarikçiler:
-        </span>
-        {% for venue in venues %}
-        {% if venue.id in pref_venues %}
-        <a href="/venues/{{ venue.id }}" class="text-decoration-none selected-venue-badge"
-           data-supplier-type="{{ venue.supplier_type }}">
-          <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1"
-                style="font-size:12px; padding:4px 10px;">
-            {{ venue.name }} <span class="text-muted">· {{ venue.city }}</span>
-          </span>
-        </a>
-        {% endif %}
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    {# RFQ Modal (her zaman render et, JS ile kontrol edilir) #}
-    {% if can_rfq %}
-    <div class="modal fade" id="rfqModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header" style="background:#1e293b; color:#fff; border:none;">
-            <div>
-              <h5 class="modal-title mb-0">
-                <i class="bi bi-envelope-open me-2"></i>Teklif İstek E-postaları
-              </h5>
-              <div id="rfqSectionLabel" class="mt-1" style="font-size:12px; opacity:.8;"></div>
-            </div>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body p-0">
-            <div class="alert alert-info py-2 mx-3 mt-3 mb-0" style="font-size:12px;">
-              <i class="bi bi-info-circle me-1"></i>
-              Her tedarikçi için e-posta içeriği otomatik oluşturulur.
-              <strong>Zengin Metin Kopyala</strong> ile Outlook/Gmail'e yapıştırabilirsiniz.
-            </div>
-            {# Inline tedarikçi ekleme alanı (başta gizli) #}
-            <div id="rfqAddVenueArea" class="px-3 pt-3" style="display:none;">
-              <div class="border rounded p-3" style="background:#f8fafc;">
-                <div class="fw-semibold mb-2" style="font-size:12px; color:#1e293b;">
-                  <i class="bi bi-plus-circle me-1 text-primary"></i>Tedarikçi Ekle
-                </div>
-                <div class="vs-wrapper mb-2">
-                  <div class="position-relative">
-                    <i class="bi bi-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:12px;pointer-events:none;"></i>
-                    <input type="text" id="rfqAddSearch" class="form-control form-control-sm"
-                           style="padding-left:30px;"
-                           placeholder="Tedarikçi ara..."
-                           oninput="filterRfqAddDrop(this.value)"
-                           onfocus="openRfqAddDrop()">
-                  </div>
-                  <div class="vs-dropdown" id="rfqAddDrop" style="display:none;"></div>
-                </div>
-                <button type="button" class="btn btn-outline-secondary btn-sm mt-1"
-                        onclick="document.getElementById('rfqAddVenueArea').style.display='none';">
-                  İptal
-                </button>
-              </div>
-            </div>
-            <div id="rfqVenueCards" class="p-3"></div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-primary btn-sm me-auto"
-                    onclick="toggleRfqAddVenueArea()">
-              <i class="bi bi-plus-circle me-1"></i>Tedarikçi Ekle
-            </button>
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
-  </div>
-</div>
 
 {# ─── FİNANSAL SEKME ─── #}
 <div class="card mb-4" id="tab-financial">
@@ -1501,114 +1500,6 @@
       </a>
       {% endif %}
     </div>
-    {% endif %}
-
-    {# ─── Belgesiz Gelir / Gider — sadece değer varsa veya yetkiliyse göster ─── #}
-    {% if undoc_gelir_total or undoc_gider_total or can_manage_undoc %}
-    <hr class="my-3">
-    <div class="d-flex align-items-center justify-content-between mb-2">
-      <span class="fw-semibold" style="font-size:13px; color:#92400e;">
-        <i class="bi bi-cash-stack me-1" style="color:#b45309;"></i>Belgesiz Gelir / Gider
-        <span class="badge bg-warning bg-opacity-20 text-warning ms-1" style="font-size:10px;">KDV'siz</span>
-      </span>
-      {% if not can_manage_undoc %}
-      <span class="text-muted" style="font-size:11px;"><i class="bi bi-eye me-1"></i>Salt görüntüleme</span>
-      {% endif %}
-    </div>
-    <div class="table-responsive mt-2">
-      <table class="table table-sm mb-0"
-             style="font-size:12px; border:1px solid #fde68a; border-radius:6px; overflow:hidden;">
-        <thead style="background:#fefce8;">
-          <tr>
-            <th style="width:130px;">Tip</th>
-            <th style="width:100px;">Tarih</th>
-            <th>Açıklama</th>
-            <th class="text-end" style="width:140px;">Tutar (KDV'siz) ₺</th>
-            {% if can_manage_undoc %}<th style="width:36px;"></th>{% endif %}
-          </tr>
-        </thead>
-        <tbody id="undocTableBody">
-          {% for e in undocumented_entries %}
-          <tr id="undoc-{{ e.id }}" data-amount="{{ e.amount }}" data-type="{{ e.entry_type }}">
-            <td>
-              {% if e.entry_type == 'gelir' %}
-              <span class="badge bg-success bg-opacity-10 text-success" style="font-size:10px;">
-                <i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir
-              </span>
-              {% else %}
-              <span class="badge bg-danger bg-opacity-10 text-danger" style="font-size:10px;">
-                <i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider
-              </span>
-              {% endif %}
-            </td>
-            <td class="text-muted">{{ e.entry_date | date_tr if e.entry_date else '—' }}</td>
-            <td>{{ e.description or '—' }}</td>
-            <td class="text-end fw-semibold {{ 'text-success' if e.entry_type == 'gelir' else 'text-danger' }}">
-              ₺{{ '{:,.2f}'.format(e.amount).replace(',', '.') }}
-            </td>
-            {% if can_manage_undoc %}
-            <td class="text-center">
-              <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
-                      onclick="deleteUndoc('{{ e.id }}', '{{ e.entry_type }}')" title="Sil">
-                <i class="bi bi-trash3" style="font-size:10px;"></i>
-              </button>
-            </td>
-            {% endif %}
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot style="background:#fefce8; font-size:11px;">
-          <tr>
-            <td colspan="3" class="text-end fw-semibold pe-3">Belgesiz Gelir Toplamı</td>
-            <td class="text-end fw-bold text-success" id="undocIncomeTotal">
-              ₺{{ '{:,.2f}'.format(undoc_gelir_total).replace(',', '.') }}
-            </td>
-            {% if can_manage_undoc %}<td></td>{% endif %}
-          </tr>
-          <tr>
-            <td colspan="3" class="text-end fw-semibold pe-3">Belgesiz Gider Toplamı</td>
-            <td class="text-end fw-bold text-danger" id="undocExpenseTotal">
-              ₺{{ '{:,.2f}'.format(undoc_gider_total).replace(',', '.') }}
-            </td>
-            {% if can_manage_undoc %}<td></td>{% endif %}
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-    {% if can_manage_undoc %}
-    <div class="mt-2 d-flex flex-column gap-1">
-      {# Belgesiz Gelir ekle #}
-      <form class="d-flex gap-1 align-items-center flex-wrap" onsubmit="addUndoc(event,'gelir')">
-        <span class="badge bg-success bg-opacity-10 text-success" style="font-size:10px; white-space:nowrap;">
-          <i class="bi bi-plus me-1"></i>Gelir Ekle
-        </span>
-        <input type="date" id="undocIncomeDate" class="form-control form-control-sm"
-               style="width:120px;" value="{{ today }}">
-        <input type="text" id="undocIncomeDesc" class="form-control form-control-sm flex-grow-1"
-               placeholder="Açıklama" style="min-width:100px;">
-        <input type="number" id="undocIncomeAmt" class="form-control form-control-sm text-end"
-               placeholder="Tutar" min="0" step="0.01" style="width:100px;">
-        <button type="submit" class="btn btn-sm btn-success px-2">
-          <i class="bi bi-plus-lg"></i>
-        </button>
-      </form>
-      {# Belgesiz Gider ekle #}
-      <form class="d-flex gap-1 align-items-center flex-wrap" onsubmit="addUndoc(event,'gider')">
-        <span class="badge bg-danger bg-opacity-10 text-danger" style="font-size:10px; white-space:nowrap;">
-          <i class="bi bi-plus me-1"></i>Gider Ekle
-        </span>
-        <input type="date" id="undocExpenseDate" class="form-control form-control-sm"
-               style="width:120px;" value="{{ today }}">
-        <input type="text" id="undocExpenseDesc" class="form-control form-control-sm flex-grow-1"
-               placeholder="Açıklama" style="min-width:100px;">
-        <input type="number" id="undocExpenseAmt" class="form-control form-control-sm text-end"
-               placeholder="Tutar" min="0" step="0.01" style="width:100px;">
-        <button type="submit" class="btn btn-sm btn-danger px-2">
-          <i class="bi bi-plus-lg"></i>
-        </button>
-      </form>
-    </div>
-    {% endif %}
     {% endif %}
 
     {# ── Reddedilen Faturalar (gizli, aç/kapa) ── #}
@@ -3222,12 +3113,19 @@ function applyVenuePickerSelection(section, emailFilterSection) {
             </button>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
-          <button type="button" class="btn btn-primary btn-sm" id="psStep0NextBtn"
-                  onclick="goPsStep1()" disabled>
-            Devam Et <i class="bi bi-arrow-right ms-1"></i>
+        <div class="modal-footer d-flex justify-content-between align-items-center">
+          <button type="button" class="btn btn-outline-warning btn-sm"
+                  data-bs-dismiss="modal"
+                  onclick="setTimeout(()=>new bootstrap.Modal(document.getElementById('revisionModal')).show(),250)">
+            <i class="bi bi-calendar-event me-1"></i>Tarih Değişikliği
           </button>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+            <button type="button" class="btn btn-primary btn-sm" id="psStep0NextBtn"
+                    onclick="goPsStep1()" disabled>
+              Devam Et <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3514,80 +3412,6 @@ function applyVenuePickerSelection(section, emailFilterSection) {
   }
 })();
 
-// ─── Belgesiz Gelir / Gider ───
-const REQ_ID_UNDOC = '{{ req.id }}';
-
-async function addUndoc(e, entryType) {
-  e.preventDefault();
-  const sfx = entryType === 'gelir' ? 'Income' : 'Expense';
-  const date = document.getElementById('undoc' + sfx + 'Date').value;
-  const desc = document.getElementById('undoc' + sfx + 'Desc').value.trim();
-  const amt  = parseFloat(document.getElementById('undoc' + sfx + 'Amt').value);
-  if (!desc || isNaN(amt) || amt <= 0) return;
-
-  const fd = new FormData();
-  fd.append('request_id', REQ_ID_UNDOC);
-  fd.append('entry_type',  entryType);
-  fd.append('description', desc);
-  fd.append('amount',      amt);
-  fd.append('entry_date',  date);
-  const res  = await fetch('/undocumented/add', { method: 'POST', body: fd });
-  const data = await res.json();
-  if (!data.ok) { alert(data.error || 'Hata'); return; }
-
-  // Tabloya satır ekle
-  const tbody = document.getElementById('undocTableBody');
-  const fmtAmt = n => '₺' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.').replace(/\.(\d{2})$/, ',$1');
-  const isGelir = entryType === 'gelir';
-  const badgeHtml = isGelir
-    ? `<span class="badge bg-success bg-opacity-10 text-success" style="font-size:10px;"><i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir</span>`
-    : `<span class="badge bg-danger bg-opacity-10 text-danger" style="font-size:10px;"><i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider</span>`;
-  const amtColor = isGelir ? 'text-success' : 'text-danger';
-  const tr = document.createElement('tr');
-  tr.id = 'undoc-' + data.id;
-  tr.dataset.amount = data.amount;
-  tr.dataset.type   = entryType;
-  tr.innerHTML = `
-    <td>${badgeHtml}</td>
-    <td class="text-muted">${data.entry_date || '—'}</td>
-    <td>${data.description}</td>
-    <td class="text-end fw-semibold ${amtColor}">${fmtAmt(data.amount)}</td>
-    <td class="text-center">
-      <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
-              onclick="deleteUndoc('${data.id}','${entryType}')" title="Sil">
-        <i class="bi bi-trash3" style="font-size:10px;"></i>
-      </button>
-    </td>`;
-  tbody.appendChild(tr);
-
-  // Toplamı güncelle
-  updateUndocTotal(entryType, amt);
-
-  // Formu temizle
-  document.getElementById('undoc' + sfx + 'Desc').value = '';
-  document.getElementById('undoc' + sfx + 'Amt').value  = '';
-}
-
-async function deleteUndoc(entryId, entryType) {
-  if (!confirm('Silinecek. Emin misiniz?')) return;
-  const row = document.getElementById('undoc-' + entryId);
-  const amt = row ? parseFloat(row.dataset.amount) || 0 : 0;
-  const res = await fetch('/undocumented/' + entryId, { method: 'DELETE' });
-  const data = await res.json();
-  if (data.ok) {
-    if (row) row.remove();
-    updateUndocTotal(entryType, -amt);
-  }
-}
-
-function updateUndocTotal(entryType, delta) {
-  const id = entryType === 'gelir' ? 'undocIncomeTotal' : 'undocExpenseTotal';
-  const el = document.getElementById(id);
-  if (!el) return;
-  const cur = parseFloat(el.textContent.replace('₺','').replace(/\./g,'').replace(',','.')) || 0;
-  const fmt = n => '₺' + Math.max(0,n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.').replace(/\.(\d{2})$/, ',$1');
-  el.textContent = fmt(cur + delta);
-}
 </script>
 
 {% endblock %}

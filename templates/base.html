@@ -353,6 +353,12 @@
             <i class="bi bi-lock nav-icon"></i> Dosya Kapama
             {{ nb((nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) + (nc.closure_pending_finance or 0)) }}
           </a>
+          {% if current_user.role in ('admin', 'mudur', 'muhasebe_muduru', 'muhasebe', 'yonetici') %}
+          <a href="/undocumented"
+             class="sidebar-link {% if cp == '/undocumented' %}active{% endif %}">
+            <i class="bi bi-cash-stack nav-icon"></i> Belgesiz Gelir/Gider
+          </a>
+          {% endif %}
         </div>
       </div>
 

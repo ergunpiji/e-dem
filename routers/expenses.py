@@ -506,6 +506,47 @@ async def expenses_doc_download(
 undoc_router = APIRouter(prefix="/undocumented", tags=["undocumented"])
 
 
+@undoc_router.get("", response_class=HTMLResponse, name="undocumented_list")
+async def undocumented_list(
+    request: Request,
+    type_filter: str = "all",   # all | gelir | gider
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role not in ("admin", "mudur", "muhasebe_muduru", "muhasebe", "yonetici"):
+        raise HTTPException(403)
+
+    query = db.query(UndocumentedEntry)
+    if type_filter != "all":
+        query = query.filter(UndocumentedEntry.entry_type == type_filter)
+
+    # Birim müdürü: sadece kendi takımının referansları
+    is_birim_mgr = current_user.role == "mudur" and bool(current_user.team_id)
+    if is_birim_mgr:
+        from models import User as UserModel
+        team_ids = [u.id for u in db.query(UserModel).filter(
+            UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
+        team_req_ids = [r.id for r in db.query(ReqModel).filter(
+            ReqModel.assigned_to.in_(team_ids)).all()]
+        query = query.filter(UndocumentedEntry.request_id.in_(team_req_ids))
+
+    entries = query.order_by(UndocumentedEntry.entry_date.desc(), UndocumentedEntry.created_at.desc()).all()
+
+    gelir_total = sum(e.amount for e in entries if e.entry_type == "gelir")
+    gider_total = sum(e.amount for e in entries if e.entry_type == "gider")
+    can_manage = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+
+    return templates.TemplateResponse("undocumented/list.html", {
+        "request":       request,
+        "current_user":  current_user,
+        "entries":       entries,
+        "type_filter":   type_filter,
+        "gelir_total":   gelir_total,
+        "gider_total":   gider_total,
+        "can_manage":    can_manage,
+    })
+
+
 @undoc_router.post("/add", name="undocumented_add")
 async def undocumented_add(
     request: Request,
