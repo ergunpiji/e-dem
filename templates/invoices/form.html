@@ -331,7 +331,7 @@
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary" onclick="prepareSave()">
               <i class="bi bi-check-lg me-1"></i>
-              {% if edit_mode %}Güncelle{% else %}Kaydet{% endif %}
+              {% if edit_mode %}Güncelle{% elif statement_prefill %}Talebi Gönder{% else %}Kaydet{% endif %}
             </button>
             {% if edit_mode and invoice %}
             <a href="/requests/{{ invoice.request_id }}#tab-financial"
