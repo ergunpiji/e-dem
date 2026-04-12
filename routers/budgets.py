@@ -266,15 +266,20 @@ async def budgets_create(
     if not _can_create_budget(current_user):
         raise HTTPException(403)
 
-    # Satış fiyatlarını sıfırla (E-dem sadece maliyet girer)
-    try:
-        rows = json.loads(rows_json)
-        for row in rows:
-            if not row.get("is_service_fee"):
-                row["sale_price"] = 0
-        rows_json = json.dumps(rows, ensure_ascii=False)
-    except Exception:
-        pass
+    # Satış fiyatlarını sıfırla — sadece E-dem için (PM/Admin direkt yönetimde sıfırlama)
+    is_direct_manager = current_user.role in ("project_manager", "admin")
+    if not is_direct_manager:
+        try:
+            rows = json.loads(rows_json)
+            for row in rows:
+                if not row.get("is_service_fee"):
+                    row["sale_price"] = 0
+            rows_json = json.dumps(rows, ensure_ascii=False)
+        except Exception:
+            pass
+
+    # PM/Admin direkt yönetimde bütçe direkt approved olur
+    initial_status = "approved" if is_direct_manager else "draft_edem"
 
     budget = Budget(
         id=_uuid(),
@@ -282,7 +287,7 @@ async def budgets_create(
         venue_name=venue_name.strip(),
         venue_id=venue_id.strip() or None,
         rows_json=rows_json,
-        budget_status="draft_edem",
+        budget_status=initial_status,
         created_by=current_user.id,
         created_at=_now(),
         updated_at=_now(),
@@ -436,12 +441,15 @@ async def budgets_update(
     if not budget:
         return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
 
-    # E-dem satış fiyatı giremez — mevcut sale_price değerlerini sıfırla
+    is_direct_manager = current_user.role in ("project_manager", "admin")
+
+    # E-dem satış fiyatı giremez — mevcut sale_price değerlerini sıfırla (PM/Admin hariç)
     try:
         new_rows = json.loads(rows_json)
-        for row in new_rows:
-            if not row.get("is_service_fee"):
-                row["sale_price"] = 0
+        if not is_direct_manager:
+            for row in new_rows:
+                if not row.get("is_service_fee"):
+                    row["sale_price"] = 0
         # Fiyat geçmişi: cost_price ve confirmed_cost_price değişimlerini kaydet
         _record_price_changes(budget, new_rows, current_user,
                               ["cost_price", "confirmed_cost_price"])
@@ -456,7 +464,10 @@ async def budgets_update(
     budget.exchange_rates_json = exchange_rates_json or "{}"
     budget.updated_at          = _now()
 
-    if next_action == "send_to_manager" and budget.budget_status in ("draft_edem", "revision_requested"):
+    if is_direct_manager and budget.budget_status in ("draft_edem", "pending_manager", "revision_requested"):
+        # PM/Admin direkt yönetimde kaydetmek = onaylamak
+        budget.budget_status = "approved"
+    elif next_action == "send_to_manager" and budget.budget_status in ("draft_edem", "revision_requested"):
         budget.budget_status = "pending_manager"
 
     db.commit()
