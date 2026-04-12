@@ -264,9 +264,9 @@
               <th style="min-width:180px;">Açıklama</th>
               <th style="width:110px;">Ödeme</th>
               <th style="width:110px;">Belge</th>
-              <th class="text-end" style="width:110px;">Tutar (KDV hariç)</th>
-              <th style="width:80px;">KDV %</th>
-              <th class="text-end" style="width:100px;">Toplam</th>
+              <th class="text-end" style="width:110px;">Tutar (KDV dahil)</th>
+              <th class="text-end" style="width:100px;">KDV Tutarı ₺</th>
+              <th class="text-end" style="width:100px;">KDV Hariç</th>
               {% if not readonly %}
               <th id="thRef" style="min-width:170px; display:none;">Referans</th>
               <th style="width:80px;">Belge</th>
@@ -293,11 +293,11 @@
                     {{ item.doc_label }}
                   </span>
                 </td>
-                <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(item.amount).replace(',', '.') }}</td>
-                <td class="text-center text-muted">
-                  {% if item.document_type == 'belgesiz' %}—{% else %}%{{ item.vat_rate | int }}{% endif %}
-                </td>
                 <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(item.total_amount).replace(',', '.') }}</td>
+                <td class="text-end text-muted">
+                  {% if item.document_type == 'belgesiz' %}—{% else %}₺{{ '{:,.2f}'.format(item.vat_amount).replace(',', '.') }}{% endif %}
+                </td>
+                <td class="text-end fw-semibold text-secondary">₺{{ '{:,.2f}'.format(item.amount).replace(',', '.') }}</td>
                 <td style="display:none;">
                   {% if item.assigned_request_id %}
                     <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:10px;">
@@ -539,8 +539,8 @@ let rows = [
     description:          {{ item.description | tojson }},
     payment_method:       '{{ item.payment_method }}',
     document_type:        '{{ item.document_type }}',
-    amount:               {{ item.amount }},
-    vat_rate:             {{ item.vat_rate }},
+    total_amount:         {{ item.total_amount }},
+    vat_amount:           {{ item.vat_amount }},
     document_path:        '{{ item.document_path or '' }}',
     document_name:        {{ (item.document_name or '') | tojson }},
     assigned_request_id:  '{{ item.assigned_request_id or '' }}',
@@ -569,9 +569,9 @@ function renderTable() {
       `<option value="${d.value}" ${row.document_type === d.value ? 'selected' : ''}>${d.label}</option>`
     ).join('');
     const isBelgesiz = row.document_type === 'belgesiz';
-    const vatDisabled = isBelgesiz ? 'disabled style="background:#f1f5f9;"' : '';
-    const vatVal = isBelgesiz ? '0' : (row.vat_rate || 0);
-    const total = round2(row.amount * (1 + (isBelgesiz ? 0 : (row.vat_rate || 0)) / 100));
+    const vatAmtVal = isBelgesiz ? 0 : (row.vat_amount || 0);
+    const totalVal  = row.total_amount || 0;
+    const exclVal   = round2(totalVal - vatAmtVal);
 
     const docBtnHtml = row.document_path
       ? `<a href="/expenses/doc/${row.id || ''}" target="_blank"
@@ -611,19 +611,17 @@ function renderTable() {
         <select onchange="onDocTypeChange(${i}, this.value);" style="width:100px;">${docOpts}</select>
       </td>
       <td>
-        <input type="number" min="0" step="0.01" value="${row.amount || 0}"
-               style="width:100px; text-align:right;"
-               oninput="rows[${i}].amount=parseFloat(this.value)||0; updateTotals();">
+        <input type="number" min="0" step="0.01" value="${totalVal}"
+               style="width:110px; text-align:right;"
+               oninput="rows[${i}].total_amount=parseFloat(this.value)||0; updateTotals();">
       </td>
       <td>
-        <select id="vatSel_${i}" onchange="rows[${i}].vat_rate=parseInt(this.value); updateTotals();"
-                style="width:70px;" ${vatDisabled}>
-          <option value="0"  ${vatVal==0  ?'selected':''}>%0</option>
-          <option value="10" ${vatVal==10 ?'selected':''}>%10</option>
-          <option value="20" ${vatVal==20 ?'selected':''}>%20</option>
-        </select>
+        <input type="number" min="0" step="0.01" value="${vatAmtVal}"
+               style="width:100px; text-align:right;"
+               ${isBelgesiz ? 'disabled style="background:#f1f5f9; width:100px; text-align:right;"' : ''}
+               oninput="rows[${i}].vat_amount=parseFloat(this.value)||0; updateTotals();">
       </td>
-      <td class="text-end fw-semibold" id="rowTotal_${i}">${fmt(total)}</td>
+      <td class="text-end fw-semibold text-secondary" id="rowExcl_${i}">${fmt(exclVal)}</td>
       ${refCell}
       <td>${docBtnHtml}</td>
       <td>
@@ -640,14 +638,9 @@ function renderTable() {
 function onDocTypeChange(i, val) {
   rows[i].document_type = val;
   if (val === 'belgesiz') {
-    rows[i].vat_rate = 0;
-    const sel = document.getElementById('vatSel_' + i);
-    if (sel) { sel.value = '0'; sel.disabled = true; sel.style.background = '#f1f5f9'; }
-  } else {
-    const sel = document.getElementById('vatSel_' + i);
-    if (sel) { sel.disabled = false; sel.style.background = ''; }
+    rows[i].vat_amount = 0;
   }
-  updateTotals();
+  renderTable();
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
@@ -656,13 +649,12 @@ function updateTotals() {
   let excl = 0, vat = 0, total = 0;
   rows.forEach((row, i) => {
     const isBelgesiz = row.document_type === 'belgesiz';
-    const vr = isBelgesiz ? 0 : (row.vat_rate || 0);
-    const a = row.amount || 0;
-    const v = round2(a * vr / 100);
-    const t = round2(a + v);
-    excl += a; vat += v; total += t;
-    const el = document.getElementById('rowTotal_' + i);
-    if (el) el.textContent = fmt(t);
+    const t = row.total_amount || 0;
+    const v = isBelgesiz ? 0 : (row.vat_amount || 0);
+    const a = round2(t - v);
+    total += t; vat += v; excl += a;
+    const el = document.getElementById('rowExcl_' + i);
+    if (el) el.textContent = fmt(round2(a));
   });
   setEl('summaryExcl', fmt(round2(excl)));
   setEl('summaryVat',  fmt(round2(vat)));
@@ -677,7 +669,7 @@ function setEl(id, val) {
 function addRow() {
   rows.push({
     id: '', item_date: '', description: '', payment_method: 'nakit',
-    document_type: 'fis', amount: 0, vat_rate: 20, document_path: '', document_name: ''
+    document_type: 'fis', total_amount: 0, vat_amount: 0, document_path: '', document_name: ''
   });
   renderTable();
   // Yeni satırın açıklama input'una odaklan

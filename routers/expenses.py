@@ -631,10 +631,21 @@ def _save_items_from_json(db: Session, report_id: str, items_json: str):
     except Exception:
         items = []
     for idx, it in enumerate(items):
-        amount = float(it.get("amount", 0) or 0)
-        vat_rate = float(it.get("vat_rate", 0) or 0)
-        vat_amount = round(amount * vat_rate / 100, 2)
-        total = round(amount + vat_amount, 2)
+        doc_type = it.get("document_type", "fis")
+        # Yeni format: kullanıcı KDV dahil tutar + KDV tutarı giriyor
+        # Eski format (geriye uyumluluk): amount (KDV hariç) + vat_rate → dönüştür
+        if "total_amount" in it:
+            total_amount = float(it.get("total_amount", 0) or 0)
+            vat_amount   = 0.0 if doc_type == "belgesiz" else float(it.get("vat_amount", 0) or 0)
+            amount       = round(total_amount - vat_amount, 2)
+            vat_rate     = round(vat_amount / amount * 100, 2) if amount > 0 else 0.0
+        else:
+            # Eski format geriye uyumluluk
+            amount     = float(it.get("amount", 0) or 0)
+            vat_rate   = float(it.get("vat_rate", 0) or 0)
+            vat_amount = round(amount * vat_rate / 100, 2)
+            total_amount = round(amount + vat_amount, 2)
+
         item = ExpenseItem(
             id=_uuid(),
             report_id=report_id,
@@ -642,11 +653,11 @@ def _save_items_from_json(db: Session, report_id: str, items_json: str):
             item_date=it.get("item_date", "") or "",
             description=it.get("description", "") or "",
             payment_method=it.get("payment_method", "nakit"),
-            document_type=it.get("document_type", "fis"),
+            document_type=doc_type,
             amount=round(amount, 2),
-            vat_rate=vat_rate,
-            vat_amount=vat_amount,
-            total_amount=total,
+            vat_rate=round(vat_rate, 2),
+            vat_amount=round(vat_amount, 2),
+            total_amount=round(total_amount, 2),
             sort_order=idx,
             # Daha önce yüklenen belgeyi koru
             document_path=it.get("document_path") or None,
