@@ -805,7 +805,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     {% if is_best %}<span class="badge bg-success" style="font-size:9px;">⭐ En İyi</span>{% endif %}
                   </div>
                   {# E-dem: Managera Gönder butonu #}
-                  {% if current_user.role in ('admin','e_dem') and bs == 'draft_edem' %}
+                  {% if req.status != 'closed' and current_user.role in ('admin','e_dem') and bs == 'draft_edem' %}
                   <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end;">
                     <form method="post" action="/budgets/{{ b.id }}/send-to-manager" style="margin:0;">
                       <input type="hidden" name="back" value="{{ req.id }}">
@@ -816,7 +816,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   </div>
                   {% endif %}
                   {# E-dem: Revizyon sonrası tekrar gönder #}
-                  {% if current_user.role in ('admin','e_dem') and bs == 'revision_requested' %}
+                  {% if req.status != 'closed' and current_user.role in ('admin','e_dem') and bs == 'revision_requested' %}
                   <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end;">
                     <form method="post" action="/budgets/{{ b.id }}/send-to-manager" style="margin:0;">
                       <input type="hidden" name="back" value="{{ req.id }}">
@@ -827,7 +827,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   </div>
                   {% endif %}
                   {# Onay / İptal / Export butonları — sadece manager/admin görebilir #}
-                  {% if current_user.role in ('admin','mudur','yonetici') %}
+                  {% if req.status != 'closed' and current_user.role in ('admin','mudur','yonetici') %}
                   <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
                     {% if bs not in ('approved','cancelled') %}
                     <form method="post" action="/budgets/{{ b.id }}/approve" style="margin:0;">
@@ -975,7 +975,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
           {# Tüm onaylıları Excel'e aktar #}
           {% set has_approved = budgets_data | selectattr('budget.budget_status', 'equalto', 'approved') | list %}
-          {% if has_approved and current_user.role in ('admin','mudur','yonetici','e_dem') %}
+          {% if req.status != 'closed' and has_approved and current_user.role in ('admin','mudur','yonetici','e_dem') %}
           <div class="ms-auto d-flex align-items-center gap-2">
             <div class="btn-group" role="group">
               <a href="/requests/{{ req.id }}/export?vat=exclusive"
