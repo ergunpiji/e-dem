@@ -148,8 +148,8 @@
         </button>
         {% endif %}
         {% endif %}
-        {# Manager direkt yönetim #}
-        {% if can_direct_manage %}
+        {# Manager / Asistan bütçe oluşturma #}
+        {% if can_budget_ops %}
           {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready', 'revision') %}
           <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">
             <i class="bi bi-calculator me-1"></i>
@@ -301,7 +301,7 @@
       <i class="bi bi-calculator me-2 text-success"></i>Bütçe Karşılaştırması
       <span class="badge bg-secondary ms-1" style="font-size:11px;">{{ budgets_data | length }}</span>
     </h6>
-    {% if (can_edit_status or can_direct_manage) and req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
+    {% if (can_edit_status or can_budget_ops) and req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
     <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">
       <i class="bi bi-plus me-1"></i>Yeni Bütçe
     </a>

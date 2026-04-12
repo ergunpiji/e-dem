@@ -384,6 +384,13 @@ async def requests_detail(
         req.status in ("in_progress", "venues_contacted", "budget_ready") and
         (req.created_by == current_user.id or current_user.role in ("admin", "mudur"))
     )
+    # Bütçe oluşturma/düzenleme: asistan da yapabilir (durum güncelleme/RFQ hariç)
+    can_budget_ops = (
+        can_direct_manage or (
+            current_user.role == "asistan" and
+            req.status in ("in_progress", "venues_contacted", "budget_ready")
+        )
+    )
 
     # venue id → supplier_type map (RFQ filtrelemesi için)
     venues_map = {v.id: {"name": v.name, "city": v.city,
@@ -586,6 +593,7 @@ async def requests_detail(
             "can_approve_budget": can_approve_budget,
             "can_price_budget":  can_price_budget,
             "can_direct_manage": can_direct_manage,
+            "can_budget_ops":    can_budget_ops,
             "request_tabs":     REQUEST_TABS,
             "budgets_data":     budgets_data,
             "all_sections":     all_sections_set,
