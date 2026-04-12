@@ -39,12 +39,35 @@ def _can_edit(report: ExpenseReport, user: User) -> bool:
     return report.submitted_by == user.id and report.status in ("draft", "rejected")
 
 
-def _can_approve(report: ExpenseReport, user: User) -> bool:
-    """Admin veya referans sahibi (PM) onaylayabilir."""
-    if user.role == "admin":
+def _find_hbf_approver(submitted_by: str | None, db: Session) -> User | None:
+    """HBF onaylayıcısı: gönderenin manager zincirindeki ilk mudur veya yonetici."""
+    if not submitted_by:
+        return db.query(User).filter(User.role == "mudur", User.active == True).first()
+    submitter = db.query(User).filter(User.id == submitted_by).first()
+    if not submitter:
+        return None
+    visited: set = {submitter.id}
+    current = submitter
+    while current.manager_id and current.manager_id not in visited:
+        visited.add(current.manager_id)
+        mgr = db.query(User).filter(User.id == current.manager_id, User.active == True).first()
+        if not mgr:
+            break
+        if mgr.role in ("mudur", "admin", "yonetici"):
+            return mgr
+        current = mgr
+    # Fallback: herhangi bir aktif mudur
+    return db.query(User).filter(User.role == "mudur", User.active == True).first()
+
+
+def _can_approve(report: ExpenseReport, user: User, db: Session) -> bool:
+    """HBF gönderenin üstündeki mudur/yonetici veya admin onaylayabilir."""
+    if user.role in ("admin", "mudur"):
         return True
-    if report.request and report.request.created_by == user.id:
-        return True
+    # yonetici: kendi direktifi altındaki birinin gönderdiği formu onaylayabilir
+    if user.role == "yonetici":
+        approver = _find_hbf_approver(report.submitted_by, db)
+        return approver is not None and approver.id == user.id
     return False
 
 
@@ -296,16 +319,17 @@ async def expenses_edit_post(
 
     if next_action == "submit":
         back_id = report.request_id
-        # Bildirim: PM onayı bekleniyor
+        # Bildirim: gönderenin bir üstüne git
+        approver = _find_hbf_approver(report.submitted_by, db)
         req_obj = db.query(ReqModel).filter(ReqModel.id == back_id).first() if back_id else None
-        if req_obj and req_obj.created_by:
+        if approver:
             from utils.notifications import create_notification
             create_notification(
                 db,
-                user_id    = req_obj.created_by,
+                user_id    = approver.id,
                 notif_type = "hbf_submitted",
                 title      = f"HBF onayı bekleniyor — {report.title or 'Harcama Formu'}",
-                message    = f"{req_obj.request_no} referansına ait harcama formu onayınızı bekliyor.",
+                message    = f"{req_obj.request_no if req_obj else ''} referansına ait harcama formu onayınızı bekliyor.",
                 link       = f"/expenses/{report.id}",
                 ref_id     = report.id,
             )
@@ -335,7 +359,7 @@ async def expenses_view(
         "req": report.request,
         "all_requests": [],
         "readonly": True,
-        "can_approve": _can_approve(report, current_user),
+        "can_approve": _can_approve(report, current_user, db),
         "page_title": report.title or "HBF Detay",
         "PAYMENT_METHODS": EXPENSE_PAYMENT_METHODS,
         "DOC_TYPES": EXPENSE_DOC_TYPES,
@@ -358,7 +382,7 @@ async def expenses_approve(
     report = db.query(ExpenseReport).filter(ExpenseReport.id == report_id).first()
     if not report:
         raise HTTPException(404)
-    if not _can_approve(report, current_user):
+    if not _can_approve(report, current_user, db):
         raise HTTPException(403)
     report.status = "approved"
     report.approved_by = current_user.id
@@ -379,7 +403,7 @@ async def expenses_reject(
     report = db.query(ExpenseReport).filter(ExpenseReport.id == report_id).first()
     if not report:
         raise HTTPException(404)
-    if not _can_approve(report, current_user):
+    if not _can_approve(report, current_user, db):
         raise HTTPException(403)
     report.status = "rejected"
     report.rejection_note = rejection_note.strip()
