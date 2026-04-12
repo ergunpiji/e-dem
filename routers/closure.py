@@ -282,8 +282,12 @@ async def closure_approve_gm(
     cr.gm_approver_id = current_user.id
     cr.gm_approved_at = _now()
     cr.gm_note        = note
-    cr.status         = "pending_finance"
+    cr.status         = "closed"
     cr.updated_at     = _now()
+
+    req = cr.request
+    req.status     = "closed"
+    req.updated_at = _now()
     db.commit()
 
     return RedirectResponse(f"/requests/{cr.request_id}", status_code=303)

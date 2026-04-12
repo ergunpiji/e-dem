@@ -101,11 +101,13 @@
         {% endif %}
         {% if req.status == 'closed' and req.closure_request %}
         {% set cr = req.closure_request %}
+        {% set closed_at = cr.gm_approved_at or cr.l2_approved_at or cr.updated_at %}
+        {% set closed_by = cr.gm_approver or cr.l2_approver %}
         <div class="mt-2 p-2 rounded" style="font-size:12px; background:#dcfce7; border:1px solid #86efac;">
           <i class="bi bi-lock-fill me-1 text-success"></i>
           <strong>Dosya Kapatıldı</strong> —
-          {{ cr.l2_approved_at.strftime('%d.%m.%Y') if cr.l2_approved_at else '' }}
-          {% if cr.l2_approver %}({{ cr.l2_approver.full_name }}){% endif %}
+          {{ closed_at.strftime('%d.%m.%Y') if closed_at else '' }}
+          {% if closed_by %}({{ closed_by.full_name }}){% endif %}
         </div>
         {% endif %}
         {% if req.closure_request and req.closure_request.status == 'rejected' %}
@@ -186,8 +188,8 @@
           </a>
         {% endif %}
 
-        {# Proje Durumu — aktif statülerde göster #}
-        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem') and req.status not in ('cancelled', 'completed', 'postponed') %}
+        {# Proje Durumu — aktif statülerde göster, kapama ve sonrasında gizle #}
+        {% if current_user.role in ('admin', 'mudur', 'yonetici', 'e_dem') and req.status not in ('cancelled', 'completed', 'postponed', 'closing', 'closed') %}
         <button type="button" class="btn btn-primary btn-sm"
                 data-bs-toggle="modal" data-bs-target="#projectStatusModal">
           <i class="bi bi-flag me-1"></i> Proje Durumu
@@ -203,7 +205,7 @@
             {% set ns_offer_bgt.found = true %}
           {% endif %}
         {% endfor %}
-        {% if req.status in ('confirmed','completed','closing','closed')
+        {% if req.status in ('confirmed','completed')
               and current_user.role in ('admin','mudur','yonetici')
               and ns_offer_bgt.found %}
         {% set ns_stmt = namespace(existing=none) %}
@@ -336,6 +338,22 @@
     </div>
   </div>
 </div>
+
+{# ─── DOSYA KAPANDI BANNER ─── #}
+{% if req.status == 'closed' %}
+{% set _cr = req.closure_request %}
+{% set _closed_at = (_cr.gm_approved_at or _cr.l2_approved_at or _cr.updated_at) if _cr else none %}
+{% set _closed_by = (_cr.gm_approver or _cr.l2_approver) if _cr else none %}
+<div class="mb-4 p-4 rounded-3 text-center" style="background:#dcfce7; border:2px solid #16a34a;">
+  <i class="bi bi-lock-fill text-success" style="font-size:2rem;"></i>
+  <h5 class="fw-bold text-success mt-2 mb-1">Dosya Kapandı</h5>
+  <div class="text-muted" style="font-size:13px;">
+    {% if _closed_at %}{{ _closed_at.strftime('%d.%m.%Y') }}{% endif %}
+    {% if _closed_by %} — {{ _closed_by.full_name }}{% endif %}
+    {% if _cr and _cr.gm_note %}<br><em>Not: {{ _cr.gm_note }}</em>{% endif %}
+  </div>
+</div>
+{% endif %}
 
 {# ─── İKİ SÜTUN ─── #}
 {# ─── BÜTÇE TABLARI (birden fazlaysa yan yana) ─── #}
@@ -643,7 +661,7 @@
           {# Hesap Dökümü — confirmed / completed / closing / closed #}
           {% set has_confirmed = budgets_data | selectattr('budget.budget_status', 'equalto', 'confirmed') | list %}
           {% set has_approved_too = has_approved %}
-          {% if (has_confirmed or has_approved_too) and req.status in ('confirmed','completed','closing','closed')
+          {% if (has_confirmed or has_approved_too) and req.status in ('confirmed','completed')
                 and current_user.role in ('admin','mudur','yonetici','muhasebe_muduru') %}
           <div class="ms-auto">
             <a href="/requests/{{ req.id }}/statement" target="_blank"
