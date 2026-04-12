@@ -1073,6 +1073,7 @@ class Invoice(Base):
             "vat_rate":      self.vat_rate,
             "vat_amount":    self.vat_amount,
             "total_amount":  self.total_amount,
+            "lines":         self.lines,
             "document_path": self.document_path,
             "document_name": self.document_name,
             "status":        self.status,

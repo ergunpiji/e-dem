@@ -1322,6 +1322,14 @@
         {% endif %}
       </td>
       <td class="text-end" style="white-space:nowrap;">
+        {# Detay görüntüle — pending ve gm_approved için #}
+        {% if inv.status in ('pending', 'gm_approved') %}
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 me-1"
+                title="Fatura İçeriğini Görüntüle"
+                onclick="openInvoiceDetailModal({{ inv.to_dict() | tojson }})">
+          <i class="bi bi-eye"></i>
+        </button>
+        {% endif %}
         {# Onay/red butonları #}
         {% if inv.status == 'pending' and show_approve %}
           {# Adım 1: GM/Müdür onaylar — pending → gm_approved #}
@@ -1674,6 +1682,23 @@
       </div>
     </div>
 
+    {# ── Fatura İçerik Detay Modalı ── #}
+    <div class="modal fade" id="invoiceDetailModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title"><i class="bi bi-receipt me-2"></i>Fatura Talebi Detayı</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="invoiceDetailBody">
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Kapat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     {# ── Faturayı Kes Modalı (muhasebe) ── #}
     {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
     <div class="modal fade" id="cutInvoiceModal" tabindex="-1">
@@ -1863,6 +1888,79 @@ function openCutModal(invoiceId) {
   form.action = '/invoices/' + invoiceId + '/cut';
   form.reset();
   new bootstrap.Modal(document.getElementById('cutInvoiceModal')).show();
+}
+
+function openInvoiceDetailModal(inv) {
+  const fmt = n => (parseFloat(n)||0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const TYPE_LABELS = {
+    'kesilen':'Kesilen Fatura', 'gelen':'Gelen Fatura',
+    'komisyon':'Komisyon', 'iade_kesilen':'İade (Kesilen)', 'iade_gelen':'İade (Gelen)'
+  };
+  const lines = Array.isArray(inv.lines) ? inv.lines : [];
+
+  let linesHtml = '';
+  if (lines.length) {
+    linesHtml = `<table class="table table-sm mb-0" style="font-size:13px;">
+      <thead style="background:#f8fafc;">
+        <tr>
+          <th>Açıklama</th>
+          <th class="text-end" style="width:130px;">Tutar (KDV Hariç)</th>
+          <th class="text-end" style="width:80px;">KDV %</th>
+          <th class="text-end" style="width:120px;">KDV Tutarı</th>
+          <th class="text-end" style="width:130px;">Toplam</th>
+        </tr>
+      </thead><tbody>`;
+    let totalExcl = 0, totalVat = 0;
+    lines.forEach(ln => {
+      const a   = parseFloat(ln.amount)     || 0;
+      const vr  = parseFloat(ln.vat_rate)   || 0;
+      const va  = parseFloat(ln.vat_amount) || (a * vr / 100);
+      totalExcl += a; totalVat += va;
+      linesHtml += `<tr>
+        <td>${ln.description || '—'}</td>
+        <td class="text-end">₺${fmt(a)}</td>
+        <td class="text-end text-muted">%${Math.round(vr)}</td>
+        <td class="text-end text-muted">₺${fmt(va)}</td>
+        <td class="text-end fw-semibold">₺${fmt(a + va)}</td>
+      </tr>`;
+    });
+    linesHtml += `</tbody><tfoot style="background:#f1f5f9; font-weight:600;">
+      <tr>
+        <td colspan="1" class="text-muted" style="font-size:12px;">TOPLAM</td>
+        <td class="text-end">₺${fmt(totalExcl)}</td>
+        <td></td>
+        <td class="text-end text-muted">₺${fmt(totalVat)}</td>
+        <td class="text-end">₺${fmt(totalExcl + totalVat)}</td>
+      </tr></tfoot></table>`;
+  } else {
+    linesHtml = `<p class="text-muted mb-0" style="font-size:13px;">Kalem detayı bulunamadı.</p>`;
+  }
+
+  const statusLabel = {'pending':'GM Onayı Bekliyor','gm_approved':'Muhasebe Kesmesi Bekliyor','approved':'Kesildi','rejected':'Reddedildi'}[inv.status] || inv.status;
+  const statusColor = {'pending':'warning','gm_approved':'success','approved':'primary','rejected':'danger'}[inv.status] || 'secondary';
+
+  document.getElementById('invoiceDetailBody').innerHTML = `
+    <div class="row g-3 mb-3">
+      <div class="col-sm-4">
+        <div class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px;">Tip</div>
+        <div style="font-size:13px; font-weight:600;">${TYPE_LABELS[inv.invoice_type] || inv.invoice_type}</div>
+      </div>
+      <div class="col-sm-4">
+        <div class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px;">Tedarikçi / Müşteri</div>
+        <div style="font-size:13px; font-weight:600;">${inv.vendor_name || '—'}</div>
+      </div>
+      <div class="col-sm-4">
+        <div class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px;">Durum</div>
+        <span class="badge bg-${statusColor} bg-opacity-15 text-${statusColor}" style="font-size:12px;">${statusLabel}</span>
+      </div>
+      ${inv.description ? `<div class="col-12">
+        <div class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.5px;">Açıklama</div>
+        <div style="font-size:13px;">${inv.description}</div>
+      </div>` : ''}
+    </div>
+    <div class="table-responsive">${linesHtml}</div>`;
+
+  new bootstrap.Modal(document.getElementById('invoiceDetailModal')).show();
 }
 function openClosureRejectModal(closureId) {
   document.getElementById('closureRejectForm').action = '/closure/' + closureId + '/reject';
