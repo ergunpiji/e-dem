@@ -84,8 +84,14 @@ async def invoices_list(
 
     query = db.query(Invoice).join(Invoice.request)
 
+    # Birim müdürü: sadece takımının referanslarının faturaları
+    if current_user.role == "mudur" and current_user.team_id:
+        from models import Request as ReqModel, User as UserModel
+        _team_ids = [u.id for u in db.query(UserModel).filter(
+            UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
+        query = query.filter(ReqModel.created_by.in_(_team_ids))
     # PM sadece kendi referanslarının faturalarını görür
-    if current_user.role in ("yonetici", "asistan"):
+    elif current_user.role in ("yonetici", "asistan"):
         from models import Request as ReqModel
         query = query.filter(ReqModel.created_by == current_user.id)
 

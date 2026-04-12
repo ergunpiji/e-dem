@@ -68,7 +68,26 @@ async def requests_list(
     """Rol bazlı talep listesi"""
     query = db.query(ReqModel)
 
-    # Special views take priority over role-based filtering
+    # ── ADIM 1: Rol bazlı BASE SCOPE — tüm view filtreleri bunun üstüne eklenir ──
+    # Birim müdürü (takımlı mudur): sadece kendi takımının üyeleri
+    if current_user.role == "mudur" and current_user.team_id:
+        _team_ids = [u.id for u in db.query(User).filter(
+            User.team_id == current_user.team_id, User.active == True).all()]
+        query = query.filter(ReqModel.created_by.in_(_team_ids))
+    elif current_user.role == "yonetici":
+        sub_ids = _get_subtree_ids(current_user.id, db)
+        query = query.filter(ReqModel.created_by.in_([current_user.id] + sub_ids))
+    elif current_user.role == "asistan":
+        query = query.filter(ReqModel.created_by == current_user.id)
+    elif current_user.role == "e_dem":
+        query = query.filter(
+            ReqModel.status.in_(["pending", "in_progress", "venues_contacted", "budget_ready",
+                                  "offer_sent", "revision"])
+        )
+    # admin, takımsız mudur (GM), muhasebe_muduru → filtre yok (tüm veriler)
+
+    # ── ADIM 2: View / sayfa filtreleri (base scope üstüne eklenir) ──
+    page_title = ""
     if view == "ongoing":
         query = query.filter(
             ReqModel.status == "confirmed",
@@ -88,83 +107,24 @@ async def requests_list(
         query = query.filter(ReqModel.status == "cancelled")
         page_title = "İptal İşler"
     elif view == "pending_work":
-        # Yeni & işlemdeki talepler — henüz müşteriye teklif verilmemiş
-        base = ["pending", "in_progress", "venues_contacted", "budget_ready"]
-        if current_user.role == "mudur" and current_user.team_id:
-            team_ids = [u.id for u in db.query(User).filter(
-                User.team_id == current_user.team_id, User.active == True).all()]
-            query = query.filter(
-                ReqModel.created_by.in_(team_ids + [current_user.id]),
-                ReqModel.status.in_(base),
-            )
-        elif current_user.role == "yonetici":
-            sub_ids = _get_subtree_ids(current_user.id, db)
-            query = query.filter(
-                ReqModel.created_by.in_([current_user.id] + sub_ids),
-                ReqModel.status.in_(base),
-            )
-        elif current_user.role == "asistan":
-            query = query.filter(
-                ReqModel.created_by == current_user.id,
-                ReqModel.status.in_(base),
-            )
-        else:
-            query = query.filter(ReqModel.status.in_(base))
+        query = query.filter(ReqModel.status.in_(
+            ["pending", "in_progress", "venues_contacted", "budget_ready"]
+        ))
         page_title = "Yeni & İşlemdeki Talepler"
     elif view == "awaiting":
-        # Teklif verilmiş, müşteri kararı bekleniyor
-        base = ["offer_sent", "revision", "postponed"]
-        if current_user.role == "mudur" and current_user.team_id:
-            team_ids = [u.id for u in db.query(User).filter(
-                User.team_id == current_user.team_id, User.active == True).all()]
-            query = query.filter(
-                ReqModel.created_by.in_(team_ids + [current_user.id]),
-                ReqModel.status.in_(base),
-            )
-        elif current_user.role == "yonetici":
-            sub_ids = _get_subtree_ids(current_user.id, db)
-            query = query.filter(
-                ReqModel.created_by.in_([current_user.id] + sub_ids),
-                ReqModel.status.in_(base),
-            )
-        elif current_user.role == "asistan":
-            query = query.filter(
-                ReqModel.created_by == current_user.id,
-                ReqModel.status.in_(base),
-            )
-        else:
-            query = query.filter(ReqModel.status.in_(base))
+        query = query.filter(ReqModel.status.in_(["offer_sent", "revision", "postponed"]))
         page_title = "Karar Bekleyenler"
-    elif current_user.role == "mudur":
-        # mudur: takımındaki tüm üyelerin referansları
-        if current_user.team_id:
-            team_member_ids = [
-                u.id for u in db.query(User).filter(
-                    User.team_id == current_user.team_id,
-                    User.active == True,
-                ).all()
-            ]
-            query = query.filter(ReqModel.created_by.in_(team_member_ids + [current_user.id]))
-        # takımsız mudur → tüm referanslar (fallback)
-        page_title = "Takım Referansları"
-    elif current_user.role == "yonetici":
-        # yonetici: kendi + tüm astlarının referansları
-        sub_ids = _get_subtree_ids(current_user.id, db)
-        query = query.filter(ReqModel.created_by.in_([current_user.id] + sub_ids))
-        page_title = "Referanslarım"
-    elif current_user.role == "asistan":
-        # asistan: sadece kendi referansları
-        query = query.filter(ReqModel.created_by == current_user.id)
-        page_title = "Referanslarım"
-    elif current_user.role == "e_dem":
-        query = query.filter(
-            ReqModel.status.in_(["pending", "in_progress", "venues_contacted", "budget_ready",
-                                  "offer_sent", "revision"])
-        )
-        page_title = "Gelen Referanslar"
-    else:
-        # admin, mudur, muhasebe_muduru → tüm referanslar
-        page_title = "Tüm Referanslar"
+
+    # Sayfa başlığı (view yoksa role bazlı)
+    if not page_title:
+        if current_user.role == "mudur" and current_user.team_id:
+            page_title = "Takım Referansları"
+        elif current_user.role in ("yonetici", "asistan"):
+            page_title = "Referanslarım"
+        elif current_user.role == "e_dem":
+            page_title = "Gelen Referanslar"
+        else:
+            page_title = "Tüm Referanslar"
 
     if status_filter:
         query = query.filter(ReqModel.status == status_filter)
@@ -361,6 +321,13 @@ async def requests_detail(
              .first())
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
+
+    # Birim müdürü (takımlı mudur) sadece kendi takımının referanslarını görebilir
+    if current_user.role == "mudur" and current_user.team_id:
+        _team_ids = [u.id for u in db.query(User).filter(
+            User.team_id == current_user.team_id, User.active == True).all()]
+        if req.created_by not in _team_ids:
+            raise HTTPException(403, "Bu referans takımınıza ait değil.")
 
     venues      = db.query(Venue).filter(Venue.active == True).all()
     event_types = db.query(EventType).order_by(EventType.sort_order).all()
