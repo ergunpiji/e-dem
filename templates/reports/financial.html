@@ -31,7 +31,7 @@
 
 {# ── Filtre ── #}
 <div class="filter-card">
-  <form method="get" action="/reports/financial"
+  <form id="filterForm" method="get" action="/reports/financial"
         class="d-flex flex-wrap gap-3 align-items-end">
     <div>
       <label class="form-label fw-semibold mb-1" style="font-size:12px;">Başlangıç Tarihi</label>
@@ -366,9 +366,10 @@
       const y = today.getFullYear() - 1;
       from = y + '-01-01'; to = y + '-12-31';
     }
-    document.querySelector('input[name=date_from]').value = from;
-    document.querySelector('input[name=date_to]').value   = to;
-    document.querySelector('form').submit();
+    const f = document.getElementById('filterForm');
+    f.querySelector('input[name=date_from]').value = from;
+    f.querySelector('input[name=date_to]').value   = to;
+    f.submit();
   };
 })();
 </script>
