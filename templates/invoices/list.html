@@ -12,60 +12,88 @@
 
 {% block extra_head %}
 <style>
-  .filter-bar { background:#fff; border-radius:10px; padding:14px 18px;
-                box-shadow:0 1px 4px rgba(0,0,0,.06); margin-bottom:18px; }
-  .filter-bar .btn-group .btn { font-size:12px; }
+  .filter-bar { background:#fff; border-radius:10px; padding:12px 18px;
+                box-shadow:0 1px 4px rgba(0,0,0,.06); margin-bottom:18px;
+                display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
   .inv-table th { font-size:11px; text-transform:uppercase; letter-spacing:.4px;
                   color:#64748b; background:#f8fafc; white-space:nowrap; }
   .inv-table td { font-size:13px; vertical-align:middle; }
-  .badge-type { font-size:11px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3">
 
-  {# Özet kartlar #}
+  {# Özet kart #}
   <div class="row g-3 mb-3">
-    <div class="col-6 col-md-3">
-      <div class="card text-center py-3 border-0 shadow-sm">
+    <div class="col-6 col-md-2">
+      <div class="card text-center py-2 border-0 shadow-sm">
         <div class="fs-4 fw-bold text-warning">{{ pending_count }}</div>
         <div class="small text-muted">Onay Bekliyor</div>
       </div>
     </div>
   </div>
 
-  {# Filtre çubuğu #}
-  <div class="filter-bar d-flex flex-wrap gap-3 align-items-center">
-    <div>
-      <span class="small text-muted me-2">Durum:</span>
+  {# ── Filtre çubuğu ── #}
+  <div class="filter-bar">
+
+    {# Durum: buton grubu #}
+    <div class="d-flex align-items-center gap-2">
+      <span class="small text-muted fw-semibold">Durum:</span>
       <div class="btn-group btn-group-sm">
         <a href="/invoices?status_filter=all&type_filter={{ type_filter }}"
            class="btn btn-outline-secondary {% if status_filter == 'all' %}active{% endif %}">Tümü</a>
         <a href="/invoices?status_filter=pending&type_filter={{ type_filter }}"
            class="btn btn-outline-warning {% if status_filter == 'pending' %}active{% endif %}">
-          Onay Bekliyor {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pending_count }}</span>{% endif %}
+          GM Onayı Bekliyor
+          {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pending_count }}</span>{% endif %}
+        </a>
+        <a href="/invoices?status_filter=gm_approved&type_filter={{ type_filter }}"
+           class="btn btn-outline-primary {% if status_filter == 'gm_approved' %}active{% endif %}">
+          Kesilecek
         </a>
         <a href="/invoices?status_filter=approved&type_filter={{ type_filter }}"
-           class="btn btn-outline-success {% if status_filter == 'approved' %}active{% endif %}">Onaylandı</a>
+           class="btn btn-outline-success {% if status_filter == 'approved' %}active{% endif %}">Kesildi</a>
         <a href="/invoices?status_filter=rejected&type_filter={{ type_filter }}"
            class="btn btn-outline-danger {% if status_filter == 'rejected' %}active{% endif %}">Reddedildi</a>
       </div>
     </div>
-    <div>
-      <span class="small text-muted me-2">Tür:</span>
-      <div class="btn-group btn-group-sm">
-        <a href="/invoices?status_filter={{ status_filter }}&type_filter=all"
-           class="btn btn-outline-secondary {% if type_filter == 'all' %}active{% endif %}">Tümü</a>
-        {% for t in invoice_types %}
-        <a href="/invoices?status_filter={{ status_filter }}&type_filter={{ t.value }}"
-           class="btn btn-outline-secondary {% if type_filter == t.value %}active{% endif %}">{{ t.label }}</a>
-        {% endfor %}
+
+    {# Tür: dropdown #}
+    <div class="d-flex align-items-center gap-2">
+      <span class="small text-muted fw-semibold">Tür:</span>
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" style="min-width:160px; text-align:left;">
+          {% if type_filter == 'all' %}
+            Tüm Türler
+          {% else %}
+            {% for t in invoice_types %}{% if t.value == type_filter %}{{ t.label }}{% endif %}{% endfor %}
+          {% endif %}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-start">
+          <li>
+            <a class="dropdown-item {% if type_filter == 'all' %}active{% endif %}"
+               href="/invoices?status_filter={{ status_filter }}&type_filter=all">
+              Tüm Türler
+            </a>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          {% for t in invoice_types %}
+          <li>
+            <a class="dropdown-item {% if type_filter == t.value %}active{% endif %}"
+               href="/invoices?status_filter={{ status_filter }}&type_filter={{ t.value }}">
+              {{ t.label }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
       </div>
     </div>
+
   </div>
 
-  {# Tablo #}
+  {# ── Tablo ── #}
   <div class="card border-0 shadow-sm">
     <div class="card-body p-0">
       {% if invoices %}
@@ -86,6 +114,10 @@
           </thead>
           <tbody>
             {% for inv in invoices %}
+            {% set type_colors = {
+              'kesilen': 'success', 'gelen': 'primary',
+              'komisyon': 'info', 'iade_kesilen': 'warning', 'iade_gelen': 'secondary'
+            } %}
             <tr>
               <td class="ps-3">
                 <a href="/requests/{{ inv.request_id }}#tab-financial"
@@ -107,16 +139,9 @@
               </td>
               <td>{{ inv.vendor_name or '—' }}</td>
               <td>
-                {% set type_colors = {
-                  'kesilen': 'success',
-                  'gelen': 'primary',
-                  'komisyon': 'info',
-                  'iade_kesilen': 'warning',
-                  'iade_gelen': 'secondary'
-                } %}
                 <span class="badge bg-{{ type_colors.get(inv.invoice_type, 'secondary') }}-subtle
-                             text-{{ type_colors.get(inv.invoice_type, 'secondary') }} badge-type border
-                             border-{{ type_colors.get(inv.invoice_type, 'secondary') }}-subtle">
+                             text-{{ type_colors.get(inv.invoice_type, 'secondary') }}"
+                      style="font-size:11px; border:1px solid currentColor; opacity:.85;">
                   {{ INVOICE_TYPE_LABELS.get(inv.invoice_type, inv.invoice_type) }}
                 </span>
               </td>
@@ -133,9 +158,11 @@
               </td>
               <td class="text-center">
                 {% if inv.status == 'pending' %}
-                  <span class="badge bg-warning text-dark">Onay Bekliyor</span>
+                  <span class="badge bg-warning text-dark">GM Onayı Bekliyor</span>
+                {% elif inv.status == 'gm_approved' %}
+                  <span class="badge bg-primary">Kesilecek</span>
                 {% elif inv.status == 'approved' %}
-                  <span class="badge bg-success">Onaylandı</span>
+                  <span class="badge bg-success">Kesildi</span>
                   {% if inv.approved_at %}
                   <div class="small text-muted" style="font-size:10px;">
                     {{ inv.approver.name if inv.approver else '' }}
@@ -154,23 +181,33 @@
               </td>
               <td class="text-center pe-3">
                 <div class="d-flex gap-1 justify-content-center">
+                  {# Referansa git #}
                   <a href="/requests/{{ inv.request_id }}#tab-financial"
                      class="btn btn-sm btn-outline-secondary py-0 px-2" title="Referansa Git">
                     <i class="bi bi-box-arrow-up-right" style="font-size:11px;"></i>
                   </a>
-                  {% if inv.status == 'pending' and (
-                      current_user.role == 'admin' or
-                      (inv.request and inv.request.created_by == current_user.id)
-                  ) %}
+
+                  {# GM: pending → gm_approved onayla #}
+                  {% if inv.status == 'pending' and can_approve %}
                   <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
-                    <button type="submit" class="btn btn-sm btn-success py-0 px-2" title="Onayla"
-                            onclick="return confirm('Bu faturayı onaylıyorsunuz?')">
+                    <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2"
+                            title="GM Olarak Onayla"
+                            onclick="return confirm('Fatura talebini onaylıyor musunuz?')">
                       <i class="bi bi-check2" style="font-size:11px;"></i>
                     </button>
                   </form>
-                  <button class="btn btn-sm btn-danger py-0 px-2" title="Reddet"
+                  <button class="btn btn-sm btn-outline-danger py-0 px-2" title="Reddet"
                           onclick="openRejectModal('{{ inv.id }}')">
                     <i class="bi bi-x" style="font-size:11px;"></i>
+                  </button>
+                  {% endif %}
+
+                  {# Muhasebe: gm_approved → kes #}
+                  {% if inv.status == 'gm_approved' and can_cut %}
+                  <button class="btn btn-sm btn-success py-0 px-2"
+                          title="Faturayı Kes"
+                          onclick="openCutModal('{{ inv.id }}')">
+                    <i class="bi bi-scissors" style="font-size:11px;"></i>
                   </button>
                   {% endif %}
                 </div>
@@ -183,16 +220,18 @@
       {% else %}
       <div class="text-center py-5 text-muted">
         <i class="bi bi-receipt fs-1 d-block mb-2 opacity-25"></i>
-        {% if status_filter == 'pending' %}Onay bekleyen fatura yok.
+        {% if status_filter == 'pending' %}GM onayı bekleyen fatura yok.
+        {% elif status_filter == 'gm_approved' %}Kesilecek fatura yok.
         {% elif status_filter != 'all' %}Bu filtreye uyan fatura bulunamadı.
         {% else %}Henüz fatura girilmemiş.{% endif %}
       </div>
       {% endif %}
     </div>
   </div>
+
 </div>
 
-{# Red modal #}
+{# ── Red Modal ── #}
 <div class="modal fade" id="rejectModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
@@ -214,10 +253,69 @@
   </div>
 </div>
 
+{# ── Fatura Kes Modal (muhasebe) ── #}
+{% if can_cut %}
+<div class="modal fade" id="cutInvoiceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-scissors me-2 text-success"></i>Faturayı Kes & Projeye Ekle</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="cutInvoiceForm" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px;">Fatura No</label>
+            <input type="text" name="invoice_no" class="form-control form-control-sm"
+                   placeholder="Fatura numarası">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:13px;">Fatura Tarihi</label>
+              <input type="date" name="invoice_date" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:13px;">Vade Tarihi</label>
+              <input type="date" name="due_date" class="form-control form-control-sm">
+            </div>
+          </div>
+          <div class="mb-1">
+            <label class="form-label fw-semibold" style="font-size:13px;">
+              Fatura PDF / Belge
+              <span class="text-muted fw-normal ms-1">(isteğe bağlı)</span>
+            </label>
+            <input type="file" name="document" class="form-control form-control-sm"
+                   accept=".pdf,.jpg,.jpeg,.png,.gif,.webp">
+            <div class="form-text" style="font-size:11px;">PDF veya resim — maks. 10 MB</div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-scissors me-1"></i>Faturayı Kes & Ekle
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script>
 function openRejectModal(invId) {
   document.getElementById('rejectForm').action = '/invoices/' + invId + '/reject';
   new bootstrap.Modal(document.getElementById('rejectModal')).show();
 }
+{% if can_cut %}
+function openCutModal(invoiceId) {
+  const form = document.getElementById('cutInvoiceForm');
+  form.action = '/invoices/' + invoiceId + '/cut';
+  // Tarihi bugüne ayarla
+  const today = new Date().toISOString().slice(0, 10);
+  const dateInput = form.querySelector('input[name=invoice_date]');
+  if (dateInput && !dateInput.value) dateInput.value = today;
+  new bootstrap.Modal(document.getElementById('cutInvoiceModal')).show();
+}
+{% endif %}
 </script>
 {% endblock %}

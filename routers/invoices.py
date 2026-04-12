@@ -110,6 +110,9 @@ async def invoices_list(
         pending_count = pending_count.filter(ReqModel.created_by == current_user.id)
     pending_count = pending_count.count()
 
+    can_cut = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    can_approve = current_user.role in ("admin", "mudur", "muhasebe_muduru")
+
     return templates.TemplateResponse("invoices/list.html", {
         "request":        request,
         "current_user":   current_user,
@@ -120,6 +123,8 @@ async def invoices_list(
         "pending_count":  pending_count,
         "invoice_types":  INVOICE_TYPES,
         "INVOICE_TYPE_LABELS": {t["value"]: t["label"] for t in INVOICE_TYPES},
+        "can_cut":        can_cut,
+        "can_approve":    can_approve,
     })
 
 
