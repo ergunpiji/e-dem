@@ -963,7 +963,8 @@ document.addEventListener('DOMContentLoaded', function() {
           </table>
         </div>
 
-        {# Aksiyon butonları özet altında #}
+        {# Aksiyon butonları özet altında — kapalı dosyada gösterme #}
+        {% if req.status != 'closed' %}
         <div class="d-flex gap-2 px-3 py-2 border-top flex-wrap align-items-center">
           {% for bd in budgets_data %}
           {% set b = bd.budget %}
@@ -1022,6 +1023,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           {% endif %}
         </div>
+        {% endif %}{# /req.status != 'closed' #}
       </div>
 
       {# ══════════════════════════════════════════════
