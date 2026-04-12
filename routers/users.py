@@ -31,10 +31,10 @@ def _get_teams(db: Session) -> list:
 
 
 def _get_pm_users(db: Session, exclude_id: str | None = None) -> list:
-    """Yönetici olabilecek tüm aktif kullanıcılar (admin + PM tarafı)."""
+    """Yönetici olabilecek tüm aktif kullanıcılar (admin + PM tarafı + muhasebe müdürü)."""
     q = db.query(User).filter(
         User.active == True,
-        User.role.in_(["admin", "mudur", "yonetici", "asistan"]),
+        User.role.in_(["admin", "mudur", "yonetici", "asistan", "muhasebe_muduru"]),
     )
     if exclude_id:
         q = q.filter(User.id != exclude_id)

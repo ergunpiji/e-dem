@@ -196,8 +196,8 @@
   const teamSelect    = document.getElementById('teamSelect');
   const managerSelect = document.getElementById('managerSelect');
 
-  // admin ve mudur rolündeki kullanıcılar her takımda görünür
-  const TOP_ROLES = new Set(['admin', 'mudur']);
+  // admin, mudur ve muhasebe_muduru takım filtresine takılmaz
+  const TOP_ROLES = new Set(['admin', 'mudur', 'muhasebe_muduru']);
 
   function filterManagers() {
     const teamId = teamSelect ? teamSelect.value : '';
