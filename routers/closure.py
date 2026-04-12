@@ -1,0 +1,260 @@
+"""
+E-dem — Dosya Kapama Onay Akışı
+
+Akış:
+  1. PM → POST /requests/{id}/submit-closure  (ön koşul kontrolü)
+     Referans status: confirmed/completed → closing
+  2. Admin → POST /closure/{id}/approve-l1
+     ClosureRequest status: pending_manager → pending_finance
+  3. Muhasebe Müdürü → POST /closure/{id}/approve-final
+     ClosureRequest status: pending_finance → closed
+     Referans status: closing → closed
+  * Herhangi adımda: POST /closure/{id}/reject → rejected + referans geri alınır
+"""
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.orm import Session
+
+from auth import get_current_user
+from database import get_db
+from models import (
+    ClosureRequest, Request as ReqModel, User,
+    CLOSURE_STATUS_LABELS, CLOSURE_STATUS_COLORS,
+    _uuid, _now,
+)
+from templates_config import templates
+
+router = APIRouter(tags=["closure"])
+
+
+def _can_approve_l1(user: User) -> bool:
+    return user.role in ("admin",)
+
+
+def _can_approve_final(user: User) -> bool:
+    return user.role in ("admin", "muhasebe_muduru")
+
+
+def _check_closure_prerequisites(req: ReqModel) -> list[str]:
+    """Eksik/onaysız belgeleri döndür. Boş liste = hazır."""
+    errors = []
+
+    # Onaysız faturalar
+    pending_inv = [i for i in req.invoices if i.status == "pending"]
+    rejected_inv = [i for i in req.invoices if i.status == "rejected"]
+    if pending_inv:
+        errors.append(f"{len(pending_inv)} fatura onay bekliyor.")
+    if rejected_inv:
+        errors.append(f"{len(rejected_inv)} fatura reddedildi — düzeltilmeli.")
+
+    # Onaysız HBF'ler
+    pending_hbf = [r for r in req.expense_reports if r.status in ("draft", "submitted")]
+    rejected_hbf = [r for r in req.expense_reports if r.status == "rejected"]
+    if pending_hbf:
+        errors.append(f"{len(pending_hbf)} HBF onaylanmamış.")
+    if rejected_hbf:
+        errors.append(f"{len(rejected_hbf)} HBF reddedildi — düzeltilmeli.")
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# GET /closure  — Kapama talebi listesi (admin + muhasebe_muduru)
+# ---------------------------------------------------------------------------
+
+@router.get("/closure", response_class=HTMLResponse, name="closure_list")
+async def closure_list(
+    request: Request,
+    status_filter: str = "all",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role not in ("admin", "muhasebe_muduru"):
+        raise HTTPException(403)
+
+    query = db.query(ClosureRequest)
+    if status_filter != "all":
+        query = query.filter(ClosureRequest.status == status_filter)
+    closures = query.order_by(ClosureRequest.created_at.desc()).all()
+
+    pending_count = db.query(ClosureRequest).filter(
+        ClosureRequest.status.in_(["pending_manager", "pending_finance"])
+    ).count()
+
+    return templates.TemplateResponse("closure/list.html", {
+        "request":        request,
+        "current_user":   current_user,
+        "page_title":     "Dosya Kapama",
+        "closures":       closures,
+        "status_filter":  status_filter,
+        "pending_count":  pending_count,
+        "STATUS_LABELS":  CLOSURE_STATUS_LABELS,
+        "STATUS_COLORS":  CLOSURE_STATUS_COLORS,
+    })
+
+
+# ---------------------------------------------------------------------------
+# POST /requests/{req_id}/submit-closure  — PM kapamaya gönderir
+# ---------------------------------------------------------------------------
+
+@router.post("/requests/{req_id}/submit-closure", name="closure_submit")
+async def closure_submit(
+    req_id: str,
+    request: Request,
+    note: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        raise HTTPException(404)
+
+    # Yetki: referans sahibi veya admin
+    if current_user.role != "admin" and req.created_by != current_user.id:
+        raise HTTPException(403, "Sadece referans sahibi kapama başlatabilir.")
+
+    # Durum kontrolü
+    if req.status not in ("confirmed", "completed"):
+        raise HTTPException(400, "Kapama yalnızca onaylanmış veya tamamlanmış referanslar için başlatılabilir.")
+
+    # Daha önce gönderilmiş mi?
+    if req.closure_request and req.closure_request.status in ("pending_manager", "pending_finance"):
+        raise HTTPException(400, "Bu referans zaten kapama onayında.")
+
+    # Ön koşul kontrolü
+    errors = _check_closure_prerequisites(req)
+    if errors:
+        # Flash yerine query param ile geri dön
+        err_msg = "; ".join(errors)
+        return RedirectResponse(
+            f"/requests/{req_id}?closure_error={err_msg}",
+            status_code=303,
+        )
+
+    # Mevcut rejected kaydı varsa sil
+    if req.closure_request:
+        db.delete(req.closure_request)
+        db.flush()
+
+    cr = ClosureRequest(
+        id=_uuid(),
+        request_id=req_id,
+        submitted_by=current_user.id,
+        submitted_at=_now(),
+        note=note,
+        status="pending_manager",
+    )
+    db.add(cr)
+    req.status = "closing"
+    db.commit()
+
+    return RedirectResponse(f"/requests/{req_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /closure/{closure_id}/approve-l1  — Admin onayı
+# ---------------------------------------------------------------------------
+
+@router.post("/closure/{closure_id}/approve-l1", name="closure_approve_l1")
+async def closure_approve_l1(
+    closure_id: str,
+    request: Request,
+    note: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not _can_approve_l1(current_user):
+        raise HTTPException(403)
+
+    cr = db.query(ClosureRequest).filter(ClosureRequest.id == closure_id).first()
+    if not cr:
+        raise HTTPException(404)
+    if cr.status != "pending_manager":
+        raise HTTPException(400, "Bu adım için uygun durum değil.")
+
+    cr.l1_approver_id = current_user.id
+    cr.l1_approved_at = _now()
+    cr.l1_note = note
+    cr.status = "pending_finance"
+    cr.updated_at = _now()
+    db.commit()
+
+    return RedirectResponse(f"/requests/{cr.request_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /closure/{closure_id}/approve-final  — Muhasebe Müdürü final onayı
+# ---------------------------------------------------------------------------
+
+@router.post("/closure/{closure_id}/approve-final", name="closure_approve_final")
+async def closure_approve_final(
+    closure_id: str,
+    request: Request,
+    note: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not _can_approve_final(current_user):
+        raise HTTPException(403)
+
+    cr = db.query(ClosureRequest).filter(ClosureRequest.id == closure_id).first()
+    if not cr:
+        raise HTTPException(404)
+    if cr.status != "pending_finance":
+        raise HTTPException(400, "Bu adım için uygun durum değil.")
+
+    cr.l2_approver_id = current_user.id
+    cr.l2_approved_at = _now()
+    cr.l2_note = note
+    cr.status = "closed"
+    cr.updated_at = _now()
+
+    # Referansı kapat
+    req = cr.request
+    req.status = "closed"
+    req.updated_at = _now()
+
+    db.commit()
+
+    return RedirectResponse(f"/requests/{cr.request_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /closure/{closure_id}/reject  — Herhangi adımdan ret
+# ---------------------------------------------------------------------------
+
+@router.post("/closure/{closure_id}/reject", name="closure_reject")
+async def closure_reject(
+    closure_id: str,
+    request: Request,
+    rejection_note: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cr = db.query(ClosureRequest).filter(ClosureRequest.id == closure_id).first()
+    if not cr:
+        raise HTTPException(404)
+
+    # L1 aşamasında: admin reddedebilir
+    # L2 aşamasında: muhasebe_muduru veya admin reddedebilir
+    if cr.status == "pending_manager" and not _can_approve_l1(current_user):
+        raise HTTPException(403)
+    if cr.status == "pending_finance" and not _can_approve_final(current_user):
+        raise HTTPException(403)
+
+    cr.rejection_note = rejection_note
+    cr.rejected_by_id = current_user.id
+    cr.rejected_at = _now()
+    cr.status = "rejected"
+    cr.updated_at = _now()
+
+    # Referansı önceki durumuna döndür (confirmed)
+    req = cr.request
+    req.status = "confirmed"
+    req.updated_at = _now()
+
+    db.commit()
+
+    return RedirectResponse(f"/requests/{cr.request_id}", status_code=303)

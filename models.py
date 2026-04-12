@@ -57,6 +57,8 @@ REQUEST_STATUSES = [
     {"value": "confirmed",         "label": "Müşteri Onayladı",          "color": "success"},
     {"value": "revision",          "label": "Revizyon",                  "color": "warning"},
     {"value": "completed",         "label": "Tamamlandı",                "color": "success"},
+    {"value": "closing",           "label": "Kapama Onayında",           "color": "purple"},
+    {"value": "closed",            "label": "Kapatıldı",                 "color": "dark"},
     {"value": "cancelled",         "label": "İptal Edildi",              "color": "danger"},
     {"value": "postponed",         "label": "Ertelendi",                 "color": "secondary"},
 ]
@@ -491,6 +493,8 @@ class Request(Base):
     undocumented_entries = relationship("UndocumentedEntry", back_populates="request",
                                         cascade="all, delete-orphan",
                                         order_by="UndocumentedEntry.entry_date")
+    closure_request      = relationship("ClosureRequest", back_populates="request",
+                                        uselist=False, cascade="all, delete-orphan")
 
     @property
     def cities(self) -> list:
@@ -1178,3 +1182,69 @@ class Settings(Base):
             "rfq_subject_tpl": self.rfq_subject_tpl,
             "currency":        self.currency,
         }
+
+
+# ---------------------------------------------------------------------------
+# Dosya Kapama Onay Süreci
+# ---------------------------------------------------------------------------
+
+CLOSURE_STATUS_LABELS = {
+    "pending_manager":  "Yönetici Onayı Bekliyor",
+    "pending_finance":  "Muhasebe Müdürü Onayı Bekliyor",
+    "closed":           "Kapatıldı",
+    "rejected":         "Reddedildi",
+}
+CLOSURE_STATUS_COLORS = {
+    "pending_manager":  "warning",
+    "pending_finance":  "info",
+    "closed":           "dark",
+    "rejected":         "danger",
+}
+
+
+class ClosureRequest(Base):
+    """Dosya kapama onay talebi — referans başına en fazla bir aktif kayıt."""
+    __tablename__ = "closure_requests"
+
+    id          = Column(String(36), primary_key=True, default=_uuid)
+    request_id  = Column(String(36), ForeignKey("requests.id"), nullable=False, unique=True, index=True)
+
+    # Gönderen (PM / referans sahibi)
+    submitted_by = Column(String(36), ForeignKey("users.id"), nullable=False)
+    submitted_at = Column(DateTime, default=_now, nullable=False)
+    note         = Column(Text, default="")  # PM notu
+
+    # Adım 1 — Yönetici/Admin onayı
+    l1_approver_id  = Column(String(36), ForeignKey("users.id"), nullable=True)
+    l1_approved_at  = Column(DateTime, nullable=True)
+    l1_note         = Column(Text, default="")
+
+    # Adım 2 — Muhasebe Müdürü final onayı
+    l2_approver_id  = Column(String(36), ForeignKey("users.id"), nullable=True)
+    l2_approved_at  = Column(DateTime, nullable=True)
+    l2_note         = Column(Text, default="")
+
+    # Ret notu (herhangi bir adımdan)
+    rejection_note  = Column(Text, default="")
+    rejected_by_id  = Column(String(36), ForeignKey("users.id"), nullable=True)
+    rejected_at     = Column(DateTime, nullable=True)
+
+    # pending_manager | pending_finance | closed | rejected
+    status      = Column(String(24), default="pending_manager", nullable=False)
+    created_at  = Column(DateTime, default=_now, nullable=False)
+    updated_at  = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    # İlişkiler
+    request     = relationship("Request", back_populates="closure_request")
+    submitter   = relationship("User", foreign_keys=[submitted_by])
+    l1_approver = relationship("User", foreign_keys=[l1_approver_id])
+    l2_approver = relationship("User", foreign_keys=[l2_approver_id])
+    rejected_by = relationship("User", foreign_keys=[rejected_by_id])
+
+    @property
+    def status_label(self) -> str:
+        return CLOSURE_STATUS_LABELS.get(self.status, self.status)
+
+    @property
+    def status_color(self) -> str:
+        return CLOSURE_STATUS_COLORS.get(self.status, "secondary")

@@ -136,7 +136,7 @@ async def invoices_new_form(
         if not req:
             raise HTTPException(status_code=404, detail="Referans bulunamadı.")
     all_requests = db.query(ReqModel).filter(
-        ReqModel.status != "cancelled"
+        ReqModel.status.notin_(["cancelled", "closing", "closed"])
     ).order_by(ReqModel.created_at.desc()).all()
     undoc_entries = req.undocumented_entries if req else []
     return templates.TemplateResponse("invoices/form.html", {
@@ -271,7 +271,7 @@ async def invoices_edit_form(
     _require_finance(current_user)
     inv = _get_invoice_or_404(db, invoice_id)
     all_requests = db.query(ReqModel).filter(
-        ReqModel.status != "cancelled"
+        ReqModel.status.notin_(["cancelled", "closing", "closed"])
     ).order_by(ReqModel.created_at.desc()).all()
     undoc_entries = inv.request.undocumented_entries if inv.request else []
     return templates.TemplateResponse("invoices/form.html", {

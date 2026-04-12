@@ -812,6 +812,59 @@ def migrate_db():
             ))
         conn.commit()
 
+        # closure_requests tablosu
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS closure_requests (
+                    id              TEXT PRIMARY KEY,
+                    request_id      TEXT NOT NULL UNIQUE REFERENCES requests(id),
+                    submitted_by    TEXT NOT NULL REFERENCES users(id),
+                    submitted_at    TIMESTAMP,
+                    note            TEXT DEFAULT '',
+                    l1_approver_id  TEXT REFERENCES users(id),
+                    l1_approved_at  TIMESTAMP,
+                    l1_note         TEXT DEFAULT '',
+                    l2_approver_id  TEXT REFERENCES users(id),
+                    l2_approved_at  TIMESTAMP,
+                    l2_note         TEXT DEFAULT '',
+                    rejection_note  TEXT DEFAULT '',
+                    rejected_by_id  TEXT REFERENCES users(id),
+                    rejected_at     TIMESTAMP,
+                    status          TEXT DEFAULT 'pending_manager',
+                    created_at      TIMESTAMP,
+                    updated_at      TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_closure_requests_request_id ON closure_requests(request_id)"
+            ))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS closure_requests (
+                    id              VARCHAR(36) PRIMARY KEY,
+                    request_id      VARCHAR(36) NOT NULL UNIQUE REFERENCES requests(id),
+                    submitted_by    VARCHAR(36) NOT NULL REFERENCES users(id),
+                    submitted_at    TIMESTAMP,
+                    note            TEXT DEFAULT '',
+                    l1_approver_id  VARCHAR(36) REFERENCES users(id),
+                    l1_approved_at  TIMESTAMP,
+                    l1_note         TEXT DEFAULT '',
+                    l2_approver_id  VARCHAR(36) REFERENCES users(id),
+                    l2_approved_at  TIMESTAMP,
+                    l2_note         TEXT DEFAULT '',
+                    rejection_note  TEXT DEFAULT '',
+                    rejected_by_id  VARCHAR(36) REFERENCES users(id),
+                    rejected_at     TIMESTAMP,
+                    status          VARCHAR(24) DEFAULT 'pending_manager',
+                    created_at      TIMESTAMP,
+                    updated_at      TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_closure_requests_request_id ON closure_requests(request_id)"
+            ))
+        conn.commit()
+
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()
 

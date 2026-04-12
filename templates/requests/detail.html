@@ -72,6 +72,36 @@
           <i class="bi bi-check-circle me-1"></i>{{ req.confirmed_at.strftime('%d.%m.%Y') }} tarihinde onaylandı
         </div>
         {% endif %}
+        {% if req.status == 'closing' and req.closure_request %}
+        {% set cr = req.closure_request %}
+        <div class="mt-2 p-2 rounded" style="font-size:12px; background:#fef9c3; border:1px solid #fde047;">
+          <i class="bi bi-hourglass-split me-1 text-warning"></i>
+          <strong>Kapama Onayında</strong> —
+          {% if cr.status == 'pending_manager' %}
+            Yönetici onayı bekleniyor
+          {% elif cr.status == 'pending_finance' %}
+            <i class="bi bi-check2 text-success me-1"></i>Yönetici onayladı →
+            Muhasebe Müdürü final onayı bekleniyor
+          {% endif %}
+          ({{ cr.submitted_at.strftime('%d.%m.%Y') if cr.submitted_at else '' }})
+        </div>
+        {% endif %}
+        {% if req.status == 'closed' and req.closure_request %}
+        {% set cr = req.closure_request %}
+        <div class="mt-2 p-2 rounded" style="font-size:12px; background:#dcfce7; border:1px solid #86efac;">
+          <i class="bi bi-lock-fill me-1 text-success"></i>
+          <strong>Dosya Kapatıldı</strong> —
+          {{ cr.l2_approved_at.strftime('%d.%m.%Y') if cr.l2_approved_at else '' }}
+          {% if cr.l2_approver %}({{ cr.l2_approver.full_name }}){% endif %}
+        </div>
+        {% endif %}
+        {% if req.closure_request and req.closure_request.status == 'rejected' %}
+        <div class="mt-2 p-2 rounded" style="font-size:12px; background:#fee2e2; border:1px solid #fca5a5;">
+          <i class="bi bi-x-circle me-1 text-danger"></i>
+          <strong>Kapama Reddedildi</strong>
+          {% if req.closure_request.rejection_note %} — {{ req.closure_request.rejection_note }}{% endif %}
+        </div>
+        {% endif %}
       </div>
 
       <div class="d-flex flex-column gap-2 align-items-end">
@@ -162,6 +192,48 @@
         <button type="button" class="btn btn-outline-warning btn-sm"
                 data-bs-toggle="modal" data-bs-target="#revisionModal">
           <i class="bi bi-calendar-event me-1"></i> Tarih Değişikliği
+        </button>
+        {% endif %}
+
+        {# Dosyayı Kapat — confirmed veya completed, PM veya admin #}
+        {% if req.status in ('confirmed', 'completed') and
+              (current_user.role == 'admin' or req.created_by == current_user.id) and
+              not (req.closure_request and req.closure_request.status in ('pending_manager','pending_finance')) %}
+        <button type="button" class="btn btn-dark btn-sm"
+                data-bs-toggle="modal" data-bs-target="#closureModal">
+          <i class="bi bi-lock me-1"></i> Dosyayı Kapat
+        </button>
+        {% endif %}
+
+        {# Kapama onay butonları — admin (L1) #}
+        {% if req.status == 'closing' and req.closure_request and req.closure_request.status == 'pending_manager'
+              and current_user.role == 'admin' %}
+        {% set cr = req.closure_request %}
+        <form method="post" action="/closure/{{ cr.id }}/approve-l1"
+              onsubmit="return confirm('Kapama talebini onaylıyorsunuz?')">
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-check2 me-1"></i> Kapamayı Onayla (L1)
+          </button>
+        </form>
+        <button class="btn btn-outline-danger btn-sm"
+                onclick="openClosureRejectModal('{{ cr.id }}')">
+          <i class="bi bi-x me-1"></i> Reddet
+        </button>
+        {% endif %}
+
+        {# Kapama onay butonları — muhasebe_muduru veya admin (L2/Final) #}
+        {% if req.status == 'closing' and req.closure_request and req.closure_request.status == 'pending_finance'
+              and current_user.role in ('admin', 'muhasebe_muduru') %}
+        {% set cr = req.closure_request %}
+        <form method="post" action="/closure/{{ cr.id }}/approve-final"
+              onsubmit="return confirm('Dosyayı kesin olarak kapatıyorsunuz. Emin misiniz?')">
+          <button type="submit" class="btn btn-dark btn-sm">
+            <i class="bi bi-lock-fill me-1"></i> Dosyayı Kapat (Final)
+          </button>
+        </form>
+        <button class="btn btn-outline-danger btn-sm"
+                onclick="openClosureRejectModal('{{ cr.id }}')">
+          <i class="bi bi-x me-1"></i> Reddet
         </button>
         {% endif %}
 
@@ -1597,6 +1669,10 @@ function openRejectModal(invoiceId) {
   document.querySelector('#rejectModal textarea[name=rejection_note]').value = '';
   new bootstrap.Modal(document.getElementById('rejectModal')).show();
 }
+function openClosureRejectModal(closureId) {
+  document.getElementById('closureRejectForm').action = '/closure/' + closureId + '/reject';
+  new bootstrap.Modal(document.getElementById('closureRejectModal')).show();
+}
 function openReassignModal(invoiceId, invLabel) {
   document.getElementById('reassignForm').action = '/invoices/' + invoiceId + '/reassign';
   document.getElementById('reassignInvName').textContent = 'Fatura: ' + invLabel;
@@ -2940,6 +3016,74 @@ function applyVenuePickerSelection(section, emailFilterSection) {
 {# ══════════════════════════════
    MODAL: Tarih Değişikliği
    ══════════════════════════════ #}
+{# ── Dosya Kapama Modal ── #}
+<div class="modal fade" id="closureModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1e293b; color:white;">
+        <h5 class="modal-title"><i class="bi bi-lock me-2"></i>Dosyayı Kapamaya Gönder</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/requests/{{ req.id }}/submit-closure">
+        <div class="modal-body">
+          <p class="small text-muted mb-3">
+            Dosya kapama süreci başlatılacak. Kapama onaya gönderildikten sonra bu referansa
+            <strong>fatura veya HBF girişi yapılamaz</strong>.<br>
+            Onay zinciri: <strong>Admin → Muhasebe Müdürü</strong>
+          </p>
+
+          {# Ön koşul uyarısı (client-side basit gösterim) #}
+          {% set pending_inv = req.invoices | selectattr('status','eq','pending') | list %}
+          {% set pending_hbf = req.expense_reports | selectattr('status','in',['draft','submitted']) | list %}
+          {% if pending_inv or pending_hbf %}
+          <div class="alert alert-warning py-2 small">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <strong>Dikkat:</strong>
+            {% if pending_inv %}{{ pending_inv | length }} fatura onay bekliyor.{% endif %}
+            {% if pending_hbf %}{{ pending_hbf | length }} HBF onaylanmamış.{% endif %}
+            Bunları önce tamamlayın.
+          </div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Not (opsiyonel)</label>
+            <textarea name="note" class="form-control form-control-sm" rows="3"
+                      placeholder="Kapama ile ilgili bir not ekleyebilirsiniz..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-dark btn-sm">
+            <i class="bi bi-send me-1"></i> Kapamaya Gönder
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Kapama Ret Modal ── #}
+<div class="modal fade" id="closureRejectModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Kapamayı Reddet</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="closureRejectForm">
+        <div class="modal-body">
+          <textarea name="rejection_note" class="form-control form-control-sm"
+                    rows="3" placeholder="Red gerekçesi..."></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-sm btn-danger">Reddet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="revisionModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">

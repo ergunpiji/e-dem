@@ -64,6 +64,12 @@ async def requests_list(
     elif view == "completed":
         query = query.filter(ReqModel.status == "completed")
         page_title = "Tamamlanan İşler"
+    elif view == "closing":
+        query = query.filter(ReqModel.status == "closing")
+        page_title = "Kapama Onayında"
+    elif view == "closed":
+        query = query.filter(ReqModel.status == "closed")
+        page_title = "Kapatılan Dosyalar"
     elif view == "cancelled":
         query = query.filter(ReqModel.status == "cancelled")
         page_title = "İptal İşler"

@@ -107,6 +107,7 @@ from routers import bulk_import as bulk_import_router
 from routers import expenses as expenses_router
 from routers import notifications as notifications_router
 from routers import exchange_rates as exchange_rates_router
+from routers import closure as closure_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -126,3 +127,4 @@ app.include_router(expenses_router.router)
 app.include_router(expenses_router.undoc_router)
 app.include_router(notifications_router.router)
 app.include_router(exchange_rates_router.router)
+app.include_router(closure_router.router)
