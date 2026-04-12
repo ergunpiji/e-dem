@@ -2,6 +2,14 @@
 {% block page_title %}Belgesiz Gelir / Gider{% endblock %}
 {% block page_title_block %}Belgesiz Gelir / Gider{% endblock %}
 
+{% block topbar_actions %}
+{% if can_manage %}
+<button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addUndocModal">
+  <i class="bi bi-plus-lg me-1"></i> Kayıt Ekle
+</button>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid py-3">
 
@@ -128,11 +136,108 @@
   </div>
 </div>
 
+{# ── Ekle Modal ── #}
 {% if can_manage %}
+<div class="modal fade" id="addUndocModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2" style="background:#92400e; color:white;">
+        <h6 class="modal-title"><i class="bi bi-cash-stack me-2"></i>Belgesiz Gelir / Gider Ekle</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Tür</label>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-success flex-fill undoc-type-btn"
+                    data-type="gelir" onclick="selectUndocType('gelir')">
+              <i class="bi bi-arrow-down-circle me-1"></i>Belgesiz Gelir
+            </button>
+            <button type="button" class="btn btn-outline-danger flex-fill undoc-type-btn"
+                    data-type="gider" onclick="selectUndocType('gider')">
+              <i class="bi bi-arrow-up-circle me-1"></i>Belgesiz Gider
+            </button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Referans</label>
+          <select id="undocRequestSelect" class="form-select form-select-sm">
+            <option value="">— Referans Seçin —</option>
+            {% for r in all_requests %}
+            <option value="{{ r.id }}">{{ r.request_no }} — {{ r.event_name }} ({{ r.client_name }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold" style="font-size:13px;">Tarih</label>
+            <input type="date" id="undocDate" class="form-control form-control-sm" value="{{ today }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold" style="font-size:13px;">Tutar (KDV'siz) ₺</label>
+            <input type="number" id="undocAmount" class="form-control form-control-sm text-end"
+                   placeholder="0.00" min="0.01" step="0.01">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold" style="font-size:13px;">Açıklama</label>
+          <input type="text" id="undocDesc" class="form-control form-control-sm"
+                 placeholder="Açıklama giriniz">
+        </div>
+        <div id="undocError" class="text-danger" style="font-size:12px; display:none;"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-sm btn-warning text-white" onclick="submitUndoc()">
+          <i class="bi bi-plus-lg me-1"></i>Kaydet
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+let _undocType = null;
+
+function selectUndocType(type) {
+  _undocType = type;
+  document.querySelectorAll('.undoc-type-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.type === type);
+  });
+}
+
+async function submitUndoc() {
+  const errEl = document.getElementById('undocError');
+  errEl.style.display = 'none';
+
+  const reqId  = document.getElementById('undocRequestSelect').value;
+  const date   = document.getElementById('undocDate').value;
+  const amt    = parseFloat(document.getElementById('undocAmount').value);
+  const desc   = document.getElementById('undocDesc').value.trim();
+
+  if (!_undocType)  { errEl.textContent = 'Tür seçin.';        errEl.style.display=''; return; }
+  if (!reqId)       { errEl.textContent = 'Referans seçin.';    errEl.style.display=''; return; }
+  if (!desc)        { errEl.textContent = 'Açıklama giriniz.';  errEl.style.display=''; return; }
+  if (!amt || amt <= 0) { errEl.textContent = 'Geçerli tutar girin.'; errEl.style.display=''; return; }
+
+  const fd = new FormData();
+  fd.append('request_id',  reqId);
+  fd.append('entry_type',  _undocType);
+  fd.append('description', desc);
+  fd.append('amount',      amt);
+  fd.append('entry_date',  date);
+
+  const res  = await fetch('/undocumented/add', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (!data.ok) { errEl.textContent = data.error || 'Hata oluştu.'; errEl.style.display=''; return; }
+
+  // Sayfayı yenile
+  location.reload();
+}
+
 async function deleteEntry(entryId) {
   if (!confirm('Bu kaydı silmek istediğinizden emin misiniz?')) return;
-  const res = await fetch('/undocumented/' + entryId, { method: 'DELETE' });
+  const res  = await fetch('/undocumented/' + entryId, { method: 'DELETE' });
   const data = await res.json();
   if (data.ok) {
     document.getElementById('undoc-row-' + entryId)?.remove();

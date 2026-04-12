@@ -536,7 +536,7 @@ async def invoices_cut(
     inv.approved_at = _now()
     inv.updated_at  = _now()
     db.commit()
-    return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+    return RedirectResponse(url="/invoices?status_filter=gm_approved", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +561,7 @@ async def invoices_approve(
     inv.rejection_note = ""
     inv.updated_at  = _now()
     db.commit()
-    return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+    return RedirectResponse(url="/invoices?status_filter=pending", status_code=303)
 
 
 # ---------------------------------------------------------------------------

@@ -536,6 +536,16 @@ async def undocumented_list(
     gider_total = sum(e.amount for e in entries if e.entry_type == "gider")
     can_manage = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
 
+    # Ekleme formu için aktif referanslar (iptal ve kapalı hariç)
+    all_requests = []
+    if can_manage:
+        all_requests = db.query(ReqModel).filter(
+            ReqModel.status.notin_(["cancelled", "closed"])
+        ).order_by(ReqModel.created_at.desc()).all()
+
+    from datetime import date as _date
+    today = _date.today().isoformat()
+
     return templates.TemplateResponse("undocumented/list.html", {
         "request":       request,
         "current_user":  current_user,
@@ -544,6 +554,8 @@ async def undocumented_list(
         "gelir_total":   gelir_total,
         "gider_total":   gider_total,
         "can_manage":    can_manage,
+        "all_requests":  all_requests,
+        "today":         today,
     })
 
 
