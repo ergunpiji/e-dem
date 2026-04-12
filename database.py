@@ -867,6 +867,12 @@ def migrate_db():
 
         # OrgTitle — pm_permission_level sütunu
         _safe_add_column(conn, "org_titles", "pm_permission_level", "TEXT")
+
+        # Dosya kapama — Genel Müdür onay adımı
+        _safe_add_column(conn, "closure_requests", "needs_gm",       "BOOLEAN", "0")
+        _safe_add_column(conn, "closure_requests", "gm_approver_id", "TEXT")
+        _safe_add_column(conn, "closure_requests", "gm_approved_at", "DATETIME")
+        _safe_add_column(conn, "closure_requests", "gm_note",        "TEXT", "''")
         # OrgTitle grade'e göre varsayılan pm_permission_level ata (zaten atanmamışsa)
         conn.execute(text(
             "UPDATE org_titles SET pm_permission_level='mudur' "

@@ -78,9 +78,13 @@
           <i class="bi bi-hourglass-split me-1 text-warning"></i>
           <strong>Kapama Onayında</strong> —
           {% if cr.status == 'pending_manager' %}
-            Yönetici onayı bekleniyor
+            Müdür onayı bekleniyor
+          {% elif cr.status == 'pending_gm' %}
+            <i class="bi bi-check2 text-success me-1"></i>Müdür onayladı →
+            <span style="color:#7c3aed; font-weight:600;">Genel Müdür onayı bekleniyor</span>
           {% elif cr.status == 'pending_finance' %}
-            <i class="bi bi-check2 text-success me-1"></i>Yönetici onayladı →
+            <i class="bi bi-check2 text-success me-1"></i>
+            {% if cr.needs_gm %}Müdür + Genel Müdür onayladı{% else %}Müdür onayladı{% endif %} →
             Muhasebe Müdürü final onayı bekleniyor
           {% endif %}
           ({{ cr.submitted_at.strftime('%d.%m.%Y') if cr.submitted_at else '' }})
@@ -195,24 +199,24 @@
         </button>
         {% endif %}
 
-        {# Dosyayı Kapat — confirmed veya completed, PM veya admin #}
+        {# Dosyayı Kapat — confirmed veya completed, PM/mudur/admin #}
         {% if req.status in ('confirmed', 'completed') and
-              (current_user.role == 'admin' or req.created_by == current_user.id) and
-              not (req.closure_request and req.closure_request.status in ('pending_manager','pending_finance')) %}
+              (current_user.role in ('admin', 'mudur') or req.created_by == current_user.id) and
+              not (req.closure_request and req.closure_request.status in ('pending_manager','pending_gm','pending_finance')) %}
         <button type="button" class="btn btn-dark btn-sm"
                 data-bs-toggle="modal" data-bs-target="#closureModal">
           <i class="bi bi-lock me-1"></i> Dosyayı Kapat
         </button>
         {% endif %}
 
-        {# Kapama onay butonları — admin (L1) #}
+        {# Kapama onay butonları — Müdür (L1) #}
         {% if req.status == 'closing' and req.closure_request and req.closure_request.status == 'pending_manager'
-              and current_user.role == 'admin' %}
+              and current_user.role in ('admin', 'mudur') %}
         {% set cr = req.closure_request %}
         <form method="post" action="/closure/{{ cr.id }}/approve-l1"
               onsubmit="return confirm('Kapama talebini onaylıyorsunuz?')">
           <button type="submit" class="btn btn-success btn-sm">
-            <i class="bi bi-check2 me-1"></i> Kapamayı Onayla (L1)
+            <i class="bi bi-check2 me-1"></i> Müdür Olarak Onayla
           </button>
         </form>
         <button class="btn btn-outline-danger btn-sm"
@@ -221,7 +225,23 @@
         </button>
         {% endif %}
 
-        {# Kapama onay butonları — muhasebe_muduru veya admin (L2/Final) #}
+        {# Kapama onay butonları — Genel Müdür (GM) #}
+        {% if req.status == 'closing' and req.closure_request and req.closure_request.status == 'pending_gm'
+              and current_user.role in ('admin', 'mudur') %}
+        {% set cr = req.closure_request %}
+        <form method="post" action="/closure/{{ cr.id }}/approve-gm"
+              onsubmit="return confirm('Genel Müdür onayı veriyorsunuz?')">
+          <button type="submit" class="btn btn-sm text-white" style="background:#7c3aed; border-color:#7c3aed;">
+            <i class="bi bi-check2 me-1"></i> Genel Müdür Olarak Onayla
+          </button>
+        </form>
+        <button class="btn btn-outline-danger btn-sm"
+                onclick="openClosureRejectModal('{{ cr.id }}')">
+          <i class="bi bi-x me-1"></i> Reddet
+        </button>
+        {% endif %}
+
+        {# Kapama onay butonları — Muhasebe Müdürü (Final) #}
         {% if req.status == 'closing' and req.closure_request and req.closure_request.status == 'pending_finance'
               and current_user.role in ('admin', 'muhasebe_muduru') %}
         {% set cr = req.closure_request %}
@@ -3029,7 +3049,7 @@ function applyVenuePickerSelection(section, emailFilterSection) {
           <p class="small text-muted mb-3">
             Dosya kapama süreci başlatılacak. Kapama onaya gönderildikten sonra bu referansa
             <strong>fatura veya HBF girişi yapılamaz</strong>.<br>
-            Onay zinciri: <strong>Admin → Muhasebe Müdürü</strong>
+            Onay zinciri: <strong>Müdür → (Genel Müdür, limit aşılırsa) → Muhasebe Müdürü</strong>
           </p>
 
           {# Ön koşul uyarısı (client-side basit gösterim) #}

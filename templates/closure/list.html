@@ -32,7 +32,10 @@
       <a href="/closure?status_filter=all"
          class="btn btn-outline-secondary {% if status_filter == 'all' %}active{% endif %}">Tümü</a>
       <a href="/closure?status_filter=pending_manager"
-         class="btn btn-outline-warning {% if status_filter == 'pending_manager' %}active{% endif %}">Yönetici Onayı</a>
+         class="btn btn-outline-warning {% if status_filter == 'pending_manager' %}active{% endif %}">Müdür Onayı</a>
+      <a href="/closure?status_filter=pending_gm"
+         class="btn btn-outline-purple {% if status_filter == 'pending_gm' %}active{% endif %}"
+         style="border-color:#7c3aed; color:#7c3aed;">GM Onayı</a>
       <a href="/closure?status_filter=pending_finance"
          class="btn btn-outline-info {% if status_filter == 'pending_finance' %}active{% endif %}">Muhasebe Onayı</a>
       <a href="/closure?status_filter=closed"
@@ -53,8 +56,9 @@
               <th>Gönderen</th>
               <th>Tarih</th>
               <th>Not</th>
-              <th class="text-center">Adım 1 (Yönetici)</th>
-              <th class="text-center">Adım 2 (Muhasebe Müd.)</th>
+              <th class="text-center">Adım 1 (Müdür)</th>
+              <th class="text-center">Adım 2 (Genel Müdür)</th>
+              <th class="text-center">Adım 3 (Muhasebe Müd.)</th>
               <th class="text-center">Durum</th>
               <th class="text-center pe-3">İşlem</th>
             </tr>
@@ -99,6 +103,23 @@
                 {% endif %}
               </td>
               <td class="text-center">
+                {% if not cr.needs_gm %}
+                  <span class="text-muted small">—</span>
+                {% elif cr.gm_approved_at %}
+                  <span class="badge bg-success step-badge">Onaylandı</span>
+                  <div class="small text-muted" style="font-size:10px;">
+                    {{ cr.gm_approver.full_name if cr.gm_approver else '' }}<br>
+                    {{ cr.gm_approved_at.strftime('%d.%m.%Y') }}
+                  </div>
+                {% elif cr.status == 'pending_gm' %}
+                  <span class="badge step-badge text-white" style="background:#7c3aed;">Bekliyor</span>
+                {% elif cr.status == 'rejected' and cr.l1_approved_at and not cr.gm_approved_at %}
+                  <span class="badge bg-danger step-badge">Reddedildi</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
                 {% if cr.l2_approved_at %}
                   <span class="badge bg-success step-badge">Onaylandı</span>
                   <div class="small text-muted" style="font-size:10px;">
@@ -107,7 +128,7 @@
                   </div>
                 {% elif cr.status == 'pending_finance' %}
                   <span class="badge bg-info step-badge">Bekliyor</span>
-                {% elif cr.status == 'rejected' and cr.l1_approved_at %}
+                {% elif cr.status == 'rejected' and (cr.gm_approved_at or (cr.l1_approved_at and not cr.needs_gm)) %}
                   <span class="badge bg-danger step-badge">Reddedildi</span>
                 {% else %}
                   <span class="text-muted">—</span>
@@ -134,7 +155,20 @@
                   {% if cr.status == 'pending_manager' and current_user.role in ('admin', 'mudur') %}
                   <form method="post" action="/closure/{{ cr.id }}/approve-l1"
                         onsubmit="return confirm('Kapamayı onaylıyorsunuz?')">
-                    <button type="submit" class="btn btn-sm btn-success py-0 px-2" title="L1 Onayla">
+                    <button type="submit" class="btn btn-sm btn-success py-0 px-2" title="Müdür Onayla">
+                      <i class="bi bi-check2" style="font-size:11px;"></i>
+                    </button>
+                  </form>
+                  <button class="btn btn-sm btn-danger py-0 px-2" title="Reddet"
+                          onclick="openRejectModal('{{ cr.id }}')">
+                    <i class="bi bi-x" style="font-size:11px;"></i>
+                  </button>
+                  {% endif %}
+                  {% if cr.status == 'pending_gm' and current_user.role in ('admin', 'mudur') %}
+                  <form method="post" action="/closure/{{ cr.id }}/approve-gm"
+                        onsubmit="return confirm('Genel Müdür onayı veriyorsunuz?')">
+                    <button type="submit" class="btn btn-sm py-0 px-2 text-white" title="GM Onayla"
+                            style="background:#7c3aed; border-color:#7c3aed;">
                       <i class="bi bi-check2" style="font-size:11px;"></i>
                     </button>
                   </form>
