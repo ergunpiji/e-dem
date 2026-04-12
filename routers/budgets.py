@@ -686,7 +686,7 @@ async def budgets_approve(
         budget.updated_at    = _now()
         req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
         if req:
-            req.status     = "completed"
+            req.status     = "offer_sent"
             req.updated_at = _now()
         db.commit()
     if back:
