@@ -297,15 +297,23 @@
         <div class="tree-children">
           <a href="/invoices/new"
              class="sidebar-link {% if cp == '/invoices/new' %}active{% endif %}">
-            <i class="bi bi-receipt nav-icon"></i> Fatura Girişi
+            <i class="bi bi-plus-circle nav-icon"></i> Fatura Kes
+          </a>
+          <a href="/invoices"
+             class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
+            <i class="bi bi-receipt nav-icon"></i> Faturalar
           </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
             <i class="bi bi-graph-up nav-icon"></i> Finansal Rapor
           </a>
           <a href="/expenses/new"
-             class="sidebar-link {% if '/expenses' in cp %}active{% endif %}">
-            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formu (HBF)
+             class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
+            <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
+          </a>
+          <a href="/expenses"
+             class="sidebar-link {% if cp == '/expenses' %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formları
           </a>
         </div>
       </div>
@@ -427,13 +435,21 @@
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
+          <a href="/invoices"
+             class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
+            <i class="bi bi-receipt nav-icon"></i> Faturalar
+          </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
             <i class="bi bi-graph-up nav-icon"></i> Finansal Raporum
           </a>
           <a href="/expenses/new"
-             class="sidebar-link {% if '/expenses' in cp %}active{% endif %}">
-            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formu (HBF)
+             class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
+            <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
+          </a>
+          <a href="/expenses"
+             class="sidebar-link {% if cp == '/expenses' %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formları
           </a>
         </div>
       </div>
@@ -511,8 +527,12 @@
         </div>
         <div class="tree-children">
           <a href="/expenses/new"
-             class="sidebar-link {% if '/expenses' in cp %}active{% endif %}">
-            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formu (HBF)
+             class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
+            <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
+          </a>
+          <a href="/expenses"
+             class="sidebar-link {% if cp == '/expenses' %}active{% endif %}">
+            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formları
           </a>
         </div>
       </div>
@@ -541,7 +561,11 @@
         <div class="tree-children">
           <a href="/invoices/new"
              class="sidebar-link {% if cp == '/invoices/new' %}active{% endif %}">
-            <i class="bi bi-receipt nav-icon"></i> Fatura Girişi
+            <i class="bi bi-plus-circle nav-icon"></i> Fatura Kes
+          </a>
+          <a href="/invoices"
+             class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
+            <i class="bi bi-receipt nav-icon"></i> Faturalar
           </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">

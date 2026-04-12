@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block page_title %}Faturalar{% endblock %}
+{% block page_title_block %}Faturalar{% endblock %}
+
+{% block topbar_actions %}
+{% if current_user.role in ('admin','muhasebe_muduru','muhasebe') %}
+<a href="/invoices/new" class="btn btn-primary btn-sm">
+  <i class="bi bi-plus-lg me-1"></i> Yeni Fatura
+</a>
+{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .filter-bar { background:#fff; border-radius:10px; padding:14px 18px;
+                box-shadow:0 1px 4px rgba(0,0,0,.06); margin-bottom:18px; }
+  .filter-bar .btn-group .btn { font-size:12px; }
+  .inv-table th { font-size:11px; text-transform:uppercase; letter-spacing:.4px;
+                  color:#64748b; background:#f8fafc; white-space:nowrap; }
+  .inv-table td { font-size:13px; vertical-align:middle; }
+  .badge-type { font-size:11px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# Özet kartlar #}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card text-center py-3 border-0 shadow-sm">
+        <div class="fs-4 fw-bold text-warning">{{ pending_count }}</div>
+        <div class="small text-muted">Onay Bekliyor</div>
+      </div>
+    </div>
+  </div>
+
+  {# Filtre çubuğu #}
+  <div class="filter-bar d-flex flex-wrap gap-3 align-items-center">
+    <div>
+      <span class="small text-muted me-2">Durum:</span>
+      <div class="btn-group btn-group-sm">
+        <a href="/invoices?status_filter=all&type_filter={{ type_filter }}"
+           class="btn btn-outline-secondary {% if status_filter == 'all' %}active{% endif %}">Tümü</a>
+        <a href="/invoices?status_filter=pending&type_filter={{ type_filter }}"
+           class="btn btn-outline-warning {% if status_filter == 'pending' %}active{% endif %}">
+          Onay Bekliyor {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pending_count }}</span>{% endif %}
+        </a>
+        <a href="/invoices?status_filter=approved&type_filter={{ type_filter }}"
+           class="btn btn-outline-success {% if status_filter == 'approved' %}active{% endif %}">Onaylandı</a>
+        <a href="/invoices?status_filter=rejected&type_filter={{ type_filter }}"
+           class="btn btn-outline-danger {% if status_filter == 'rejected' %}active{% endif %}">Reddedildi</a>
+      </div>
+    </div>
+    <div>
+      <span class="small text-muted me-2">Tür:</span>
+      <div class="btn-group btn-group-sm">
+        <a href="/invoices?status_filter={{ status_filter }}&type_filter=all"
+           class="btn btn-outline-secondary {% if type_filter == 'all' %}active{% endif %}">Tümü</a>
+        {% for t in invoice_types %}
+        <a href="/invoices?status_filter={{ status_filter }}&type_filter={{ t.value }}"
+           class="btn btn-outline-secondary {% if type_filter == t.value %}active{% endif %}">{{ t.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# Tablo #}
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      {% if invoices %}
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 inv-table">
+          <thead>
+            <tr>
+              <th class="ps-3">Referans</th>
+              <th>Fatura No</th>
+              <th>Tedarikçi / Müşteri</th>
+              <th>Tür</th>
+              <th>Tarih</th>
+              <th class="text-end">Tutar (KDV hariç)</th>
+              <th class="text-end">Tutar (KDV dahil)</th>
+              <th class="text-center">Durum</th>
+              <th class="text-center pe-3">İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in invoices %}
+            <tr>
+              <td class="ps-3">
+                <a href="/requests/{{ inv.request_id }}#tab-financial"
+                   class="text-decoration-none fw-semibold text-primary">
+                  {{ inv.request.request_no if inv.request else '—' }}
+                </a>
+                {% if inv.request %}
+                <div class="small text-muted">{{ inv.request.event_name }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="fw-semibold">{{ inv.invoice_no or '—' }}</span>
+                {% if inv.document_path %}
+                <a href="/invoices/{{ inv.id }}/document" target="_blank"
+                   class="ms-1 text-muted" title="Belgeyi Görüntüle">
+                  <i class="bi bi-file-earmark-pdf"></i>
+                </a>
+                {% endif %}
+              </td>
+              <td>{{ inv.vendor_name or '—' }}</td>
+              <td>
+                {% set type_colors = {
+                  'kesilen': 'success',
+                  'gelen': 'primary',
+                  'komisyon': 'info',
+                  'iade_kesilen': 'warning',
+                  'iade_gelen': 'secondary'
+                } %}
+                <span class="badge bg-{{ type_colors.get(inv.invoice_type, 'secondary') }}-subtle
+                             text-{{ type_colors.get(inv.invoice_type, 'secondary') }} badge-type border
+                             border-{{ type_colors.get(inv.invoice_type, 'secondary') }}-subtle">
+                  {{ INVOICE_TYPE_LABELS.get(inv.invoice_type, inv.invoice_type) }}
+                </span>
+              </td>
+              <td class="text-muted">
+                {% if inv.invoice_date %}
+                  {{ inv.invoice_date[8:10] }}.{{ inv.invoice_date[5:7] }}.{{ inv.invoice_date[0:4] }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="text-end">
+                ₺{{ '{:,.2f}'.format(inv.amount).replace(',', '.') }}
+              </td>
+              <td class="text-end fw-semibold">
+                ₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}
+              </td>
+              <td class="text-center">
+                {% if inv.status == 'pending' %}
+                  <span class="badge bg-warning text-dark">Onay Bekliyor</span>
+                {% elif inv.status == 'approved' %}
+                  <span class="badge bg-success">Onaylandı</span>
+                  {% if inv.approved_at %}
+                  <div class="small text-muted" style="font-size:10px;">
+                    {{ inv.approver.name if inv.approver else '' }}
+                  </div>
+                  {% endif %}
+                {% elif inv.status == 'rejected' %}
+                  <span class="badge bg-danger">Reddedildi</span>
+                  {% if inv.rejection_note %}
+                  <div class="small text-danger" style="font-size:10px;" title="{{ inv.rejection_note }}">
+                    {{ inv.rejection_note[:40] }}{% if inv.rejection_note|length > 40 %}…{% endif %}
+                  </div>
+                  {% endif %}
+                {% elif inv.status == 'cancelled' %}
+                  <span class="badge bg-secondary">İptal</span>
+                {% endif %}
+              </td>
+              <td class="text-center pe-3">
+                <div class="d-flex gap-1 justify-content-center">
+                  <a href="/requests/{{ inv.request_id }}#tab-financial"
+                     class="btn btn-sm btn-outline-secondary py-0 px-2" title="Referansa Git">
+                    <i class="bi bi-box-arrow-up-right" style="font-size:11px;"></i>
+                  </a>
+                  {% if inv.status == 'pending' and (
+                      current_user.role == 'admin' or
+                      (inv.request and inv.request.created_by == current_user.id)
+                  ) %}
+                  <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-success py-0 px-2" title="Onayla"
+                            onclick="return confirm('Bu faturayı onaylıyorsunuz?')">
+                      <i class="bi bi-check2" style="font-size:11px;"></i>
+                    </button>
+                  </form>
+                  <button class="btn btn-sm btn-danger py-0 px-2" title="Reddet"
+                          onclick="openRejectModal('{{ inv.id }}')">
+                    <i class="bi bi-x" style="font-size:11px;"></i>
+                  </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="bi bi-receipt fs-1 d-block mb-2 opacity-25"></i>
+        {% if status_filter == 'pending' %}Onay bekleyen fatura yok.
+        {% elif status_filter != 'all' %}Bu filtreye uyan fatura bulunamadı.
+        {% else %}Henüz fatura girilmemiş.{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# Red modal #}
+<div class="modal fade" id="rejectModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Fatura Reddet</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="rejectForm">
+        <div class="modal-body">
+          <textarea name="rejection_note" class="form-control form-control-sm"
+                    rows="3" placeholder="Red gerekçesi (opsiyonel)"></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-sm btn-danger">Reddet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openRejectModal(invId) {
+  document.getElementById('rejectForm').action = '/invoices/' + invId + '/reject';
+  new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+</script>
+{% endblock %}

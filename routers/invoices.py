@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Invoice, INVOICE_TYPES, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, User, _uuid, _now
+from models import Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, User, _uuid, _now
 from templates_config import templates
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -65,6 +65,57 @@ def _compute_totals(lines: list) -> tuple[float, float, float]:
     total_excl = sum(float(l.get("amount", 0) or 0) for l in lines)
     total_vat  = sum(float(l.get("vat_amount", 0) or 0) for l in lines)
     return round(total_excl, 2), round(total_vat, 2), round(total_excl + total_vat, 2)
+
+
+# ---------------------------------------------------------------------------
+# GET /invoices  — Genel Fatura Listesi
+# ---------------------------------------------------------------------------
+
+@router.get("", response_class=HTMLResponse, name="invoices_list")
+async def invoices_list(
+    request: Request,
+    status_filter: str = "all",   # all | pending | approved | rejected | cancelled
+    type_filter: str = "all",     # all | kesilen | gelen | komisyon | iade_kesilen | iade_gelen
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Finans rolleri + PM (kendi referanslarının faturalarını görebilir)
+    if current_user.role not in {"admin", "muhasebe_muduru", "muhasebe", "project_manager", "e_dem"}:
+        raise HTTPException(status_code=403)
+
+    query = db.query(Invoice).join(Invoice.request)
+
+    # PM sadece kendi referanslarının faturalarını görür
+    if current_user.role == "project_manager":
+        from models import Request as ReqModel
+        query = query.filter(ReqModel.created_by == current_user.id)
+
+    if status_filter != "all":
+        query = query.filter(Invoice.status == status_filter)
+    if type_filter != "all":
+        query = query.filter(Invoice.invoice_type == type_filter)
+
+    invoices = query.order_by(Invoice.created_at.desc()).all()
+
+    pending_count = db.query(Invoice).join(Invoice.request).filter(
+        Invoice.status == "pending"
+    )
+    if current_user.role == "project_manager":
+        from models import Request as ReqModel
+        pending_count = pending_count.filter(ReqModel.created_by == current_user.id)
+    pending_count = pending_count.count()
+
+    return templates.TemplateResponse("invoices/list.html", {
+        "request":        request,
+        "current_user":   current_user,
+        "page_title":     "Faturalar",
+        "invoices":       invoices,
+        "status_filter":  status_filter,
+        "type_filter":    type_filter,
+        "pending_count":  pending_count,
+        "invoice_types":  INVOICE_TYPES,
+        "INVOICE_TYPE_LABELS": {t["value"]: t["label"] for t in INVOICE_TYPES},
+    })
 
 
 # ---------------------------------------------------------------------------

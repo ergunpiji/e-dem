@@ -49,6 +49,56 @@ def _can_approve(report: ExpenseReport, user: User) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# GET /expenses  — Genel HBF Listesi (tüm referanslar)
+# ---------------------------------------------------------------------------
+
+@router.get("", response_class=HTMLResponse, name="expenses_all_list")
+async def expenses_all_list(
+    request: Request,
+    status_filter: str = "all",  # all | draft | submitted | approved | rejected
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = db.query(ExpenseReport)
+
+    # PM sadece kendi referanslarına ait HBF'leri görür
+    if current_user.role == "project_manager":
+        query = query.join(ExpenseReport.request).filter(
+            ReqModel.created_by == current_user.id
+        )
+    # e_dem sadece kendi gönderdiği HBF'leri görür
+    elif current_user.role == "e_dem":
+        query = query.filter(ExpenseReport.submitted_by == current_user.id)
+
+    if status_filter != "all":
+        query = query.filter(ExpenseReport.status == status_filter)
+
+    reports = query.order_by(ExpenseReport.created_at.desc()).all()
+
+    # Onay bekleyen sayısı
+    pending_q = db.query(ExpenseReport).filter(ExpenseReport.status == "submitted")
+    if current_user.role == "project_manager":
+        pending_q = pending_q.join(ExpenseReport.request).filter(
+            ReqModel.created_by == current_user.id
+        )
+    elif current_user.role == "e_dem":
+        pending_q = pending_q.filter(ExpenseReport.submitted_by == current_user.id)
+    pending_count = pending_q.count()
+
+    return templates.TemplateResponse("expenses/list_all.html", {
+        "request":       request,
+        "current_user":  current_user,
+        "page_title":    "Harcama Formları (HBF)",
+        "reports":       reports,
+        "status_filter": status_filter,
+        "pending_count": pending_count,
+        "STATUS_LABELS": EXPENSE_STATUS_LABELS,
+        "STATUS_COLORS": EXPENSE_STATUS_COLORS,
+        "STATUSES":      EXPENSE_STATUSES,
+    })
+
+
+# ---------------------------------------------------------------------------
 # HBF Liste (referans bazlı)
 # ---------------------------------------------------------------------------
 
