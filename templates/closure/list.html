@@ -136,7 +136,8 @@
               </td>
               <td class="text-center">
                 <span class="badge bg-{{ STATUS_COLORS.get(cr.status, 'secondary') }}
-                  {% if cr.status == 'pending_manager' %}text-dark{% endif %}">
+                  {% if cr.status in ('pending_manager', 'pending_finance') %}text-dark{% else %}text-white{% endif %}"
+                  {% if cr.status == 'pending_gm' %}style="background:#7c3aed!important;"{% endif %}>
                   {{ STATUS_LABELS.get(cr.status, cr.status) }}
                 </span>
                 {% if cr.status == 'rejected' and cr.rejection_note %}
