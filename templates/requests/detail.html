@@ -1372,8 +1372,8 @@
     </tr>
     {% endmacro %}
 
-    {# ── Adım 1: GM Onayı Bekleyen Fatura Talepleri ── #}
-    {% if pending_invoices %}
+    {# ── Adım 1: GM Onayı Bekleyen Fatura Talepleri — sadece onay yetkisi olanlar görür ── #}
+    {% if pending_invoices and can_approve_invoices %}
     <div class="mb-3 p-3" style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px;">
       <div class="fw-semibold mb-2" style="font-size:13px; color:#92400e;">
         <i class="bi bi-hourglass-split me-1"></i>
