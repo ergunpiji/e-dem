@@ -76,8 +76,8 @@
                 <i class="bi bi-eye"></i>
               </a>
 
-              {# E-dem: düzenle butonu (draft_edem veya revision_requested ise) #}
-              {% if current_user.role in ('admin', 'e_dem') and bs in ('draft_edem', 'revision_requested') %}
+              {# E-dem / Asistan: düzenle butonu (draft_edem veya revision_requested ise) #}
+              {% if current_user.role in ('admin', 'e_dem', 'asistan') and bs in ('draft_edem', 'revision_requested') %}
               <a href="/budgets/{{ budget.id }}/edit" class="btn btn-sm btn-outline-primary ms-1" title="Maliyeti Düzenle">
                 <i class="bi bi-pencil"></i>
               </a>
