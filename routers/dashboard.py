@@ -9,11 +9,11 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Request as ReqModel, Service, User, Venue
+from models import Budget, Customer, Invoice, Request as ReqModel, Service, User, Venue
 
 router = APIRouter()
 from templates_config import templates
@@ -31,56 +31,64 @@ def _last_12_months() -> list[str]:
     return months
 
 
-def _build_financial_stats(db: Session, budget_filter=None):
-    """Onaylı bütçelerden ciro/kar/aylık veri hesapla.
+def _build_financial_stats(db: Session, req_id_filter=None):
+    """Onaylı faturalardan ciro/kar/aylık veri hesapla — sadece gerçek rakamlar."""
+    inv_query = db.query(Invoice).filter(
+        Invoice.status.in_(["approved", "active"]),
+    )
+    if req_id_filter is not None:
+        inv_query = inv_query.filter(Invoice.request_id.in_(req_id_filter))
 
-    budget_filter: ek filtre (örn. request_id listesi)
-    """
-    query = db.query(Budget).filter(Budget.budget_status == "confirmed")
-    if budget_filter is not None:
-        query = query.filter(Budget.request_id.in_(budget_filter))
-
-    confirmed_budgets = query.options(joinedload(Budget.request)).all()
+    invoices = inv_query.all()
 
     total_sale = 0.0
     total_cost = 0.0
     monthly: dict[str, dict] = defaultdict(lambda: {"sale": 0.0, "cost": 0.0})
 
-    for bgt in confirmed_budgets:
-        # KDV hariç tutarlar kullan
-        sale = bgt.grand_sale_excl_vat
-        cost = bgt.grand_cost_excl_vat
-        total_sale += sale
-        total_cost += cost
+    for inv in invoices:
+        if inv.invoice_type == "kesilen":
+            total_sale += inv.amount
+        elif inv.invoice_type == "iade_kesilen":
+            total_sale -= inv.amount
+        elif inv.invoice_type in ("gelen", "komisyon"):
+            total_cost += inv.amount
+        elif inv.invoice_type == "iade_gelen":
+            total_cost -= inv.amount
+        else:
+            continue
 
-        # Aylık gruplama: confirmed_at veya check_in tarihi
-        ref_date = None
-        if bgt.request:
-            ref_date = bgt.request.confirmed_at or bgt.request.check_in
-        if ref_date is None:
-            ref_date = bgt.updated_at or bgt.created_at
-        if ref_date:
-            if isinstance(ref_date, date) and not isinstance(ref_date, datetime):
-                key = ref_date.strftime("%Y-%m")
-            else:
-                key = ref_date.strftime("%Y-%m")
-            monthly[key]["sale"] += sale
-            monthly[key]["cost"] += cost
+        # Aylık gruplama: invoice_date → fatura tarihi kullan
+        key = None
+        if inv.invoice_date:
+            try:
+                key = inv.invoice_date[:7]  # YYYY-MM
+            except Exception:
+                pass
+        if not key and inv.created_at:
+            key = inv.created_at.strftime("%Y-%m")
+        if key:
+            if inv.invoice_type == "kesilen":
+                monthly[key]["sale"] += inv.amount
+            elif inv.invoice_type == "iade_kesilen":
+                monthly[key]["sale"] -= inv.amount
+            elif inv.invoice_type in ("gelen", "komisyon"):
+                monthly[key]["cost"] += inv.amount
+            elif inv.invoice_type == "iade_gelen":
+                monthly[key]["cost"] -= inv.amount
 
     kar = total_sale - total_cost
     karlilik = round(kar / total_sale * 100, 1) if total_sale > 0 else 0.0
 
-    # Son 12 ay için sıralı veri (eksik aylar 0)
     labels = _last_12_months()
     chart_sale = [round(monthly[m]["sale"], 0) for m in labels]
     chart_cost = [round(monthly[m]["cost"], 0) for m in labels]
-    chart_labels = [m[5:] + "/" + m[2:4] for m in labels]  # "04/26"
+    chart_labels = [m[5:] + "/" + m[2:4] for m in labels]
 
     return {
-        "total_sale":  round(total_sale, 2),
-        "total_cost":  round(total_cost, 2),
-        "total_kar":   round(kar, 2),
-        "karlilik":    karlilik,
+        "total_sale":   round(total_sale, 2),
+        "total_cost":   round(total_cost, 2),
+        "total_kar":    round(kar, 2),
+        "karlilik":     karlilik,
         "chart_labels": chart_labels,
         "chart_sale":   chart_sale,
         "chart_cost":   chart_cost,
@@ -146,7 +154,7 @@ async def dashboard(
                                      "budget_ready", "offer_sent", "revision"])
             ).count(),
         }
-        financial = _build_financial_stats(db, budget_filter=my_req_ids if my_req_ids else None)
+        financial = _build_financial_stats(db, req_id_filter=my_req_ids if my_req_ids else None)
         recent_requests = (
             db.query(ReqModel)
             .filter(ReqModel.created_by == current_user.id)

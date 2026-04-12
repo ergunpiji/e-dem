@@ -165,60 +165,54 @@ async def reports(
 @router.get("/financial", response_class=HTMLResponse, name="reports_financial")
 async def reports_financial(
     request: Request,
-    year:       str = "",
+    date_from:  str = "",
+    date_to:    str = "",
     manager_id: str = "",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _require_finance(current_user)
 
+    import json as _json
     from collections import defaultdict
 
-    # Yıl filtresi — varsayılan: bu yıl
-    current_year = date.today().year
-    selected_year = int(year) if year.isdigit() else current_year
-    available_years = list(range(current_year, current_year - 5, -1))
+    today = date.today()
 
-    # Manager filtresi
-    # PM: sadece kendi taleplerini görür
-    # Admin / muhasebe: tüm talepler; manager_id ile filtrelenebilir
+    # Tarih aralığı — varsayılan: bu yılın başı → bugün
+    try:
+        d_from = date.fromisoformat(date_from) if date_from else today.replace(month=1, day=1)
+    except ValueError:
+        d_from = today.replace(month=1, day=1)
+    try:
+        d_to = date.fromisoformat(date_to) if date_to else today
+    except ValueError:
+        d_to = today
+
+    # PM filtresi
     pm_users = db.query(User).filter(User.role == "project_manager", User.active == True).all()
     if current_user.role == "project_manager":
-        manager_id = current_user.id  # PM kendi ID'sini kullanır
+        manager_id = current_user.id
 
-    # Talepleri çek
-    req_query = db.query(ReqModel)
-    if current_user.role == "project_manager":
-        req_query = req_query.filter(ReqModel.created_by == current_user.id)
-    elif manager_id:
-        req_query = req_query.filter(ReqModel.created_by == manager_id)
-
-    all_reqs = req_query.all()
-    req_ids = [r.id for r in all_reqs]
-    req_map = {r.id: r for r in all_reqs}
-
-    # Yıla göre filtrele: req.check_in yılı veya created_at yılı
-    def _req_year(r):
-        if r.check_in:
-            try:
-                return date.fromisoformat(r.check_in).year
-            except Exception:
-                pass
-        return r.created_at.year if r.created_at else current_year
-
-    filtered_req_ids = {r.id for r in all_reqs if _req_year(r) == selected_year}
-
-    # Faturalar — approved (eski "active" de dahil geriye uyumluluk için)
-    invoices = db.query(Invoice).filter(
-        Invoice.request_id.in_(list(filtered_req_ids)),
+    # Fatura bazlı sorgulama — sadece onaylı faturalar, tarih aralığı invoice_date'e göre
+    inv_query = db.query(Invoice).filter(
         Invoice.status.in_(["approved", "active"]),
-    ).all()
+        Invoice.invoice_date >= d_from.isoformat(),
+        Invoice.invoice_date <= d_to.isoformat(),
+    )
+    # PM yalnızca kendi taleplerinin faturalarını görür
+    if current_user.role == "project_manager":
+        own_req_ids = [r.id for r in db.query(ReqModel.id)
+                       .filter(ReqModel.created_by == current_user.id).all()]
+        inv_query = inv_query.filter(Invoice.request_id.in_(own_req_ids))
+    elif manager_id:
+        mgr_req_ids = [r.id for r in db.query(ReqModel.id)
+                       .filter(ReqModel.created_by == manager_id).all()]
+        inv_query = inv_query.filter(Invoice.request_id.in_(mgr_req_ids))
+
+    invoices = inv_query.all()
 
     # Referans bazlı finansal özet
-    ref_fin = defaultdict(lambda: {
-        "ciro": 0.0, "maliyet": 0.0,
-        "budget_sale": 0.0, "budget_cost": 0.0,
-    })
+    ref_fin: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0})
     for inv in invoices:
         rid = inv.request_id
         if inv.invoice_type == "kesilen":
@@ -230,72 +224,106 @@ async def reports_financial(
         elif inv.invoice_type == "iade_gelen":
             ref_fin[rid]["maliyet"] -= inv.amount
 
-    # Konfirme bütçe KDV-hariç tutarlarını ekle
-    all_budgets = db.query(Budget).filter(
-        Budget.request_id.in_(list(filtered_req_ids)),
-        Budget.budget_status == "confirmed",
-    ).all()
-    for b in all_budgets:
-        ref_fin[b.request_id]["budget_sale"] = b.grand_sale_excl_vat
-        ref_fin[b.request_id]["budget_cost"] = b.grand_cost_excl_vat
+    # İlgili talepleri toplu çek
+    req_ids_with_inv = list(ref_fin.keys())
+    reqs = {r.id: r for r in db.query(ReqModel)
+            .filter(ReqModel.id.in_(req_ids_with_inv)).all()} if req_ids_with_inv else {}
 
-    # Tablo satırları oluştur
+    # Tablo satırları
     rows = []
-    for req in all_reqs:
-        if req.id not in filtered_req_ids:
+    for rid, fin in ref_fin.items():
+        req = reqs.get(rid)
+        if not req:
             continue
-        fin = ref_fin.get(req.id, {})
-        ciro     = fin.get("ciro", 0.0)
-        maliyet  = fin.get("maliyet", 0.0)
-        kar      = ciro - maliyet
-        karlilk  = round(kar / ciro * 100, 1) if ciro > 0 else None
+        ciro    = round(fin["ciro"], 2)
+        maliyet = round(fin["maliyet"], 2)
+        kar     = round(ciro - maliyet, 2)
         rows.append({
             "req":          req,
             "manager_name": req.creator.full_name if req.creator else "—",
-            "ciro":         round(ciro, 2),
-            "maliyet":      round(maliyet, 2),
-            "kar":          round(kar, 2),
-            "karlilk":      karlilk,
-            "budget_sale":  fin.get("budget_sale", 0.0),
-            "budget_cost":  fin.get("budget_cost", 0.0),
+            "customer":     req.client_name or "—",
+            "ciro":         ciro,
+            "maliyet":      maliyet,
+            "kar":          kar,
+            "karlilk":      round(kar / ciro * 100, 1) if ciro > 0 else None,
         })
 
-    rows.sort(key=lambda x: (x["req"].check_in or ""), reverse=True)
+    rows.sort(key=lambda x: (x["req"].invoice_date if hasattr(x["req"], "invoice_date")
+                              else x["req"].check_in or ""), reverse=True)
 
     # Genel toplamlar
-    total_ciro    = sum(r["ciro"]    for r in rows)
-    total_maliyet = sum(r["maliyet"] for r in rows)
-    total_kar     = total_ciro - total_maliyet
+    total_ciro    = round(sum(r["ciro"]    for r in rows), 2)
+    total_maliyet = round(sum(r["maliyet"] for r in rows), 2)
+    total_kar     = round(total_ciro - total_maliyet, 2)
     total_karlilk = round(total_kar / total_ciro * 100, 1) if total_ciro > 0 else None
 
-    # Manager bazlı alt toplamlar (sadece admin/muhasebe için)
-    mgr_totals = defaultdict(lambda: {"name": "", "ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
+    # Müşteri bazlı özet (bar chart için)
+    cust_map: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
+    for r in rows:
+        k = r["customer"]
+        cust_map[k]["ciro"]    += r["ciro"]
+        cust_map[k]["maliyet"] += r["maliyet"]
+        cust_map[k]["kar"]     += r["kar"]
+    cust_list = sorted(cust_map.items(), key=lambda x: x[1]["ciro"], reverse=True)[:15]
+
+    # Aylık trend (fatura tarihine göre)
+    monthly: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0})
+    for inv in invoices:
+        if not inv.invoice_date:
+            continue
+        try:
+            ym = inv.invoice_date[:7]  # YYYY-MM
+        except Exception:
+            continue
+        if inv.invoice_type == "kesilen":
+            monthly[ym]["ciro"] += inv.amount
+        elif inv.invoice_type == "iade_kesilen":
+            monthly[ym]["ciro"] -= inv.amount
+        elif inv.invoice_type in ("gelen", "komisyon"):
+            monthly[ym]["maliyet"] += inv.amount
+        elif inv.invoice_type == "iade_gelen":
+            monthly[ym]["maliyet"] -= inv.amount
+
+    # Aylık veriyi sıralı liste yap
+    sorted_months = sorted(monthly.keys())
+    monthly_labels = [f"{m[5:]}/{m[2:4]}" for m in sorted_months]
+    monthly_ciro    = [round(monthly[m]["ciro"], 0) for m in sorted_months]
+    monthly_maliyet = [round(monthly[m]["maliyet"], 0) for m in sorted_months]
+    monthly_kar     = [round(monthly[m]["ciro"] - monthly[m]["maliyet"], 0) for m in sorted_months]
+
+    # PM bazlı özet (admin/muhasebe için)
+    mgr_totals: dict = defaultdict(lambda: {"name": "", "ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
     if current_user.role not in ("project_manager",):
         for r in rows:
             mid = r["req"].created_by or "_"
             mgr_totals[mid]["name"]    = r["manager_name"]
             mgr_totals[mid]["ciro"]    += r["ciro"]
             mgr_totals[mid]["maliyet"] += r["maliyet"]
-            mgr_totals[mid]["kar"]     += r["ciro"] - r["maliyet"]
-
-    # Seçili manager adı
-    selected_manager = None
-    if manager_id:
-        selected_manager = db.query(User).filter(User.id == manager_id).first()
+            mgr_totals[mid]["kar"]     += r["kar"]
 
     return templates.TemplateResponse("reports/financial.html", {
-        "request":          request,
-        "current_user":     current_user,
-        "page_title":       "Finansal Rapor",
-        "rows":             rows,
-        "total_ciro":       round(total_ciro, 2),
-        "total_maliyet":    round(total_maliyet, 2),
-        "total_kar":        round(total_kar, 2),
-        "total_karlilk":    total_karlilk,
-        "mgr_totals":       dict(mgr_totals),
-        "selected_year":    selected_year,
-        "available_years":  available_years,
-        "pm_users":         pm_users,
-        "selected_manager": selected_manager,
-        "manager_id":       manager_id,
+        "request":        request,
+        "current_user":   current_user,
+        "page_title":     "Finansal Rapor",
+        "rows":           rows,
+        "total_ciro":     total_ciro,
+        "total_maliyet":  total_maliyet,
+        "total_kar":      total_kar,
+        "total_karlilk":  total_karlilk,
+        "mgr_totals":     dict(mgr_totals),
+        "pm_users":       pm_users,
+        "manager_id":     manager_id,
+        "date_from":      d_from.isoformat(),
+        "date_to":        d_to.isoformat(),
+        "chart_monthly":  _json.dumps({
+            "labels":   monthly_labels,
+            "ciro":     monthly_ciro,
+            "maliyet":  monthly_maliyet,
+            "kar":      monthly_kar,
+        }),
+        "chart_customer": _json.dumps({
+            "labels":   [c[0] for c in cust_list],
+            "ciro":     [round(c[1]["ciro"], 0) for c in cust_list],
+            "kar":      [round(c[1]["kar"], 0) for c in cust_list],
+        }),
     })
