@@ -42,7 +42,8 @@
 </div>
 
 {# ─── BAŞLIK KARTI ─── #}
-<div class="card mb-4">
+<div class="card mb-4{% if req.status == 'closed' %} border-success{% endif %}"
+     {% if req.status == 'closed' %}style="background:linear-gradient(135deg,#dcfce7 0%,#f0fdf4 100%); border-color:#16a34a !important;"{% endif %}>
   <div class="card-body">
     <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
       <div>
@@ -103,12 +104,17 @@
         {% set cr = req.closure_request %}
         {% set closed_at = cr.gm_approved_at or cr.l2_approved_at or cr.updated_at %}
         {% set closed_by = cr.gm_approver or cr.l2_approver %}
-        <div class="mt-2 p-2 rounded" style="font-size:12px; background:#dcfce7; border:1px solid #86efac;">
-          <i class="bi bi-lock-fill me-1 text-success"></i>
-          <strong>Dosya Kapatıldı</strong> —
-          {{ closed_at.strftime('%d.%m.%Y') if closed_at else '' }}
-          {% if closed_by %}({{ closed_by.full_name }}){% endif %}
+        <div class="mt-2 d-flex align-items-center gap-2">
+          <i class="bi bi-lock-fill text-success" style="font-size:1.2rem;"></i>
+          <span style="font-size:15px; font-weight:700; color:#15803d;">Dosya Kapandı</span>
+          <span class="text-muted" style="font-size:13px;">
+            {{ closed_at.strftime('%d.%m.%Y') if closed_at else '' }}
+            {% if closed_by %} — {{ closed_by.full_name }}{% endif %}
+          </span>
         </div>
+        {% if cr.gm_note %}
+        <div class="mt-1 text-muted" style="font-size:12px;"><em>{{ cr.gm_note }}</em></div>
+        {% endif %}
         {% endif %}
         {% if req.closure_request and req.closure_request.status == 'rejected' %}
         <div class="mt-2 p-2 rounded" style="font-size:12px; background:#fee2e2; border:1px solid #fca5a5;">
@@ -333,23 +339,11 @@
 
 {# ─── DOSYA KAPANDI BANNER ─── #}
 {% if req.status == 'closed' %}
-{% set _cr = req.closure_request %}
-{% set _closed_at = (_cr.gm_approved_at or _cr.l2_approved_at or _cr.updated_at) if _cr else none %}
-{% set _closed_by = (_cr.gm_approver or _cr.l2_approver) if _cr else none %}
-<div id="closedBanner" class="mb-4 p-4 rounded-3 text-center" style="background:#dcfce7; border:2px solid #16a34a;">
-  <i class="bi bi-lock-fill text-success" style="font-size:2rem;"></i>
-  <h5 class="fw-bold text-success mt-2 mb-1">Dosya Kapandı</h5>
-  <div class="text-muted" style="font-size:13px;">
-    {% if _closed_at %}{{ _closed_at.strftime('%d.%m.%Y') }}{% endif %}
-    {% if _closed_by %} — {{ _closed_by.full_name }}{% endif %}
-    {% if _cr and _cr.gm_note %}<br><em>Not: {{ _cr.gm_note }}</em>{% endif %}
-  </div>
-</div>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  const banner = document.getElementById('closedBanner');
+  const card = document.querySelector('.card.border-success');
   const financial = document.getElementById('tab-financial');
-  if (banner && financial) { banner.after(financial); }
+  if (card && financial) { card.after(financial); }
 });
 </script>
 {% endif %}
