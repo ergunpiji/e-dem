@@ -18,7 +18,8 @@ from templates_config import templates
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
-FINANCE_ROLES = {"admin", "muhasebe_muduru", "muhasebe"}
+FINANCE_ROLES        = {"admin", "muhasebe_muduru", "muhasebe"}
+INVOICE_REQUEST_ROLES = {"admin", "mudur", "yonetici", "muhasebe_muduru", "muhasebe"}  # fatura talebi
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "static", "uploads", "invoices")
 ALLOWED_EXTS = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -130,7 +131,12 @@ async def invoices_new_form(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _require_finance(current_user)
+    # statement_id ile geliyorsa PM/yonetici de fatura talebi oluşturabilir
+    if statement_id:
+        if current_user.role not in INVOICE_REQUEST_ROLES:
+            raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
+    else:
+        _require_finance(current_user)
     req = None
     if request_id:
         req = db.query(ReqModel).filter(ReqModel.id == request_id).first()
@@ -189,10 +195,12 @@ async def invoices_new_form(
                 "lines_json":   json.dumps(invoice_lines, ensure_ascii=False),
             }
 
+    page_title = "Fatura Talebi Oluştur" if statement_prefill else "Yeni Fatura"
+
     return templates.TemplateResponse("invoices/form.html", {
         "request":           request,
         "current_user":      current_user,
-        "page_title":        "Yeni Fatura",
+        "page_title":        page_title,
         "invoice":           None,
         "selected_req":      req,
         "all_requests":      all_requests,
@@ -200,6 +208,7 @@ async def invoices_new_form(
         "invoice_types":     INVOICE_TYPES,
         "edit_mode":         False,
         "statement_prefill": statement_prefill,
+        "from_statement":    statement_id,
     })
 
 
@@ -223,9 +232,15 @@ async def invoices_create(
     belgesiz_amount:     str = Form(""),
     belgesiz_description:str = Form(""),
     belgesiz_date:       str = Form(""),
+    from_statement:      str = Form(""),   # statement ID — PM'den gelenler
     document:            UploadFile = File(None),
 ):
-    _require_finance(current_user)
+    # Statement üzerinden gelen fatura talepleri PM/yonetici'ye de açık
+    if from_statement:
+        if current_user.role not in INVOICE_REQUEST_ROLES:
+            raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
+    else:
+        _require_finance(current_user)
     req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Referans bulunamadı.")

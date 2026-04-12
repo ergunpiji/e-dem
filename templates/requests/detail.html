@@ -216,11 +216,16 @@
              class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
             <i class="bi bi-receipt me-1"></i> Hesap Dökümü
           </a>
-          {# Fatura Oluştur: sadece muhasebe/admin açabilir #}
+          {# Fatura: muhasebe direkt oluşturur; PM/mudur/yonetici fatura talebi oluşturur #}
           {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
           <a href="/invoices/new?request_id={{ req.id }}&statement_id={{ stmt.id }}"
              class="btn btn-success btn-sm">
             <i class="bi bi-file-earmark-text me-1"></i> Fatura Oluştur
+          </a>
+          {% elif current_user.role in ('mudur', 'yonetici') %}
+          <a href="/invoices/new?request_id={{ req.id }}&statement_id={{ stmt.id }}"
+             class="btn btn-outline-success btn-sm">
+            <i class="bi bi-file-earmark-plus me-1"></i> Fatura Talebi Oluştur
           </a>
           {% else %}
           <span class="badge bg-success px-2 py-2" style="font-size:11px;">

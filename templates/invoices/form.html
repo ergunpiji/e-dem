@@ -63,15 +63,19 @@
               enctype="multipart/form-data"
               id="invoiceForm">
 
-          {# ── Hesap Dökümü Banner ── #}
+          {# ── Hesap Dökümü / Fatura Talebi Banner ── #}
           {% if statement_prefill %}
+          <input type="hidden" name="from_statement" value="{{ from_statement or '' }}">
           <div class="alert mb-4 d-flex align-items-center gap-3"
                style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
             <i class="bi bi-receipt text-success fs-5"></i>
             <div>
-              <div class="fw-bold text-success" style="font-size:14px;">Hesap Dökümünden Otomatik Dolduruldu</div>
+              <div class="fw-bold text-success" style="font-size:14px;">
+                {% if from_statement %}Fatura Talebi — Hesap Dökümünden Dolduruldu{% else %}Hesap Dökümünden Otomatik Dolduruldu{% endif %}
+              </div>
               <div class="text-muted" style="font-size:12px;">
-                Satırlar onaylanan hesap dökümünden aktarılmıştır. İnceleyip gerekirse düzenleyin.
+                Müşteri adı, kalemler ve KDV oranları onaylanan hesap dökümünden aktarıldı.
+                İnceleyip gerekirse düzenleyin, ardından kaydedin — muhasebe onaylayacak.
               </div>
             </div>
           </div>
