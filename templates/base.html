@@ -239,10 +239,18 @@
     {# ── ADMIN / GENEL MÜDÜR / MUHASEBE MÜDÜRÜ ── #}
     {% if current_user.role in ('admin', 'mudur', 'muhasebe_muduru') %}
 
+      {# Raporlar: admin + GM → /reports; birim müdürü + muhasebe → /reports/financial #}
+      {% if current_user.role == 'admin' or (current_user.role == 'mudur' and not current_user.team_id) %}
       <a href="/reports"
          class="sidebar-link {% if cp == '/reports' %}active{% endif %}">
         <i class="bi bi-bar-chart-line nav-icon"></i> Raporlar
       </a>
+      {% else %}
+      <a href="/reports/financial"
+         class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
+        <i class="bi bi-graph-up nav-icon"></i> Finansal Rapor
+      </a>
+      {% endif %}
 
       {# Talepler: yeni & karar bekleyenler #}
       <div class="tree-group" id="grp-talepler">
@@ -348,6 +356,8 @@
         </div>
       </div>
 
+      {# Yönetim + Ayarlar: SADECE admin ve GM (takımsız mudur) #}
+      {% if current_user.role == 'admin' or (current_user.role == 'mudur' and not current_user.team_id) %}
       <div class="tree-group" id="grp-yonetim">
         <div class="tree-header" onclick="toggleTree('grp-yonetim')">
           <i class="bi bi-gear tree-icon"></i> Yönetim
@@ -405,6 +415,7 @@
           </a>
         </div>
       </div>
+      {% endif %}{# /Yönetim+Ayarlar #}
 
     {# ── MÜDÜR (mudur) ── Tüm referanslar + kapama onayı + tüm PM yetkileri #}
     {% elif current_user.role == 'mudur' %}

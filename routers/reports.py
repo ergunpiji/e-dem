@@ -22,8 +22,12 @@ FINANCE_ROLES = {"admin", "muhasebe_muduru", "muhasebe"}
 
 
 def _require_admin(current_user: User):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Bu sayfa yalnızca Admin'e özeldir.")
+    """Admin veya GM (takımsız mudur) erişebilir."""
+    if current_user.role == "admin":
+        return
+    if current_user.role == "mudur" and not current_user.team_id:
+        return
+    raise HTTPException(status_code=403, detail="Bu sayfa yalnızca Admin ve Genel Müdür'e özeldir.")
 
 
 def _require_finance(current_user: User):
