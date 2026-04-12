@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Invoice, Request as ReqModel, Service, User, Venue
+from models import Budget, Customer, Invoice, Request as ReqModel, Service, User, Venue, ClosureRequest
 
 router = APIRouter()
 from templates_config import templates
@@ -93,6 +93,161 @@ def _build_financial_stats(db: Session, req_id_filter=None):
         "chart_sale":   chart_sale,
         "chart_cost":   chart_cost,
     }
+
+
+def _build_pending_tasks(db: Session, current_user) -> list[dict]:
+    """Role göre bekleyen işlemleri linkli liste olarak döner."""
+    tasks = []
+    role = current_user.role
+
+    # ── GM / Admin: onay bekleyen fatura talepleri ──────────────────────────
+    if role in ("mudur", "admin", "muhasebe_muduru"):
+        invs = (
+            db.query(Invoice)
+            .filter(Invoice.status == "pending")
+            .order_by(Invoice.created_at.asc())
+            .limit(15)
+            .all()
+        )
+        for inv in invs:
+            req = inv.request
+            if not req:
+                continue
+            tasks.append({
+                "icon": "bi-receipt",
+                "color": "warning",
+                "label": "Fatura Onayı",
+                "text": f"{req.request_no} — {req.event_name}",
+                "url": f"/requests/{req.id}",
+            })
+
+    # ── GM / Admin: kapama onayı bekleyen (pending_gm) ──────────────────────
+    if role in ("mudur", "admin"):
+        closures = (
+            db.query(ClosureRequest)
+            .filter(ClosureRequest.status == "pending_gm")
+            .order_by(ClosureRequest.created_at.asc())
+            .limit(10)
+            .all()
+        )
+        for cl in closures:
+            req = cl.request
+            if not req:
+                continue
+            tasks.append({
+                "icon": "bi-folder-check",
+                "color": "primary",
+                "label": "Kapama Onayı",
+                "text": f"{req.request_no} — {req.event_name}",
+                "url": f"/requests/{req.id}",
+            })
+
+    # ── Müdür: kapama onayı (pending_manager) ──────────────────────────────
+    if role in ("mudur", "admin"):
+        closures_mgr = (
+            db.query(ClosureRequest)
+            .filter(ClosureRequest.status == "pending_manager")
+            .order_by(ClosureRequest.created_at.asc())
+            .limit(10)
+            .all()
+        )
+        for cl in closures_mgr:
+            req = cl.request
+            if not req:
+                continue
+            tasks.append({
+                "icon": "bi-folder-check",
+                "color": "warning",
+                "label": "Kapama (Müdür Onayı)",
+                "text": f"{req.request_no} — {req.event_name}",
+                "url": f"/requests/{req.id}",
+            })
+
+    # ── Muhasebe: GM onaylı fatura kes ──────────────────────────────────────
+    if role in ("muhasebe", "muhasebe_muduru", "admin"):
+        invs_gm = (
+            db.query(Invoice)
+            .filter(Invoice.status == "gm_approved")
+            .order_by(Invoice.created_at.asc())
+            .limit(15)
+            .all()
+        )
+        for inv in invs_gm:
+            req = inv.request
+            if not req:
+                continue
+            tasks.append({
+                "icon": "bi-scissors",
+                "color": "danger",
+                "label": "Fatura Kes",
+                "text": f"{req.request_no} — {req.event_name}",
+                "url": f"/requests/{req.id}",
+            })
+
+    # ── Muhasebe müdürü: kapama finans onayı ───────────────────────────────
+    if role in ("muhasebe_muduru", "admin"):
+        closures_fin = (
+            db.query(ClosureRequest)
+            .filter(ClosureRequest.status == "pending_finance")
+            .order_by(ClosureRequest.created_at.asc())
+            .limit(10)
+            .all()
+        )
+        for cl in closures_fin:
+            req = cl.request
+            if not req:
+                continue
+            tasks.append({
+                "icon": "bi-folder-check",
+                "color": "info",
+                "label": "Kapama (Muhasebe Onayı)",
+                "text": f"{req.request_no} — {req.event_name}",
+                "url": f"/requests/{req.id}",
+            })
+
+    # ── E-dem: atanmamış talepler ──────────────────────────────────────────
+    if role == "e_dem":
+        pending_reqs = (
+            db.query(ReqModel)
+            .filter(ReqModel.status == "pending")
+            .order_by(ReqModel.created_at.asc())
+            .limit(15)
+            .all()
+        )
+        for req in pending_reqs:
+            tasks.append({
+                "icon": "bi-inbox-fill",
+                "color": "warning",
+                "label": "Yeni Talep",
+                "text": f"{req.request_no} — {req.event_name}",
+                "url": f"/requests/{req.id}",
+            })
+
+    # ── PM / Yönetici: bütçesi hazır referanslar ─────────────────────────
+    if role in ("yonetici", "asistan"):
+        from routers.requests import _get_subtree_ids
+        sub_ids = _get_subtree_ids(current_user.id, db)
+        visible_ids = [current_user.id] + sub_ids
+        budget_ready = (
+            db.query(ReqModel)
+            .filter(
+                ReqModel.created_by.in_(visible_ids),
+                ReqModel.status.in_(["budget_ready", "offer_sent"]),
+            )
+            .order_by(ReqModel.updated_at.desc())
+            .limit(10)
+            .all()
+        )
+        for req in budget_ready:
+            tasks.append({
+                "icon": "bi-calculator-fill",
+                "color": "success",
+                "label": "Bütçe Hazır",
+                "text": f"{req.request_no} — {req.event_name}",
+                "url": f"/requests/{req.id}",
+            })
+
+    return tasks
 
 
 @router.get("/dashboard", response_class=HTMLResponse, name="dashboard")
@@ -204,6 +359,8 @@ async def dashboard(
             .all()
         )
 
+    pending_tasks = _build_pending_tasks(db, current_user)
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -212,6 +369,7 @@ async def dashboard(
             "stats":           stats,
             "financial":       financial,
             "recent_requests": recent_requests,
+            "pending_tasks":   pending_tasks,
             "page_title":      "Dashboard",
             "chart_data":      json.dumps({
                 "labels": financial.get("chart_labels", []),

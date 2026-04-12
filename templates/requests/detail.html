@@ -1326,7 +1326,7 @@
         {% if inv.status in ('pending', 'gm_approved') %}
         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 me-1"
                 title="Fatura İçeriğini Görüntüle"
-                data-invoice="{{ inv.to_dict() | tojson | e }}"
+                data-invoice='{{ inv.to_dict() | tojson }}'
                 onclick="openInvoiceDetailModal(JSON.parse(this.dataset.invoice))">
           <i class="bi bi-eye"></i>
         </button>
