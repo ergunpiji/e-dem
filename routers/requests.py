@@ -1413,3 +1413,74 @@ async def requests_delete(
         db.delete(req)
         db.commit()
     return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Hesap Dökümü Oluştur
+# ---------------------------------------------------------------------------
+
+@router.post("/{req_id}/create-statement", name="requests_create_statement")
+async def requests_create_statement(
+    req_id: str,
+    source_budget_id: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Onaylı bütçeden hesap dökümü kopyası oluştur → editöre yönlendir."""
+    if current_user.role not in ("admin", "mudur", "yonetici"):
+        raise HTTPException(403)
+
+    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+    if not req:
+        raise HTTPException(404)
+
+    # Mevcut statement varsa onu aç
+    existing = (
+        db.query(Budget)
+        .filter(Budget.request_id == req_id, Budget.budget_type == "statement")
+        .order_by(Budget.updated_at.desc())
+        .first()
+    )
+    if existing:
+        return RedirectResponse(url=f"/budgets/{existing.id}/statement", status_code=status.HTTP_302_FOUND)
+
+    # Kaynak bütçeyi bul (belirtilmişse onu al, yoksa confirmed → approved sırasıyla)
+    if source_budget_id:
+        src = db.query(Budget).filter(Budget.id == source_budget_id, Budget.request_id == req_id).first()
+    else:
+        src = (
+            db.query(Budget)
+            .filter(Budget.request_id == req_id, Budget.budget_status == "confirmed", Budget.budget_type == "offer")
+            .order_by(Budget.updated_at.desc())
+            .first()
+        )
+        if not src:
+            src = (
+                db.query(Budget)
+                .filter(Budget.request_id == req_id, Budget.budget_status == "approved", Budget.budget_type == "offer")
+                .order_by(Budget.updated_at.desc())
+                .first()
+            )
+
+    if not src:
+        return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
+
+    # Yeni statement bütçesi oluştur
+    stmt_budget = Budget(
+        id=_uuid(),
+        request_id=req_id,
+        venue_name=src.venue_name,
+        rows_json=src.rows_json,
+        budget_status="confirmed",
+        budget_type="statement",
+        service_fee_pct=src.service_fee_pct,
+        offer_currency=src.offer_currency or "TRY",
+        exchange_rates_json=src.exchange_rates_json or "{}",
+        created_by=current_user.id,
+        created_at=_now(),
+        updated_at=_now(),
+    )
+    db.add(stmt_budget)
+    db.commit()
+    db.refresh(stmt_budget)
+    return RedirectResponse(url=f"/budgets/{stmt_budget.id}/statement", status_code=status.HTTP_302_FOUND)

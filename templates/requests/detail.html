@@ -209,13 +209,30 @@
         {% endif %}
 
         {# Hesap Dökümü — confirmed/completed/closing/closed, onaylı bütçe varsa #}
+        {% set ns_offer_bgt = namespace(found=false) %}
+        {% for b in req.budgets %}
+          {% if b.budget_status in ('approved','confirmed') and b.budget_type != 'statement' %}
+            {% set ns_offer_bgt.found = true %}
+          {% endif %}
+        {% endfor %}
         {% if req.status in ('confirmed','completed','closing','closed')
-              and current_user.role in ('admin','mudur','yonetici','muhasebe_muduru')
-              and req.budgets | selectattr('budget_status','in',['approved','confirmed']) | list %}
-        <a href="/requests/{{ req.id }}/statement" target="_blank"
+              and current_user.role in ('admin','mudur','yonetici')
+              and ns_offer_bgt.found %}
+        {% set ns_stmt = namespace(existing=none) %}
+        {% for b in req.budgets %}{% if b.budget_type == 'statement' %}{% set ns_stmt.existing = b %}{% endif %}{% endfor %}
+        {% if ns_stmt.existing %}
+        <a href="/budgets/{{ ns_stmt.existing.id }}/statement"
            class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
           <i class="bi bi-receipt me-1"></i> Hesap Dökümü
         </a>
+        {% else %}
+        <form method="post" action="/requests/{{ req.id }}/create-statement" style="display:inline;">
+          <button type="submit" class="btn btn-sm"
+                  style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
+            <i class="bi bi-receipt me-1"></i> Hesap Dökümü Hazırla
+          </button>
+        </form>
+        {% endif %}
         {% endif %}
 
         {# Dosyayı Kapat — confirmed veya completed, PM/mudur/admin #}

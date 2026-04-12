@@ -563,6 +563,7 @@ def migrate_db():
         _safe_add_column(conn, "budgets", "venue_id",              "TEXT")
         _safe_add_column(conn, "budgets", "price_history_json",   "TEXT", "'[]'")
         _safe_add_column(conn, "budgets", "price_snapshots_json",  "TEXT", "'[]'")
+        _safe_add_column(conn, "budgets", "budget_type",            "TEXT", "'offer'")
 
         # HBF çok referans desteği
         _safe_add_column(conn, "expense_reports", "request_ids_json",    "TEXT", "''")

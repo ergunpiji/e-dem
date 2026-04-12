@@ -33,10 +33,30 @@
 {% block content %}
 
 <div class="mb-3">
+  {% if statement_mode %}
+  <a href="/requests/{{ budget.request_id }}#tab-summary" class="text-muted text-decoration-none" style="font-size:13px;">
+    <i class="bi bi-arrow-left me-1"></i> Referansa Dön
+  </a>
+  {% else %}
   <a href="/budgets/{{ budget.id }}" class="text-muted text-decoration-none" style="font-size:13px;">
     <i class="bi bi-arrow-left me-1"></i> Bütçe Detayına Dön
   </a>
+  {% endif %}
 </div>
+
+{% if statement_mode %}
+<div class="alert mb-3 d-flex align-items-center gap-3"
+     style="background:#1a3a5c; color:#ffffff; border:none; border-radius:8px;">
+  <i class="bi bi-receipt fs-4"></i>
+  <div>
+    <div class="fw-bold" style="font-size:15px;">Hesap Dökümü</div>
+    <div style="font-size:12px; opacity:.85;">
+      Müşteriye gönderilecek hesap dökümünü bu sayfada düzenleyebilirsiniz.
+      Satır ekleyip çıkarabilir, fiyatları güncelleyebilirsiniz.
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {# ─── BÜTÇE SEKMELERİ ─── #}
 {% if all_request_budgets and all_request_budgets | length > 0 %}
@@ -156,7 +176,7 @@
 </div>
 {% endif %}
 
-<form method="post" action="/budgets/{{ budget.id }}/{% if revise_mode %}revise-price{% else %}price{% endif %}" id="managerForm">
+<form method="post" action="/budgets/{{ budget.id }}/{% if statement_mode %}statement{% elif revise_mode %}revise-price{% else %}price{% endif %}" id="managerForm">
   <input type="hidden" name="venue_name" id="venueNameHidden" value="{{ budget.venue_name or '' }}">
   <input type="hidden" name="exchange_rates_json" id="exchangeRatesJson" value="{{ exchange_rates | tojson }}">
 
@@ -353,6 +373,17 @@
       <i class="bi bi-save me-1"></i> Kaydet
     </button>
 
+    {% if statement_mode %}
+    <button type="button" class="btn btn-success"
+            onclick="submitSendStatement()">
+      <i class="bi bi-send me-1"></i> Müşteriye Hesap Dökümü Gönder
+    </button>
+
+    <button type="button" class="btn btn-outline-primary" onclick="openPreview()">
+      <i class="bi bi-eye me-1"></i> Önizleme
+    </button>
+
+    {% else %}
     <button type="button" class="btn btn-success"
             onclick="submitSaveAndApprove()">
       <i class="bi bi-check-circle me-1"></i> Kaydet & Onayla
@@ -381,6 +412,7 @@
     <button type="button" class="btn btn-outline-secondary" onclick="submitCopy()">
       <i class="bi bi-copy me-1"></i> Kopyala & Yeni Bütçe Oluştur
     </button>
+    {% endif %}
   </div>
 
 </form>
@@ -392,6 +424,9 @@
   <input type="hidden" name="rows_json" id="rowsJsonCopy">
   <input type="hidden" name="service_fee_pct" id="sfPctCopy">
 </form>
+{% if statement_mode %}
+<form method="post" action="/budgets/{{ budget.id }}/send-statement" id="sendStatementForm"></form>
+{% endif %}
 
 {# ─── Revizyon Modal ─── #}
 <div class="modal fade" id="revisionModal" tabindex="-1" aria-hidden="true">
@@ -1324,6 +1359,22 @@ function submitCopy() {
   document.getElementById('rowsJsonCopy').value = document.getElementById('rowsJson').value;
   document.getElementById('sfPctCopy').value = document.getElementById('serviceFeePctInput').value;
   document.getElementById('copyForm').submit();
+}
+
+async function submitSendStatement() {
+  if (!confirm('Hesap dökümünü müşteriye gönderildi olarak işaretlemek istiyor musunuz?')) return;
+  // Önce kaydet
+  saveRows();
+  document.getElementById('serviceFeePctInput').value =
+    parseFloat(document.getElementById('serviceFeePercent').value) || 0;
+  document.getElementById('offerCurrencyHidden').value = offerCurrency;
+  document.getElementById('exchangeRatesJson').value   = JSON.stringify(exchangeRates);
+  const fd = new FormData(document.getElementById('managerForm'));
+  try {
+    await fetch(`/budgets/{{ budget.id }}/statement`, { method: 'POST', body: fd });
+  } catch(e) { /* ignore */ }
+  // Gönder
+  document.getElementById('sendStatementForm').submit();
 }
 
 document.getElementById('managerForm').addEventListener('submit', function() {

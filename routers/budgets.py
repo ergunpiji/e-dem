@@ -1083,3 +1083,104 @@ async def budgets_revise_price_save(
 
     req_id = budget.request_id
     return RedirectResponse(url=f"/requests/{req_id}#tab-summary", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Hesap Dökümü (Statement)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{budget_id}/statement", response_class=HTMLResponse, name="budgets_statement_editor")
+async def budgets_statement_editor(
+    budget_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hesap dökümü editörü"""
+    if current_user.role not in ("admin", "mudur", "yonetici"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id, Budget.budget_type == "statement").first()
+    if not budget:
+        return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
+
+    req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
+    customer = db.query(Customer).filter(Customer.id == req.customer_id).first() if req and req.customer_id else None
+    rows_by_section: dict = {}
+    for row in budget.rows:
+        sec = row.get("section", "other")
+        rows_by_section.setdefault(sec, []).append(row)
+    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    grouped_services: dict = {}
+    for svc in services:
+        grouped_services.setdefault(svc.category, []).append(svc.to_dict())
+
+    return templates.TemplateResponse("budgets/manager_editor.html", {
+        "request":             request,
+        "current_user":        current_user,
+        "budget":              budget,
+        "req":                 req,
+        "customer":            customer,
+        "page_title":          f"Hesap Dökümü — {budget.venue_name}",
+        "rows_by_section":     rows_by_section,
+        "status_label":        "Hesap Dökümü",
+        "status_color":        "indigo",
+        "grouped_services":    json.dumps(grouped_services, ensure_ascii=False),
+        "all_request_budgets": [],
+        "status_labels":       BUDGET_STATUS_LABELS,
+        "status_colors":       BUDGET_STATUS_COLORS,
+        "preferred_venues":    [],
+        "offer_currency":      budget.offer_currency or "TRY",
+        "exchange_rates":      budget.exchange_rates,
+        "statement_mode":      True,
+    })
+
+
+@router.post("/{budget_id}/statement", name="budgets_statement_save")
+async def budgets_statement_save(
+    budget_id:           str,
+    rows_json:           str = Form("[]"),
+    service_fee_pct:     str = Form("0"),
+    manager_notes:       str = Form(""),
+    venue_name:          str = Form(""),
+    exchange_rates_json: str = Form("{}"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hesap dökümünü kaydet"""
+    if current_user.role not in ("admin", "mudur", "yonetici"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id, Budget.budget_type == "statement").first()
+    if not budget:
+        return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
+
+    budget.rows_json           = rows_json
+    budget.service_fee_pct     = float(service_fee_pct or 0)
+    budget.manager_notes       = manager_notes.strip()
+    budget.exchange_rates_json = exchange_rates_json or "{}"
+    if venue_name.strip():
+        budget.venue_name      = venue_name.strip()
+    budget.updated_at          = _now()
+    db.commit()
+    return RedirectResponse(url=f"/budgets/{budget_id}/statement", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{budget_id}/send-statement", name="budgets_send_statement")
+async def budgets_send_statement(
+    budget_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hesap dökümünü müşteriye gönderildi olarak işaretle"""
+    if current_user.role not in ("admin", "mudur", "yonetici"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id, Budget.budget_type == "statement").first()
+    if not budget:
+        raise HTTPException(404)
+
+    req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
+    if req:
+        req.updated_at = _now()
+        db.commit()
+
+    return RedirectResponse(url=f"/requests/{budget.request_id}#tab-summary", status_code=status.HTTP_302_FOUND)

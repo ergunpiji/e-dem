@@ -682,6 +682,7 @@ class Budget(Base):
     exchange_rates_json  = Column(Text, default="{}")          # {"EUR":40.5,"USD":35.0}
     price_history_json   = Column(Text, default="[]")          # fiyat revize geçmişi
     price_snapshots_json = Column(Text, default="[]")          # fiyat arşivi (tam satır kopyaları)
+    budget_type          = Column(String(16), default="offer")  # 'offer' | 'statement'
 
     # İlişkiler
     request = relationship("Request", back_populates="budgets")
