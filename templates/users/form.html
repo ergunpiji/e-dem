@@ -78,6 +78,35 @@
               </select>
               <div class="form-text" id="budgetLimitHint"></div>
             </div>
+            {# ── Takım ve Yönetici (yalnızca PM rollerinde göster) ── #}
+            <div class="col-md-6" id="teamField">
+              <label class="form-label fw-semibold" style="font-size:13px;">Etkinlik Takımı</label>
+              <select name="team_id" class="form-select" id="teamSelect">
+                <option value="">— Takım Seçiniz —</option>
+                {% for t in (teams or []) %}
+                <option value="{{ t.id }}"
+                  {% if user and user.team_id == t.id %}selected{% endif %}>
+                  {{ t.name }}{% if t.code %} ({{ t.code }}){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6" id="managerField">
+              <label class="form-label fw-semibold" style="font-size:13px;">Doğrudan Yönetici</label>
+              <select name="manager_id" class="form-select" id="managerSelect">
+                <option value="">— Seçiniz —</option>
+                {% for u in (pm_users or []) %}
+                <option value="{{ u.id }}"
+                        data-team="{{ u.team_id or '' }}"
+                  {% if user and user.manager_id == u.id %}selected{% endif %}>
+                  {{ u.full_name }}
+                  {% if u.team %} — {{ u.team.name }}{% endif %}
+                  ({{ u.role_label }})
+                </option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Takım seçilince filtrelenir.</div>
+            </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold" style="font-size:13px;">Ünvan / Pozisyon Notu</label>
               <input type="text" name="title" class="form-control"
@@ -161,5 +190,26 @@
 
   // Sayfa yüklenince mevcut seçimi tetikle
   document.getElementById('orgTitleSelect').dispatchEvent(new Event('change'));
+
+  // Takım seçince manager dropdown'ını filtrele
+  const teamSelect    = document.getElementById('teamSelect');
+  const managerSelect = document.getElementById('managerSelect');
+
+  function filterManagers() {
+    const teamId = teamSelect ? teamSelect.value : '';
+    if (!managerSelect) return;
+    Array.from(managerSelect.options).forEach(opt => {
+      if (!opt.value) { opt.hidden = false; return; }
+      opt.hidden = teamId ? (opt.dataset.team !== teamId) : false;
+    });
+    // Seçili değer gizlenirse sıfırla
+    const sel = managerSelect.options[managerSelect.selectedIndex];
+    if (sel && sel.hidden) managerSelect.value = '';
+  }
+
+  if (teamSelect) {
+    teamSelect.addEventListener('change', filterManagers);
+    filterManagers();
+  }
 </script>
 {% endblock %}

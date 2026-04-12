@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from auth import hash_password, require_admin
 from database import get_db
-from models import OrgTitle, User, USER_ROLES, _uuid, _now
+from models import OrgTitle, Team, User, USER_ROLES, _uuid, _now
 
 router = APIRouter(prefix="/users", tags=["users"])
 from templates_config import templates
@@ -24,6 +24,21 @@ from templates_config import templates
 
 def _get_org_titles(db: Session) -> list:
     return db.query(OrgTitle).order_by(OrgTitle.sort_order).all()
+
+
+def _get_teams(db: Session) -> list:
+    return db.query(Team).filter(Team.active == True).order_by(Team.name).all()
+
+
+def _get_pm_users(db: Session, exclude_id: str | None = None) -> list:
+    """PM tarafındaki tüm aktif kullanıcılar (yönetici seçim dropdown'u için)."""
+    q = db.query(User).filter(
+        User.active == True,
+        User.role.in_(["mudur", "yonetici", "asistan"]),
+    )
+    if exclude_id:
+        q = q.filter(User.id != exclude_id)
+    return q.order_by(User.name).all()
 
 
 @router.get("", response_class=HTMLResponse, name="users_list")
@@ -108,6 +123,8 @@ async def users_new(
             "page_title":   "Yeni Kullanıcı",
             "user_roles":   USER_ROLES,
             "org_titles":   _get_org_titles(db),
+            "teams":        _get_teams(db),
+            "pm_users":     _get_pm_users(db),
             "error":        None,
         },
     )
@@ -124,6 +141,8 @@ async def users_create(
     title:         str = Form(""),
     phone:         str = Form(""),
     org_title_id:  str = Form(""),
+    team_id:       str = Form(""),
+    manager_id:    str = Form(""),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -138,6 +157,8 @@ async def users_create(
                 "page_title":   "Yeni Kullanıcı",
                 "user_roles":   USER_ROLES,
                 "org_titles":   _get_org_titles(db),
+                "teams":        _get_teams(db),
+                "pm_users":     _get_pm_users(db),
                 "error":        "Bu e-posta adresi zaten kayıtlı.",
                 "form_data":    {"email": email, "role": role, "name": name, "surname": surname,
                                  "title": title, "phone": phone, "org_title_id": org_title_id},
@@ -145,6 +166,7 @@ async def users_create(
             status_code=400,
         )
 
+    tid = team_id.strip() or None
     user = User(
         id=_uuid(),
         email=email.lower().strip(),
@@ -155,12 +177,13 @@ async def users_create(
         title=title.strip(),
         phone=phone.strip(),
         org_title_id=org_title_id.strip() or None,
+        team_id=tid,
+        manager_id=manager_id.strip() or None,
         active=True,
         created_at=_now(),
     )
     db.add(user)
     db.commit()
-    # Hoşgeldin bildirimi için mailto: hazırla
     return RedirectResponse(
         url=f"/users?welcome_for={user.id}",
         status_code=status.HTTP_302_FOUND,
@@ -186,6 +209,8 @@ async def users_edit(
             "page_title":   f"{user.full_name} — Düzenle",
             "user_roles":   USER_ROLES,
             "org_titles":   _get_org_titles(db),
+            "teams":        _get_teams(db),
+            "pm_users":     _get_pm_users(db, exclude_id=user_id),
             "error":        None,
         },
     )
@@ -204,6 +229,8 @@ async def users_update(
     password:      str = Form(""),
     active:        str = Form("on"),
     org_title_id:  str = Form(""),
+    team_id:       str = Form(""),
+    manager_id:    str = Form(""),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -225,6 +252,8 @@ async def users_update(
                 "page_title":   f"{user.full_name} — Düzenle",
                 "user_roles":   USER_ROLES,
                 "org_titles":   _get_org_titles(db),
+                "teams":        _get_teams(db),
+                "pm_users":     _get_pm_users(db, exclude_id=user_id),
                 "error":        "Bu e-posta adresi başka bir kullanıcıya ait.",
             },
             status_code=400,
@@ -238,6 +267,8 @@ async def users_update(
     user.phone        = phone.strip()
     user.active       = (active == "on")
     user.org_title_id = org_title_id.strip() or None
+    user.team_id      = team_id.strip() or None
+    user.manager_id   = manager_id.strip() or None
 
     if password.strip():
         user.password_hash = hash_password(password.strip())

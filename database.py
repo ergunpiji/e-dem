@@ -888,6 +888,25 @@ def migrate_db():
         ))
         conn.commit()
 
+        # ── Takım tablosu ve yeni kullanıcı kolonları ──
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS teams (
+                    id          TEXT    PRIMARY KEY,
+                    name        VARCHAR(200) NOT NULL,
+                    code        VARCHAR(50)  DEFAULT '',
+                    description TEXT         DEFAULT '',
+                    active      BOOLEAN      DEFAULT 1,
+                    created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        _safe_add_column(conn, "teams", "code", "TEXT", "''")
+        _safe_add_column(conn, "users", "team_id",    "TEXT")
+        _safe_add_column(conn, "users", "manager_id", "TEXT")
+
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()
 

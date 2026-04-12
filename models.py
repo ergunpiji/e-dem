@@ -207,6 +207,32 @@ VAT_RATES = [0, 1, 8, 10, 18, 20]
 # SQLAlchemy Modelleri
 # ---------------------------------------------------------------------------
 
+class Team(Base):
+    """Etkinlik takımı — mudur + yonetici(ler) + asistan(lar)"""
+    __tablename__ = "teams"
+
+    id          = Column(String(36), primary_key=True, default=_uuid)
+    name        = Column(String(200), nullable=False)
+    code        = Column(String(50), default="")
+    description = Column(Text, default="")
+    active      = Column(Boolean, default=True, nullable=False)
+    created_at  = Column(DateTime, default=_now, nullable=False)
+
+    members = relationship("User", back_populates="team", foreign_keys="User.team_id")
+
+    @property
+    def mudur(self):
+        """Takımın birim müdürü (varsa)."""
+        for m in self.members:
+            if m.role == "mudur" and m.active:
+                return m
+        return None
+
+    @property
+    def active_members(self):
+        return [m for m in self.members if m.active]
+
+
 class OrgTitle(Base):
     """Organizasyon unvanları — hiyerarşik yapı ve bütçe limitleri"""
     __tablename__ = "org_titles"
@@ -267,11 +293,17 @@ class User(Base):
     active       = Column(Boolean, default=True, nullable=False)
     created_at   = Column(DateTime, default=_now, nullable=False)
     org_title_id = Column(String(36), ForeignKey("org_titles.id"), nullable=True)
+    team_id      = Column(String(36), ForeignKey("teams.id"),     nullable=True)
+    manager_id   = Column(String(36), ForeignKey("users.id"),     nullable=True)  # doğrudan yönetici
 
     # İlişkiler
     created_requests = relationship("Request", back_populates="creator", foreign_keys="Request.created_by")
     created_budgets  = relationship("Budget",  back_populates="creator", foreign_keys="Budget.created_by")
     org_title        = relationship("OrgTitle", back_populates="users")
+    team             = relationship("Team", back_populates="members", foreign_keys="User.team_id")
+    manager          = relationship("User", remote_side="User.id", back_populates="reports",
+                                    foreign_keys="User.manager_id")
+    reports          = relationship("User", back_populates="manager", foreign_keys="User.manager_id")
 
     @property
     def full_name(self) -> str:
