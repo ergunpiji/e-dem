@@ -208,6 +208,16 @@
         </button>
         {% endif %}
 
+        {# Hesap Dökümü — confirmed/completed/closing/closed, onaylı bütçe varsa #}
+        {% if req.status in ('confirmed','completed','closing','closed')
+              and current_user.role in ('admin','mudur','yonetici','muhasebe_muduru')
+              and req.budgets | selectattr('budget_status','in',['approved','confirmed']) | list %}
+        <a href="/requests/{{ req.id }}/statement" target="_blank"
+           class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
+          <i class="bi bi-receipt me-1"></i> Hesap Dökümü
+        </a>
+        {% endif %}
+
         {# Dosyayı Kapat — confirmed veya completed, PM/mudur/admin #}
         {% if req.status in ('confirmed', 'completed') and
               (current_user.role in ('admin', 'mudur') or req.created_by == current_user.id) and
