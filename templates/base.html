@@ -257,7 +257,7 @@
         </div>
       </div>
 
-      {# Aktif İşler: konfirme & tamamlanan #}
+      {# Aktif İşler: yalnızca konfirme #}
       <div class="tree-group" id="grp-aktif">
         <div class="tree-header" onclick="toggleTree('grp-aktif')">
           <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
@@ -268,6 +268,16 @@
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
             <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
           </a>
+        </div>
+      </div>
+
+      {# Arşiv #}
+      <div class="tree-group" id="grp-arsiv">
+        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
+          <i class="bi bi-archive tree-icon"></i> Arşiv
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
           <a href="/requests?view=completed"
              class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
             <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
@@ -379,7 +389,7 @@
         </div>
       </div>
 
-      {# Aktif İşler: konfirme & tamamlanan #}
+      {# Aktif İşler: konfirme edilmiş #}
       <div class="tree-group" id="grp-aktif">
         <div class="tree-header" onclick="toggleTree('grp-aktif')">
           <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
@@ -390,10 +400,16 @@
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
             <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
           </a>
-          <a href="/budgets"
-             class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
-            <i class="bi bi-calculator nav-icon"></i> Bütçeler
-          </a>
+        </div>
+      </div>
+
+      {# Arşiv #}
+      <div class="tree-group" id="grp-arsiv">
+        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
+          <i class="bi bi-archive tree-icon"></i> Arşiv
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
           <a href="/requests?view=completed"
              class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
             <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
@@ -456,7 +472,7 @@
         </div>
       </div>
 
-      {# Aktif İşler: konfirme edilmiş, bütçe #}
+      {# Aktif İşler: konfirme edilmiş #}
       <div class="tree-group" id="grp-aktif">
         <div class="tree-header" onclick="toggleTree('grp-aktif')">
           <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
@@ -471,6 +487,16 @@
              class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
             <i class="bi bi-calculator nav-icon"></i> Bütçe Yönetimi
           </a>
+        </div>
+      </div>
+
+      {# Arşiv #}
+      <div class="tree-group" id="grp-arsiv">
+        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
+          <i class="bi bi-archive tree-icon"></i> Arşiv
+          <i class="bi bi-chevron-right tree-arrow"></i>
+        </div>
+        <div class="tree-children">
           <a href="/requests?view=completed"
              class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
             <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
