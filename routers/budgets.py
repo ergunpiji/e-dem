@@ -633,6 +633,12 @@ async def budgets_price(
         "preferred_venues":    preferred_venues,
         "offer_currency":      budget.offer_currency or "TRY",
         "exchange_rates":      budget.exchange_rates,
+        # Fiyat editörü için bu modlar kapalı
+        "revise_mode":         False,
+        "statement_mode":      False,
+        "statement_status":    None,
+        "statement_sent_label": None,
+        "customer_email":      customer.email if customer else "",
     })
 
 

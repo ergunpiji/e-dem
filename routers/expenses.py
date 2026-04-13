@@ -122,32 +122,6 @@ async def expenses_all_list(
 
 
 # ---------------------------------------------------------------------------
-# HBF Liste (referans bazlı)
-# ---------------------------------------------------------------------------
-
-@router.get("/request/{req_id}", response_class=HTMLResponse, name="expenses_list")
-async def expenses_list(
-    req_id: str,
-    request: Request,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
-    if not req:
-        raise HTTPException(404)
-    reports = req.expense_reports
-    return templates.TemplateResponse("expenses/list.html", {
-        "request": request,
-        "current_user": current_user,
-        "req": req,
-        "reports": reports,
-        "page_title": f"HBF — {req.request_no}",
-        "STATUS_LABELS": EXPENSE_STATUS_LABELS,
-        "STATUS_COLORS": EXPENSE_STATUS_COLORS,
-    })
-
-
-# ---------------------------------------------------------------------------
 # Yeni HBF
 # ---------------------------------------------------------------------------
 
