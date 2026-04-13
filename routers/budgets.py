@@ -655,6 +655,7 @@ async def budgets_price_save(
     manager_notes:       str = Form(""),
     venue_name:          str = Form(""),
     next_action:         str = Form(""),
+    offer_currency:      str = Form(""),
     exchange_rates_json: str = Form("{}"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -678,6 +679,8 @@ async def budgets_price_save(
     budget.exchange_rates_json = exchange_rates_json or "{}"
     if venue_name.strip():
         budget.venue_name      = venue_name.strip()
+    if offer_currency and offer_currency.upper() in ("TRY", "EUR", "USD"):
+        budget.offer_currency  = offer_currency.upper()
     # Onaylanmış bütçe düzenlenince onay durumunu koru
     if budget.budget_status != "approved":
         budget.budget_status   = "draft_manager"
