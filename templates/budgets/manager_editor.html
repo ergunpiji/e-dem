@@ -483,6 +483,13 @@
           </a>
         </li>
         {% endif %}
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <a class="dropdown-item" href="#" onclick="markOfferSent(event)">
+            <i class="bi bi-send-check me-1 text-warning"></i>
+            Teklif Müşteriye Gönderildi
+          </a>
+        </li>
       </ul>
     </div>
 
@@ -1547,6 +1554,22 @@ document.getElementById('managerForm').addEventListener('submit', function() {
   document.getElementById('offerCurrencyHidden').value = offerCurrency;
   document.getElementById('exchangeRatesJson').value   = JSON.stringify(exchangeRates);
 });
+
+async function markOfferSent(e) {
+  e.preventDefault();
+  if (!confirm('Teklif müşteriye gönderildi olarak işaretlensin mi?\nTalebin durumu "Teklif Gönderildi" olarak güncellenecek.')) return;
+  try {
+    const r = await fetch(`/budgets/{{ budget.id }}/mark-offer-sent`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('Teklif gönderildi olarak işaretlendi.');
+    } else {
+      showToast('Hata: ' + (d.error || 'İşlem başarısız'));
+    }
+  } catch(err) {
+    showToast('Bağlantı hatası.');
+  }
+}
 
 function showToast(msg) {
   const el = document.getElementById('editorToast');

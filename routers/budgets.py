@@ -733,6 +733,28 @@ async def budgets_approve(
     return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
 
 
+@router.post("/{budget_id}/mark-offer-sent", name="budgets_mark_offer_sent")
+async def budgets_mark_offer_sent(
+    budget_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Excel müşteriye gönderildi → talebin durumunu offer_sent yap."""
+    if current_user.role not in ("admin", "mudur", "yonetici"):
+        raise HTTPException(403)
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if not budget:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Bütçe bulunamadı"}, status_code=404)
+    req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
+    if req and req.status not in ("offer_sent", "confirmed", "completed", "closing", "closed"):
+        req.status     = "offer_sent"
+        req.updated_at = _now()
+        db.commit()
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"ok": True, "status": req.status if req else ""})
+
+
 @router.post("/{budget_id}/request-revision", name="budgets_request_revision")
 async def budgets_request_revision(
     budget_id:      str,
