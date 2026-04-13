@@ -5,6 +5,15 @@ E-dem — Ana FastAPI uygulama girişi
 
 from __future__ import annotations
 
+import os
+
+# .env dosyası varsa yükle (python-dotenv)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +25,6 @@ from templates_config import templates
 # ---------------------------------------------------------------------------
 # Veritabanı başlat
 # ---------------------------------------------------------------------------
-import os
 
 _db_url = os.environ.get("DATABASE_URL", "")
 if _db_url.startswith("postgres"):

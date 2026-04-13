@@ -313,7 +313,8 @@ async def customers_analyze_template(
         from excel_export import analyze_template
         result = await analyze_template(template_path=template_path)
     except Exception as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        print(f"[TEMPLATE ANALYZE] error: {exc}", flush=True)
+        return JSONResponse({"error": "Template analizi başarısız."}, status_code=500)
 
     if result.get("error"):
         return JSONResponse(result, status_code=422)
@@ -411,11 +412,14 @@ async def customers_delete_doc(
     except Exception:
         doc_list = []
 
+    upload_dir = os.path.abspath(f"static/uploads/customer_docs/{customer_id}")
     remaining = []
     for d in doc_list:
         if d["name"] == filename:
             try:
-                os.remove(d["path"])
+                safe_path = os.path.abspath(d.get("path", ""))
+                if safe_path.startswith(upload_dir):
+                    os.remove(safe_path)
             except Exception:
                 pass
         else:

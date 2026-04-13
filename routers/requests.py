@@ -1280,9 +1280,8 @@ async def requests_export(
                                        custom_sections=custom_cats)
     except Exception as exc:
         import traceback as _tb
-        detail = f"Excel oluşturma hatası: {exc}\n{_tb.format_exc()}"
-        print(detail, flush=True)
-        raise HTTPException(500, detail)
+        print(f"[EXCEL ERROR] request={req.id}: {exc}\n{_tb.format_exc()}", flush=True)
+        raise HTTPException(500, detail="Excel dosyası oluşturulamadı. Lütfen tekrar deneyin.")
 
     # Dosya adı
     raw_name = (req.event_name or req.request_no or "teklif")[:30]

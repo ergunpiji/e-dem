@@ -5,6 +5,8 @@ HttpOnly cookie ile token saklama
 
 from __future__ import annotations
 
+import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -20,7 +22,10 @@ from models import User
 # Yapılandırma
 # ---------------------------------------------------------------------------
 
-SECRET_KEY      = "edem-super-secret-key-change-in-production-2024"
+# SECRET_KEY: Önce ortam değişkeninden oku, yoksa runtime'da güçlü random key üret.
+# Production'da mutlaka SECRET_KEY env variable set edin (örn. .env dosyası).
+SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+
 ALGORITHM       = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480   # 8 saat
 

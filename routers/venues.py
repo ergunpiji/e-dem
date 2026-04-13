@@ -260,11 +260,15 @@ async def venues_delete_doc(
     except Exception:
         doc_list = []
 
+    upload_dir = os.path.abspath(f"static/uploads/venue_docs/{venue_id}")
     remaining = []
     for d in doc_list:
         if d["name"] == filename:
             try:
-                os.remove(d["path"])
+                # Path traversal koruması: dosya yolu upload dizini içinde olmalı
+                safe_path = os.path.abspath(d.get("path", ""))
+                if safe_path.startswith(upload_dir):
+                    os.remove(safe_path)
             except Exception:
                 pass
         else:

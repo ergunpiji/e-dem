@@ -860,9 +860,8 @@ async def budgets_export(
             )
     except Exception as exc:
         import traceback as _tb
-        detail = f"Excel oluşturma hatası: {exc}\n{_tb.format_exc()}"
-        print(detail, flush=True)
-        raise HTTPException(500, detail)
+        print(f"[EXCEL ERROR] budget={budget_id}: {exc}\n{_tb.format_exc()}", flush=True)
+        raise HTTPException(500, detail="Excel dosyası oluşturulamadı. Lütfen tekrar deneyin.")
 
     # Dosya adı: Türkçe karakterleri ASCII'ye çevir (HTTP header latin-1 sınırı)
     import unicodedata

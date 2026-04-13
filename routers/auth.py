@@ -9,6 +9,7 @@ POST /profile/update → Ad, unvan, telefon güncelle
 """
 
 import base64
+import os
 
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -58,6 +59,7 @@ async def login_post(
 
     token = create_access_token(data={"sub": user.id})
 
+    _is_production = os.environ.get("ENVIRONMENT", "").lower() == "production"
     response = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
     response.set_cookie(
         key=COOKIE_NAME,
@@ -65,7 +67,7 @@ async def login_post(
         httponly=True,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         samesite="lax",
-        secure=False,  # HTTPS'de True yapın
+        secure=_is_production,
     )
     return response
 

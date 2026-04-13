@@ -487,9 +487,11 @@ async def invoices_parse_pdf(
         data = parse_invoice(file_bytes, file.filename or "invoice.jpg", api_key)
         return JSONResponse({"ok": True, "data": data})
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        print(f"[AI PARSE] ValueError: {e}", flush=True)
+        return JSONResponse({"error": "Fatura okunamadı. Dosyayı kontrol edin."}, status_code=400)
     except Exception as e:
-        return JSONResponse({"error": f"AI hatası: {e}"}, status_code=500)
+        print(f"[AI PARSE] Unexpected error: {e}", flush=True)
+        return JSONResponse({"error": "AI işlemi başarısız. Lütfen tekrar deneyin."}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
