@@ -498,7 +498,9 @@ function updateNightsFromDates(sec) {
   const dfEl = document.getElementById(`sec_date_from_${sec}`);
   const dtEl = document.getElementById(`sec_date_to_${sec}`);
   if (!dfEl || !dtEl || !dfEl.value || !dtEl.value) return;
-  const n = calcNights(dfEl.value, dtEl.value);
+  // Konaklama: gece sayısı exclusive (08.05→09.05 = 1 gece)
+  // Diğer: gün sayısı inclusive (08.05→09.05 = 2 gün)
+  const n = calcDuration(dfEl.value, dtEl.value, sec);
   const label = document.getElementById(`nights_label_${sec}`);
   if (label) label.textContent = n + (sec === 'accommodation' ? ' gece' : ' gün');
   rows.forEach((r, i) => {
@@ -513,6 +515,12 @@ function calcNights(from, to) {
   if (!from || !to) return 0;
   const d1 = new Date(from), d2 = new Date(to);
   return Math.max(0, Math.round((d2 - d1) / 86400000));
+}
+
+// Konaklama: exclusive gece sayısı; diğer seksiyonlar: inclusive gün sayısı
+function calcDuration(from, to, sec) {
+  const nights = calcNights(from, to);
+  return sec === 'accommodation' ? nights : Math.max(1, nights + 1);
 }
 
 renderTable();
@@ -579,7 +587,7 @@ function renderTable() {
       const dfField = `sec_date_from_${sec}`;
       const dtField = `sec_date_to_${sec}`;
       const nightsLabel = dates.date_from && dates.date_to
-        ? `${calcNights(dates.date_from, dates.date_to)} ${sec==='accommodation'?'gece':'gün'}`
+        ? `${calcDuration(dates.date_from, dates.date_to, sec)} ${sec==='accommodation'?'gece':'gün'}`
         : '';
       html += `<tr class="date-subrow">
         <td colspan="${NCOLS}" class="px-3 py-2">
