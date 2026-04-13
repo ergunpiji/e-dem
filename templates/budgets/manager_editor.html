@@ -449,9 +449,42 @@
       <i class="bi bi-x-circle me-1"></i> İptal Et
     </button>
 
-    <a id="excelExportLink" href="/budgets/{{ budget.id }}/export?currency={{ offer_currency }}" class="btn btn-outline-success">
-      <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
-    </a>
+    <div class="btn-group" id="excelExportGroup">
+      <a id="excelExportLink" href="/budgets/{{ budget.id }}/export?currency={{ offer_currency }}"
+         class="btn btn-outline-success">
+        <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
+      </a>
+      <button type="button" class="btn btn-outline-success dropdown-toggle dropdown-toggle-split"
+              data-bs-toggle="dropdown" aria-expanded="false">
+        <span class="visually-hidden">Seçenekler</span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li>
+          <a id="excelExportExclusive" class="dropdown-item"
+             href="/budgets/{{ budget.id }}/export?currency={{ offer_currency }}&vat=exclusive">
+            <i class="bi bi-file-earmark-excel me-1 text-success"></i>
+            KDV Hariç (standart)
+          </a>
+        </li>
+        <li>
+          <a id="excelExportInclusive" class="dropdown-item"
+             href="/budgets/{{ budget.id }}/export?currency={{ offer_currency }}&vat=inclusive">
+            <i class="bi bi-file-earmark-excel me-1 text-success"></i>
+            KDV Dahil
+          </a>
+        </li>
+        {% if offer_currency != 'TRY' %}
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <a id="excelExportMixed" class="dropdown-item"
+             href="/budgets/{{ budget.id }}/export?currency={{ offer_currency }}&vat=mixed">
+            <i class="bi bi-currency-exchange me-1 text-primary"></i>
+            Birim {{ offer_currency }} / Toplam ₺
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </div>
 
     <button type="button" class="btn btn-outline-secondary" onclick="submitCopy()">
       <i class="bi bi-copy me-1"></i> Kopyala & Yeni Bütçe Oluştur
@@ -547,9 +580,22 @@ function onOfferCurrencyChange(val) {
   offerCurrency = val;
   document.getElementById('offerCurrencyHidden').value = val;
   updateTotals();
-  // Excel export linkini güncel para birimiyle güncelle (kaydetmeden önce de doğru çalışsın)
-  const exportLink = document.getElementById('excelExportLink');
-  if (exportLink) exportLink.href = `/budgets/{{ budget.id }}/export?currency=${val}`;
+  // Excel export linklerini güncel para birimiyle güncelle
+  const bid = '{{ budget.id }}';
+  const el = document.getElementById('excelExportLink');
+  if (el) el.href = `/budgets/${bid}/export?currency=${val}`;
+  const ex = document.getElementById('excelExportExclusive');
+  if (ex) ex.href = `/budgets/${bid}/export?currency=${val}&vat=exclusive`;
+  const inc = document.getElementById('excelExportInclusive');
+  if (inc) inc.href = `/budgets/${bid}/export?currency=${val}&vat=inclusive`;
+  const mix = document.getElementById('excelExportMixed');
+  if (mix) {
+    mix.href = `/budgets/${bid}/export?currency=${val}&vat=mixed`;
+    // TRY seçilince mixed opsiyonu gizle
+    mix.closest('li').style.display = val === 'TRY' ? 'none' : '';
+    const divider = mix.closest('li').previousElementSibling;
+    if (divider) divider.style.display = val === 'TRY' ? 'none' : '';
+  }
 }
 let exchangeRates = {{ exchange_rates | tojson }};
 

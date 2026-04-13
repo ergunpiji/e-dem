@@ -827,8 +827,9 @@ async def budgets_export(
     creator  = db.query(User).filter(User.id == manager_user_id).first()
 
     # KDV modu öncelik: query param > customer config > varsayılan 'exclusive'
+    # 'mixed' = birim fiyat yabancı para birimi, toplam TRY (kur ile çarpılır)
     cfg = customer.excel_config if customer else {}
-    vat_mode = vat if vat in ("exclusive", "inclusive") else cfg.get("vat_mode", "exclusive")
+    vat_mode = vat if vat in ("exclusive", "inclusive", "mixed") else cfg.get("vat_mode", "exclusive")
 
     # Özel kategorileri çek
     from models import CustomCategory

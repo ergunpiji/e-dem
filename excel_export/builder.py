@@ -120,6 +120,12 @@ def _write_sheet(
     # ── Sütun tanımları (vat_mode'a göre) ─────────────────────────────────────
     # exclusive: A Hizmet | B Birim | C Miktar | D Gece | E BirimFiyat(hariç) | F KDV% | G Toplam(hariç) | H Not
     # inclusive: A Hizmet | B Birim | C Miktar | D Gece | E BirimFiyat(dahil) | F Toplam(dahil) | G Not
+    # mixed:     A Hizmet | B Birim | C Miktar | D Gece | E BirimFiyat(EUR)   | F KDV% | G Toplam(₺)    | H Not
+
+    # mixed modu: birim fiyat yabancı para birimi, toplam TRY (kur ile çarpılır)
+    is_mixed = vat_mode == "mixed" and currency != "TRY" and rate and rate > 0
+    try_ci    = CURRENCY_INFO["TRY"]
+    try_fmt   = try_ci["fmt"]
 
     if vat_mode == "inclusive":
         COL_SVC, COL_UNIT, COL_QTY, COL_NIGHT = "A", "B", "C", "D"
@@ -133,6 +139,20 @@ def _write_sheet(
             "E": (f"Birim Fiyat\n(KDV dahil)", 18),
             "F": (f"Toplam\n(KDV dahil)",     18),
             "G": ("Not",                     32),
+        }
+    elif is_mixed:
+        COL_SVC, COL_UNIT, COL_QTY, COL_NIGHT = "A", "B", "C", "D"
+        COL_PRICE, COL_VAT, COL_TOTAL, COL_NOTE = "E", "F", "G", "H"
+        LAST_COL = "H"
+        col_headers = {
+            "A": ("Hizmet Adı",                       30),
+            "B": ("Birim",                            10),
+            "C": ("Miktar",                            8),
+            "D": ("Gece /\nGün",                      10),
+            "E": (f"Birim Fiyat\n({sym} KDV hariç)",  18),
+            "F": ("KDV %",                             8),
+            "G": (f"Toplam\n(₺ KDV hariç)",           18),
+            "H": ("Not",                              32),
         }
     else:  # exclusive (varsayılan)
         COL_SVC, COL_UNIT, COL_QTY, COL_NIGHT = "A", "B", "C", "D"
@@ -207,11 +227,16 @@ def _write_sheet(
             if co and co != ci:
                 date_str += f" – {_fmt_date(co)}"
 
+    if is_mixed:
+        cur_display = f"{sym} birim fiyat / ₺ toplam"
+    else:
+        cur_display = f"{sym} {cur_lbl}"
+
     meta = [
         ("Referans No :", ref_no,      "Müşteri :",      cust_nm),
         ("Etkinlik :",   ev_name,      "Kontak Kişi :",  contact_nm),
         ("Mekan :",      venue_nm,     "Hazırlayan :",   creator_nm),
-        ("Tarih :",      date_str,     "Para Birimi :",  f"{sym} {cur_lbl}"),
+        ("Tarih :",      date_str,     "Para Birimi :",  cur_display),
     ]
     if currency != "TRY" and rate and rate != 1.0:
         meta.append((f"1 {sym} =", f"{rate:,.4f} ₺", "", ""))
@@ -344,12 +369,27 @@ def _write_sheet(
             _wc(COL_UNIT,  row.get("unit", "Adet"),   h="center")
             _wc(COL_QTY,   qty,    fmt="#,##0",       h="center")
             _wc(COL_NIGHT, nights, fmt="#,##0",       h="center")
-            _wc(COL_PRICE, price_val, fmt=num_fmt,    h="right", ind=0)
-            if COL_VAT:
-                _wc(COL_VAT, vat / 100, fmt="0%",    h="center")
-            # G sütunu: formüllü = Birim Fiyat × Miktar × Gece
-            total_formula = f"={COL_PRICE}{r_idx}*{COL_QTY}{r_idx}*{COL_NIGHT}{r_idx}"
-            _wc(COL_TOTAL, total_formula, fmt=num_fmt, h="right", ind=0)
+
+            if is_mixed:
+                # Birim fiyat sütunu: EUR (orijinal para birimi)
+                _wc(COL_PRICE, price_val, fmt=num_fmt, h="right", ind=0)
+                # Toplam sütunu: EUR × kur = TRY
+                rate_val = round(rate, 6)
+                total_formula = (
+                    f"={COL_PRICE}{r_idx}*{COL_QTY}{r_idx}"
+                    f"*{COL_NIGHT}{r_idx}*{rate_val}"
+                )
+                if COL_VAT:
+                    _wc(COL_VAT, vat / 100, fmt="0%", h="center")
+                _wc(COL_TOTAL, total_formula, fmt=try_fmt, h="right", ind=0)
+            else:
+                _wc(COL_PRICE, price_val, fmt=num_fmt, h="right", ind=0)
+                if COL_VAT:
+                    _wc(COL_VAT, vat / 100, fmt="0%", h="center")
+                # Toplam sütunu: formüllü = Birim Fiyat × Miktar × Gece
+                total_formula = f"={COL_PRICE}{r_idx}*{COL_QTY}{r_idx}*{COL_NIGHT}{r_idx}"
+                _wc(COL_TOTAL, total_formula, fmt=num_fmt, h="right", ind=0)
+
             _wc(COL_NOTE,  row.get("notes", ""))
             # KDV grubuna kaydet (exclusive modda formül için)
             data_rows_by_vat[int(vat)].append(f"{COL_TOTAL}{r_idx}")
@@ -380,7 +420,8 @@ def _write_sheet(
                          value=tax_formula)
             vc.font = _font(bold=True, size=9, color="92400E")
             vc.fill = _fill(C_ACCOM_TAX); vc.border = _border()
-            vc.number_format = num_fmt; vc.alignment = _align(h="right")
+            vc.number_format = try_fmt if is_mixed else num_fmt
+            vc.alignment = _align(h="right")
             accom_tax_ref = f"{COL_TOTAL}{current_row}"
             # KDV grubuna ekle (verginin KDV'si yok ama toplamda yer almalı)
             data_rows_by_vat[0].append(accom_tax_ref)
@@ -409,7 +450,7 @@ def _write_sheet(
         stc.font         = _font(bold=True, size=9)
         stc.fill         = _fill(C_SUBTOTAL)
         stc.border       = _border()
-        stc.number_format = num_fmt
+        stc.number_format = try_fmt if is_mixed else num_fmt
         stc.alignment    = _align(h="right")
         subtotal_refs.append(f"{COL_TOTAL}{current_row}")
 
@@ -463,7 +504,7 @@ def _write_sheet(
                      column=column_index_from_string(COL_TOTAL),
                      value=sf_formula)
         vc.font = _font(bold=True, size=9); vc.fill = _fill(C_SUBTOTAL)
-        vc.border = _border(); vc.number_format = num_fmt; vc.alignment = _align(h="right")
+        vc.border = _border(); vc.number_format = try_fmt if is_mixed else num_fmt; vc.alignment = _align(h="right")
         sf_cell_ref = f"{COL_TOTAL}{current_row}"
         # Servis bedeli de KDV grubuna eklenir
         data_rows_by_vat[int(sf_vat)].append(sf_cell_ref)
@@ -495,7 +536,7 @@ def _write_sheet(
                            value=gt_excl_formula)
     gt_excl_cell.font = _font(bold=True, size=10, white=True)
     gt_excl_cell.fill = _fill(C_FOOTER_BG); gt_excl_cell.border = _border()
-    gt_excl_cell.number_format = num_fmt; gt_excl_cell.alignment = _align(h="right")
+    gt_excl_cell.number_format = try_fmt if is_mixed else num_fmt; gt_excl_cell.alignment = _align(h="right")
     gt_excl_ref = f"{COL_TOTAL}{current_row}"
 
     if COL_NOTE:
@@ -531,7 +572,7 @@ def _write_sheet(
                          column=column_index_from_string(COL_TOTAL),
                          value=kdv_formula)
             vc.font = _font(size=9); vc.fill = _fill(C_ROW_ALT)
-            vc.border = _border(); vc.number_format = num_fmt
+            vc.border = _border(); vc.number_format = try_fmt if is_mixed else num_fmt
             vc.alignment = _align(h="right")
             kdv_cell_refs.append(f"{COL_TOTAL}{current_row}")
 
@@ -561,7 +602,7 @@ def _write_sheet(
                      value=kdv_inc_formula)
         vc.font = _font(bold=True, size=11, white=True)
         vc.fill = _fill(C_FOOTER_BG); vc.border = _border()
-        vc.number_format = num_fmt; vc.alignment = _align(h="right")
+        vc.number_format = try_fmt if is_mixed else num_fmt; vc.alignment = _align(h="right")
 
         if COL_NOTE:
             nc = ws.cell(row=current_row, column=column_index_from_string(COL_NOTE))
