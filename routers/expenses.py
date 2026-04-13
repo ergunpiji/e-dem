@@ -501,7 +501,7 @@ async def undocumented_list(
         team_ids = [u.id for u in db.query(UserModel).filter(
             UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
         team_req_ids = [r.id for r in db.query(ReqModel).filter(
-            ReqModel.assigned_to.in_(team_ids)).all()]
+            ReqModel.created_by.in_(team_ids)).all()]
         query = query.filter(UndocumentedEntry.request_id.in_(team_req_ids))
 
     entries = query.order_by(UndocumentedEntry.entry_date.desc(), UndocumentedEntry.created_at.desc()).all()
