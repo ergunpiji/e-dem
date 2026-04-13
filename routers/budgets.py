@@ -792,6 +792,7 @@ async def budgets_cancel(
 async def budgets_export(
     budget_id: str,
     vat: str = "exclusive",           # ?vat=exclusive | inclusive
+    currency: str = "",               # ?currency=TRY|EUR|USD — override DB değerini
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -799,6 +800,7 @@ async def budgets_export(
     Excel teklif dosyası indirir.
     - Maliyet/karlılık bilgisi HİÇ gönderilmez (yalnızca satış fiyatları)
     - ?vat=exclusive → KDV hariç göster | ?vat=inclusive → KDV dahil göster
+    - ?currency=TRY → DB'deki para birimini override eder (kaydetmeden önce export için)
     - Müşteriye özel template varsa filler.py, yoksa builder.py kullanılır
     """
     if current_user.role not in ("admin", "mudur", "yonetici"):
@@ -807,6 +809,10 @@ async def budgets_export(
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return RedirectResponse(url="/budgets", status_code=status.HTTP_302_FOUND)
+
+    # Query param ile para birimi override — editörde kaydetmeden export için
+    if currency and currency.upper() in ("TRY", "EUR", "USD"):
+        budget.offer_currency = currency.upper()
 
     req      = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
     customer = (db.query(Customer)

@@ -449,7 +449,7 @@
       <i class="bi bi-x-circle me-1"></i> İptal Et
     </button>
 
-    <a href="/budgets/{{ budget.id }}/export" class="btn btn-outline-success">
+    <a id="excelExportLink" href="/budgets/{{ budget.id }}/export?currency={{ offer_currency }}" class="btn btn-outline-success">
       <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
     </a>
 
@@ -547,6 +547,9 @@ function onOfferCurrencyChange(val) {
   offerCurrency = val;
   document.getElementById('offerCurrencyHidden').value = val;
   updateTotals();
+  // Excel export linkini güncel para birimiyle güncelle (kaydetmeden önce de doğru çalışsın)
+  const exportLink = document.getElementById('excelExportLink');
+  if (exportLink) exportLink.href = `/budgets/{{ budget.id }}/export?currency=${val}`;
 }
 let exchangeRates = {{ exchange_rates | tojson }};
 
@@ -1475,7 +1478,7 @@ async function sendStatementEmail() {
 
   // 3) Excel indir
   const a = document.createElement('a');
-  a.href = `/budgets/{{ budget.id }}/export`;
+  a.href = `/budgets/{{ budget.id }}/export?currency=${offerCurrency}`;
   a.download = '';
   document.body.appendChild(a);
   a.click();
