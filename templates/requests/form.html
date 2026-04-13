@@ -678,6 +678,8 @@ function buildDailyAttendees(dateFrom, dateTo, existingAttendees, defaultQty) {
   if (!dateFrom) return [];
   const d1 = new Date(dateFrom);
   const d2 = dateTo ? new Date(dateTo) : d1;
+  // Başlangıç bitiş'ten sonraysa boş dön (crash önlenir)
+  if (d1 > d2) return [];
   const days = [];
   for (let d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
     const iso = d.toISOString().split('T')[0];
