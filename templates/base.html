@@ -101,12 +101,12 @@
     .tree-children .sidebar-link { padding-left: 32px; font-size: 13px; }
 
     /* ── Main ── */
-    .main-content { margin-left: var(--sidebar-width); min-height: 100vh; }
+    .main-content { margin-left: var(--sidebar-width); min-height: 100vh; padding-top: var(--topbar-height); }
     .topbar {
       background: white; border-bottom: 1px solid #e2e8f0;
       padding: 0 28px; height: var(--topbar-height);
       display: flex; align-items: center; justify-content: space-between;
-      position: sticky; top: 0; z-index: 999;
+      position: fixed; top: 0; left: var(--sidebar-width); right: 0; z-index: 999;
     }
     .page-title { font-size: 17px; font-weight: 700; color: #1e293b; }
     .page-content { padding: 28px; }
@@ -129,7 +129,7 @@
     .profile-name  { font-size: 13px; font-weight: 600; color: #1e293b; text-align: left; }
     .profile-role  { font-size: 11px; color: #64748b; text-align: left; }
     .profile-panel {
-      position: absolute; top: calc(var(--topbar-height) + 4px); right: 16px;
+      position: fixed; top: calc(var(--topbar-height) + 4px); right: 16px;
       width: 320px; background: white; border: 1px solid #e2e8f0;
       border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.12);
       z-index: 2000; display: none; overflow: hidden;
@@ -862,7 +862,7 @@
                        padding:0 3px;"></span>
         </button>
         <div id="notifPanel"
-             style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:340px;
+             style="display:none;position:fixed;right:16px;top:calc(var(--topbar-height) + 4px);width:340px;
                     background:#fff;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);
                     z-index:2000;overflow:hidden;">
           <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;
