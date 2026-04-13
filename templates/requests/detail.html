@@ -2142,12 +2142,22 @@ function buildEmailHtml(venue, contactNames, filterSection) {
   if (relevantSections.includes('meeting')) {
     const rows = (items.meeting||[]).filter(r=>r.description);
     if (rows.length) {
-      html += secTable('meeting', 'Toplantı / Salon', rows.map(r => ({
-        svc: r.description,
-        date: r.date_from ? (r.date_to && r.date_to!==r.date_from ? `${fmtDate(r.date_from)} – ${fmtDate(r.date_to)}` : fmtDate(r.date_from)) : '',
-        qty: `${r.qty||1} ${r.unit||''}`.trim(),
-        notes: [r.seating_layout, r.notes].filter(Boolean).join(' · ')
-      })));
+      const _SL = {tiyatro:'Tiyatro Düzeni',sinif:'Sınıf Düzeni','u-seklinde':'U Şeklinde',
+                   toplanti:'Toplantı Düzeni',adatr:'Ada / Roundtable',kokteyl:'Kokteyl',gala:'Gala Oturma'};
+      html += secTable('meeting', 'Toplantı / Salon', rows.map(r => {
+        // Oturma düzeni: daily_attendees'dan benzersiz layoutları al (boş satır için row-level fallback)
+        const daLayouts = (r.daily_attendees||[]).map(da => da.seating_layout).filter(Boolean);
+        const uniqueLayouts = [...new Set(daLayouts)];
+        const layoutStr = uniqueLayouts.length
+          ? uniqueLayouts.map(l => _SL[l]||l).join(', ')
+          : (r.seating_layout ? (_SL[r.seating_layout]||r.seating_layout) : '');
+        return {
+          svc: r.description,
+          date: r.date_from ? (r.date_to && r.date_to!==r.date_from ? `${fmtDate(r.date_from)} – ${fmtDate(r.date_to)}` : fmtDate(r.date_from)) : '',
+          qty: `${r.qty||1} ${r.unit||''}`.trim(),
+          notes: [layoutStr, r.notes].filter(Boolean).join(' · ')
+        };
+      }));
     }
   }
 
@@ -2251,8 +2261,16 @@ function buildEmailText(venue, contactNames, filterSection) {
       txt += `\nTOPLANTI DETAYLARI\n`;
       if (firstD) txt += `${trRange(firstD, lastD)}\n`;
       txt += `${REQ_DATA.attendee_count} kişi\n`;
+      const _SLt = {tiyatro:'Tiyatro Düzeni',sinif:'Sınıf Düzeni','u-seklinde':'U Şeklinde',
+                    toplanti:'Toplantı Düzeni',adatr:'Ada / Roundtable',kokteyl:'Kokteyl',gala:'Gala Oturma'};
       rows.forEach(r => {
+        const daLayouts = (r.daily_attendees||[]).map(da => da.seating_layout).filter(Boolean);
+        const uniqueLayouts = [...new Set(daLayouts)];
+        const layoutStr = uniqueLayouts.length
+          ? uniqueLayouts.map(l => _SLt[l]||l).join(', ')
+          : (r.seating_layout ? (_SLt[r.seating_layout]||r.seating_layout) : '');
         let line = r.description;
+        if (layoutStr) line += ` - ${layoutStr}`;
         if (r.notes) line += ` (${r.notes})`;
         txt += `${line}\n`;
       });
