@@ -159,13 +159,18 @@ def _default_vat(section: str) -> int:
     return 10 if section == "accommodation" else 20
 
 
-def _calc_nights(date_from: str, date_to: str) -> int:
-    """İki tarih arasındaki gece/gün sayısını hesapla (minimum 1)"""
+def _calc_nights(date_from: str, date_to: str, section: str = "accommodation") -> int:
+    """Gece/gün sayısını hesapla.
+    Konaklama: exclusive (08.05→09.05 = 1 gece)
+    Diğerleri: inclusive (08.05→09.05 = 2 gün — her iki gün sayılır)
+    """
     try:
         from datetime import date as dt
         d1 = dt.fromisoformat(str(date_from))
         d2 = dt.fromisoformat(str(date_to))
         n = (d2 - d1).days
+        if section != "accommodation":
+            n += 1  # inclusive: başlangıç günü de sayılır
         return max(1, n)
     except Exception:
         return 1
@@ -186,7 +191,7 @@ def _items_to_budget_rows(items: dict, req) -> list:
                 date_from = date_from or str(req.check_in  or "")
                 date_to   = date_to   or str(req.check_out or "")
 
-            nights = _calc_nights(date_from, date_to) if date_from and date_to else 1
+            nights = _calc_nights(date_from, date_to, section) if date_from and date_to else 1
 
             row = {
                 "section":      section,
