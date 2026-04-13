@@ -1189,8 +1189,10 @@
   async function fetchCount() {
     try {
       const r = await fetch('/notifications/count');
+      if (r.status === 401 || r.redirected) { window.location.href = '/login'; return; }
       if (!r.ok) return;
-      const { count } = await r.json();
+      const data = await r.json();
+      const count = data.count ?? 0;
       if (count > 0) {
         badge.textContent = count > 99 ? '99+' : count;
         badge.style.display = '';
@@ -1204,6 +1206,7 @@
     listEl.innerHTML = '<div class="text-center text-muted py-4" style="font-size:13px;"><span class="spinner-border spinner-border-sm"></span></div>';
     try {
       const r = await fetch('/notifications');
+      if (r.status === 401 || r.redirected) { window.location.href = '/login'; return; }
       if (!r.ok) { listEl.innerHTML = '<div class="text-center text-muted py-3" style="font-size:13px;">Yüklenemedi</div>'; return; }
       const items = await r.json();
       if (!items.length) {
@@ -1254,7 +1257,8 @@
   };
 
   window.markOne = async function(id, e) {
-    await fetch(`/notifications/${id}/read`, { method: 'POST' });
+    // Navigasyondan önce okundu işaretle (fire-and-forget, navigation'ı engelleme)
+    fetch(`/notifications/${id}/read`, { method: 'POST' }).catch(() => {});
     fetchCount();
   };
 

@@ -22,9 +22,17 @@ from models import User
 # Yapılandırma
 # ---------------------------------------------------------------------------
 
-# SECRET_KEY: Önce ortam değişkeninden oku, yoksa runtime'da güçlü random key üret.
-# Production'da mutlaka SECRET_KEY env variable set edin (örn. .env dosyası).
-SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+# SECRET_KEY: Önce ortam değişkeninden oku.
+# Production'da mutlaka .env dosyasına güçlü bir değer yazın.
+# Üretmek için: python -c "import secrets; print(secrets.token_hex(32))"
+_env_key = os.environ.get("SECRET_KEY", "")
+if _env_key:
+    SECRET_KEY = _env_key
+else:
+    # Development fallback — her restart'ta aynı kalır,
+    # ama production'da asla kullanılmamalı.
+    SECRET_KEY = "edem-dev-fallback-key--set-SECRET_KEY-env-var-in-production"
+    print("[AUTH] ⚠️  SECRET_KEY env variable ayarlı değil — development fallback kullanılıyor!", flush=True)
 
 ALGORITHM       = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480   # 8 saat
