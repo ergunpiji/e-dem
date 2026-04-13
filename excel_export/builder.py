@@ -120,12 +120,15 @@ def _write_sheet(
     # ── Sütun tanımları (vat_mode'a göre) ─────────────────────────────────────
     # exclusive: A Hizmet | B Birim | C Miktar | D Gece | E BirimFiyat(hariç) | F KDV% | G Toplam(hariç) | H Not
     # inclusive: A Hizmet | B Birim | C Miktar | D Gece | E BirimFiyat(dahil) | F Toplam(dahil) | G Not
-    # mixed:     A Hizmet | B Birim | C Miktar | D Gece | E BirimFiyat(EUR)   | F KDV% | G Toplam(₺)    | H Not
+    # mixed:     A Hizmet | B İstek/Adet | C Gün | D BirimFiyat(EUR) | E KUR | F Toplam(TL) | G Not
 
-    # mixed modu: birim fiyat yabancı para birimi, toplam TRY (kur ile çarpılır)
+    # mixed modu: birim fiyat yabancı para birimi, ayrı KUR kolonu, toplam TRY
     is_mixed = vat_mode == "mixed" and currency != "TRY" and rate and rate > 0
     try_ci    = CURRENCY_INFO["TRY"]
     try_fmt   = try_ci["fmt"]
+
+    # mixed: ayrı sütun adları (COL_UNIT yok, COL_RATE ekstra)
+    COL_RATE = None  # sadece mixed'da kullanılır
 
     if vat_mode == "inclusive":
         COL_SVC, COL_UNIT, COL_QTY, COL_NIGHT = "A", "B", "C", "D"
@@ -141,18 +144,25 @@ def _write_sheet(
             "G": ("Not",                     32),
         }
     elif is_mixed:
-        COL_SVC, COL_UNIT, COL_QTY, COL_NIGHT = "A", "B", "C", "D"
-        COL_PRICE, COL_VAT, COL_TOTAL, COL_NOTE = "E", "F", "G", "H"
-        LAST_COL = "H"
+        # A Hizmet | B İstek/Adet/Kişi | C Gün | D BirimFiyat(EUR) | E KUR | F Toplam(TL) | G Not
+        COL_SVC   = "A"
+        COL_UNIT  = None   # birim yok — qty başlığına gömülü
+        COL_QTY   = "B"
+        COL_NIGHT = "C"
+        COL_PRICE = "D"
+        COL_RATE  = "E"
+        COL_VAT   = None
+        COL_TOTAL = "F"
+        COL_NOTE  = "G"
+        LAST_COL  = "G"
         col_headers = {
-            "A": ("Hizmet Adı",                       30),
-            "B": ("Birim",                            10),
-            "C": ("Miktar",                            8),
-            "D": ("Gece /\nGün",                      10),
-            "E": (f"Birim Fiyat\n({sym} KDV hariç)",  18),
-            "F": ("KDV %",                             8),
-            "G": (f"Toplam\n(₺ KDV hariç)",           18),
-            "H": ("Not",                              32),
+            "A": ("Hizmet Adı",                    34),
+            "B": ("İstek /\nAdet / Kişi",          12),
+            "C": ("Gün",                            8),
+            "D": (f"Birim Fiyat\n({sym})",         16),
+            "E": ("KUR",                           10),
+            "F": ("Toplam (TL)",                   18),
+            "G": ("Not",                           28),
         }
     else:  # exclusive (varsayılan)
         COL_SVC, COL_UNIT, COL_QTY, COL_NIGHT = "A", "B", "C", "D"
@@ -365,22 +375,21 @@ def _write_sheet(
                 if fmt:
                     c2.number_format = fmt
 
-            _wc(COL_SVC,   row.get("service_name", ""))
-            _wc(COL_UNIT,  row.get("unit", "Adet"),   h="center")
-            _wc(COL_QTY,   qty,    fmt="#,##0",       h="center")
-            _wc(COL_NIGHT, nights, fmt="#,##0",       h="center")
+            _wc(COL_SVC, row.get("service_name", ""))
+            if COL_UNIT:
+                _wc(COL_UNIT, row.get("unit", "Adet"), h="center")
+            _wc(COL_QTY,   qty,    fmt="#,##0",  h="center")
+            _wc(COL_NIGHT, nights, fmt="#,##0",  h="center")
 
             if is_mixed:
-                # Birim fiyat sütunu: EUR (orijinal para birimi)
+                # D: Birim Fiyat (EUR), E: KUR (kur değeri hücrede görünür), F: Toplam (TL)
                 _wc(COL_PRICE, price_val, fmt=num_fmt, h="right", ind=0)
-                # Toplam sütunu: EUR × kur = TRY
-                rate_val = round(rate, 6)
+                _wc(COL_RATE,  round(rate, 4), fmt='#,##0.00', h="right", ind=0)
+                # Toplam = Birim Fiyat × Miktar × Gün × KUR (hücre referansı)
                 total_formula = (
                     f"={COL_PRICE}{r_idx}*{COL_QTY}{r_idx}"
-                    f"*{COL_NIGHT}{r_idx}*{rate_val}"
+                    f"*{COL_NIGHT}{r_idx}*{COL_RATE}{r_idx}"
                 )
-                if COL_VAT:
-                    _wc(COL_VAT, vat / 100, fmt="0%", h="center")
                 _wc(COL_TOTAL, total_formula, fmt=try_fmt, h="right", ind=0)
             else:
                 _wc(COL_PRICE, price_val, fmt=num_fmt, h="right", ind=0)
