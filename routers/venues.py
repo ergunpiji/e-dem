@@ -13,8 +13,6 @@ import json
 import os
 import shutil
 
-import json as _json
-
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -284,7 +282,7 @@ async def venues_bulk_delete(
     db: Session = Depends(get_db),
 ):
     try:
-        ids = _json.loads(ids_json)
+        ids = json.loads(ids_json)
         if not isinstance(ids, list):
             raise ValueError
     except Exception:

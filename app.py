@@ -16,9 +16,9 @@ from templates_config import templates
 # ---------------------------------------------------------------------------
 # Veritabanı başlat
 # ---------------------------------------------------------------------------
-import os as _os_db
+import os
 
-_db_url = _os_db.environ.get("DATABASE_URL", "")
+_db_url = os.environ.get("DATABASE_URL", "")
 if _db_url.startswith("postgres"):
     print(f"[DB] PostgreSQL bağlantısı kullanılıyor ✓", flush=True)
 elif _db_url.startswith("sqlite") or not _db_url:
@@ -43,9 +43,8 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # Statik dosyalar
 # ---------------------------------------------------------------------------
-import os as _os
-_os.makedirs("static/css", exist_ok=True)
-_os.makedirs("static/js",  exist_ok=True)
+os.makedirs("static/css", exist_ok=True)
+os.makedirs("static/js",  exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ---------------------------------------------------------------------------
