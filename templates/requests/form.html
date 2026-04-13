@@ -828,9 +828,14 @@ function renderItems(section) {
         // Tarih seçildi ama daily_attendees henüz oluşmadı — oluştur
         setTimeout(() => {
           const defQty = parseInt(document.getElementById('attendeeCount')?.value) || 1;
-          items[section][i].daily_attendees = buildDailyAttendees(dateFrom, dateTo, [], defQty);
-          saveItemsJson();
-          renderItems(section);
+          const built = buildDailyAttendees(dateFrom, dateTo, [], defQty);
+          if (built.length > 0) {
+            // Sadece geçerli tarih aralığında yeniden render et
+            // built.length === 0 ise (ters/geçersiz tarih) döngüye girme
+            items[section][i].daily_attendees = built;
+            saveItemsJson();
+            renderItems(section);
+          }
         }, 0);
       }
 
