@@ -704,6 +704,7 @@ document.addEventListener('DOMContentLoaded', function() {
 {# ─── İKİ SÜTUN ─── #}
 {# ─── BÜTÇE TABLARI (birden fazlaysa yan yana) ─── #}
 {% if budgets_data and budgets_data | length > 1 %}
+{% set compare_collapsed = req.confirmed_budget_id is not none %}
 {% set SECTION_LABELS = {
   'accommodation': '🛏 Konaklama',
   'meeting':       '🏛 Toplantı',
@@ -715,7 +716,7 @@ document.addEventListener('DOMContentLoaded', function() {
   'other':         '📦 Diğer'
 } %}
 {% set SECTIONS_ORDER = ['accommodation', 'meeting', 'fb', 'teknik', 'dekor', 'transfer', 'tasarim', 'other'] %}
-<div class="card mb-4">
+<div class="card mb-4" id="budgetCompareCard">
   <div class="card-header d-flex align-items-center justify-content-between py-2"
        style="background:#f8fafc; border-bottom:1px solid #e2e8f0; cursor:pointer;"
        data-bs-toggle="collapse" data-bs-target="#budgetCompareCollapse">
@@ -732,7 +733,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <i class="bi bi-chevron-down text-muted"></i>
     </div>
   </div>
-  <div class="collapse show" id="budgetCompareCollapse">
+  <div class="collapse {% if not compare_collapsed %}show{% endif %}" id="budgetCompareCollapse">
   <div class="card-body p-0">
 
     {# Tab başlıkları #}
@@ -1794,6 +1795,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% block extra_scripts %}
 <script>
+// Tedarikçi seçildiyse bütçe karşılaştırma kartını en alta taşı
+{% if req.confirmed_budget_id %}
+(function() {
+  const card = document.getElementById('budgetCompareCard');
+  if (card) { card.parentNode.appendChild(card); }
+})();
+{% endif %}
 // ─── Fatura Onay Modalları ───
 function openRejectModal(invoiceId) {
   document.getElementById('rejectForm').action = '/invoices/' + invoiceId + '/reject';
