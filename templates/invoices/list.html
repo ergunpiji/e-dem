@@ -45,8 +45,12 @@
            class="btn btn-outline-secondary {% if status_filter == 'all' %}active{% endif %}">Tümü</a>
         <a href="/invoices?status_filter=pending&type_filter={{ type_filter }}"
            class="btn btn-outline-warning {% if status_filter == 'pending' %}active{% endif %}">
-          GM Onayı Bekliyor
+          Müdür Onayı Bekliyor
           {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pending_count }}</span>{% endif %}
+        </a>
+        <a href="/invoices?status_filter=mudur_approved&type_filter={{ type_filter }}"
+           class="btn btn-outline-info {% if status_filter == 'mudur_approved' %}active{% endif %}">
+          GM Onayı Bekliyor
         </a>
         <a href="/invoices?status_filter=gm_approved&type_filter={{ type_filter }}"
            class="btn btn-outline-primary {% if status_filter == 'gm_approved' %}active{% endif %}">
@@ -158,7 +162,9 @@
               </td>
               <td class="text-center">
                 {% if inv.status == 'pending' %}
-                  <span class="badge bg-warning text-dark">GM Onayı Bekliyor</span>
+                  <span class="badge bg-warning text-dark">Müdür Onayı Bekliyor</span>
+                {% elif inv.status == 'mudur_approved' %}
+                  <span class="badge bg-info text-dark">GM Onayı Bekliyor</span>
                 {% elif inv.status == 'gm_approved' %}
                   <span class="badge bg-primary">Kesilecek</span>
                 {% elif inv.status == 'approved' %}
@@ -187,15 +193,28 @@
                     <i class="bi bi-box-arrow-up-right" style="font-size:11px;"></i>
                   </a>
 
-                  {# GM: pending → gm_approved onayla #}
-                  {% if inv.status == 'pending' and can_approve %}
+                  {# Müdür: pending → mudur_approved #}
+                  {% if inv.status == 'pending' and can_mudur_approve %}
                   <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
-                    <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2"
-                            title="GM Olarak Onayla"
-                            onclick="return confirm('Fatura talebini onaylıyor musunuz?')">
+                    <button type="submit" class="btn btn-sm btn-outline-warning py-0 px-2"
+                            title="Müdür Olarak Onayla"
+                            onclick="return confirm('Fatura talebini müdür olarak onaylıyor musunuz?')">
                       <i class="bi bi-check2" style="font-size:11px;"></i>
                     </button>
                   </form>
+                  {% endif %}
+                  {# GM: pending veya mudur_approved → gm_approved #}
+                  {% if inv.status == 'mudur_approved' and can_gm_approve %}
+                  <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2"
+                            title="Genel Müdür Olarak Onayla"
+                            onclick="return confirm('Fatura talebini Genel Müdür olarak onaylıyor musunuz?')">
+                      <i class="bi bi-check2-all" style="font-size:11px;"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                  {# Red butonu: pending veya mudur_approved #}
+                  {% if inv.status in ('pending', 'mudur_approved') and can_approve %}
                   <button class="btn btn-sm btn-outline-danger py-0 px-2" title="Reddet"
                           onclick="openRejectModal('{{ inv.id }}')">
                     <i class="bi bi-x" style="font-size:11px;"></i>
@@ -220,7 +239,8 @@
       {% else %}
       <div class="text-center py-5 text-muted">
         <i class="bi bi-receipt fs-1 d-block mb-2 opacity-25"></i>
-        {% if status_filter == 'pending' %}GM onayı bekleyen fatura yok.
+        {% if status_filter == 'pending' %}Müdür onayı bekleyen fatura yok.
+        {% elif status_filter == 'mudur_approved' %}GM onayı bekleyen fatura yok.
         {% elif status_filter == 'gm_approved' %}Kesilecek fatura yok.
         {% elif status_filter != 'all' %}Bu filtreye uyan fatura bulunamadı.
         {% else %}Henüz fatura girilmemiş.{% endif %}

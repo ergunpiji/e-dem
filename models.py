@@ -1025,7 +1025,7 @@ class Invoice(Base):
     lines_json    = Column(Text, default="[]")           # list[{description, amount, vat_rate, vat_amount}]
     document_path    = Column(String(500), nullable=True)   # disk path (relative)
     document_name    = Column(String(255), nullable=True)   # orijinal dosya adı
-    status           = Column(String(16), default="pending") # pending|approved|rejected|cancelled
+    status           = Column(String(20), default="pending") # pending|mudur_approved|gm_approved|approved|rejected|cancelled
     rejection_note   = Column(String(300), default="")
     approved_by      = Column(String(36), ForeignKey("users.id"), nullable=True)
     approved_at      = Column(DateTime, nullable=True)

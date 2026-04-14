@@ -31,9 +31,15 @@ def _require_finance(current_user: User):
 
 
 def _require_approval_permission(current_user: User, inv):
-    """Onay/red için: sadece admin, mudur, muhasebe_muduru."""
-    if current_user.role in ("admin", "mudur", "muhasebe_muduru"):
-        return
+    """
+    Onay/red için yetki:
+    - pending       → mudur veya muhasebe_muduru/admin onaylayabilir
+    - mudur_approved → sadece muhasebe_muduru/admin (GM) onaylayabilir
+    """
+    if current_user.role in ("admin", "muhasebe_muduru"):
+        return  # GM her adımda onaylayabilir
+    if current_user.role == "mudur" and getattr(inv, "status", "") == "pending":
+        return  # Müdür sadece pending'i onaylayabilir
     raise HTTPException(status_code=403, detail="Bu faturayı onaylamak/reddetmek için yetkiniz yok.")
 
 
@@ -103,28 +109,32 @@ async def invoices_list(
     invoices = query.order_by(Invoice.created_at.desc()).all()
 
     pending_count = db.query(Invoice).join(Invoice.request).filter(
-        Invoice.status == "pending"
+        Invoice.status.in_(["pending", "mudur_approved"])
     )
     if current_user.role in ("yonetici", "asistan"):
         from models import Request as ReqModel
         pending_count = pending_count.filter(ReqModel.created_by == current_user.id)
     pending_count = pending_count.count()
 
-    can_cut = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    can_approve = current_user.role in ("admin", "mudur", "muhasebe_muduru")
+    can_cut          = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    can_approve      = current_user.role in ("admin", "mudur", "muhasebe_muduru")
+    can_mudur_approve = current_user.role in ("admin", "mudur")   # pending → mudur_approved
+    can_gm_approve   = current_user.role in ("admin", "muhasebe_muduru")  # → gm_approved
 
     return templates.TemplateResponse("invoices/list.html", {
-        "request":        request,
-        "current_user":   current_user,
-        "page_title":     "Faturalar",
-        "invoices":       invoices,
-        "status_filter":  status_filter,
-        "type_filter":    type_filter,
-        "pending_count":  pending_count,
-        "invoice_types":  INVOICE_TYPES,
+        "request":           request,
+        "current_user":      current_user,
+        "page_title":        "Faturalar",
+        "invoices":          invoices,
+        "status_filter":     status_filter,
+        "type_filter":       type_filter,
+        "pending_count":     pending_count,
+        "invoice_types":     INVOICE_TYPES,
         "INVOICE_TYPE_LABELS": {t["value"]: t["label"] for t in INVOICE_TYPES},
-        "can_cut":        can_cut,
-        "can_approve":    can_approve,
+        "can_cut":           can_cut,
+        "can_approve":       can_approve,
+        "can_mudur_approve": can_mudur_approve,
+        "can_gm_approve":    can_gm_approve,
     })
 
 
@@ -553,17 +563,31 @@ async def invoices_approve(
     inv = _get_invoice_or_404(db, invoice_id)
     _require_approval_permission(current_user, inv)
 
-    if inv.status not in ("pending", "rejected"):
-        raise HTTPException(status_code=400, detail="Bu fatura zaten onaylanmış veya iptal edilmiş.")
+    if inv.status == "pending":
+        if current_user.role == "mudur":
+            # Müdür onayı: pending → mudur_approved (GM onayı bekleniyor)
+            inv.status = "mudur_approved"
+        else:
+            # GM (muhasebe_muduru / admin) direkt onaylar, müdür adımını atlar
+            inv.status = "gm_approved"
+    elif inv.status == "mudur_approved":
+        if current_user.role in ("admin", "muhasebe_muduru"):
+            # GM onayı: mudur_approved → gm_approved
+            inv.status = "gm_approved"
+        else:
+            raise HTTPException(status_code=403, detail="Bu aşamada sadece Genel Müdür onaylayabilir.")
+    else:
+        raise HTTPException(status_code=400, detail="Bu fatura onay için uygun durumda değil.")
 
-    # GM/Müdür onayı: pending → gm_approved (muhasebe kesmesi bekliyor)
-    inv.status      = "gm_approved"
-    inv.approved_by = current_user.id
-    inv.approved_at = _now()
+    inv.approved_by    = current_user.id
+    inv.approved_at    = _now()
     inv.rejection_note = ""
-    inv.updated_at  = _now()
+    inv.updated_at     = _now()
     db.commit()
-    return RedirectResponse(url="/invoices?status_filter=pending", status_code=303)
+
+    if inv.status == "mudur_approved":
+        return RedirectResponse(url="/invoices?status_filter=pending", status_code=303)
+    return RedirectResponse(url="/invoices?status_filter=mudur_approved", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -581,7 +605,7 @@ async def invoices_reject(
     inv = _get_invoice_or_404(db, invoice_id)
     _require_approval_permission(current_user, inv)
 
-    if inv.status not in ("pending", "approved"):
+    if inv.status not in ("pending", "mudur_approved", "approved"):
         raise HTTPException(status_code=400, detail="Bu fatura iptal edilmiş.")
 
     inv.status         = "rejected"
