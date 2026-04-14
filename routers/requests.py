@@ -21,12 +21,20 @@ from database import generate_ref_no, get_db
 from models import (
     Budget, Customer, CustomCategory, EmailTemplate, EventType, REQUEST_STATUSES, REQUEST_TABS,
     TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, User, Venue,
-    _uuid, _now, REQUEST_STATUS_LABELS,
+    _uuid, _now, REQUEST_STATUS_LABELS, RequestModule,
 )
 from routers.library import log_activity
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 from templates_config import templates
+
+
+def _get_oa_module(request_id: str, db: Session):
+    return db.query(RequestModule).filter(
+        RequestModule.request_id == request_id,
+        RequestModule.module_type == "operasyon",
+        RequestModule.active == True,
+    ).first()
 
 
 def _check_pm_or_admin(current_user: User):
@@ -610,22 +618,22 @@ async def requests_detail(
     from datetime import date as _date
     today = _date.today().strftime("%Y-%m-%d")
 
-    # ── Kütüphane ──
-    from models import ActivityLog as _AL, RequestNote as _RN, RequestDocument as _RD, REQUEST_DOCUMENT_TYPES as _RDT
+    # ── Kütüphane — aktivite + belgeler birleşik timeline ──
+    from models import (
+        ActivityLog as _AL, RequestDocument as _RD,
+        ACTIVITY_EVENT_ICONS as _AEI, ACTIVITY_EVENT_COLORS as _AEC,
+    )
     activity_logs = (db.query(_AL)
                      .filter(_AL.request_id == req_id)
-                     .order_by(_AL.created_at.desc())
+                     .order_by(_AL.created_at)
                      .all())
-    req_notes = (db.query(_RN)
-                 .filter(_RN.request_id == req_id)
-                 .order_by(_RN.created_at.desc())
-                 .all())
     req_documents = (db.query(_RD)
                      .filter(_RD.request_id == req_id)
-                     .order_by(_RD.created_at.desc())
+                     .order_by(_RD.created_at)
                      .all())
 
-    # Birleşik timeline: loglar + notlar (son 60 kayıt)
+    # Belgeler zaten aktivite logundan tetiklenerek kaydediliyor;
+    # timeline = aktivite logu + belge kayıtları birleşik, eski→yeni sırada
     timeline = []
     for al in activity_logs:
         timeline.append({
@@ -638,19 +646,19 @@ async def requests_detail(
             "created_at": al.created_at,
             "id":         al.id,
         })
-    for note in req_notes:
+    for doc in req_documents:
         timeline.append({
-            "kind":       "note",
-            "icon":       "bi-chat-left-text",
-            "color":      "secondary",
-            "title":      f"{note.creator.full_name if note.creator else '—'} not ekledi",
-            "detail":     note.content,
-            "user":       note.creator,
-            "created_at": note.created_at,
-            "id":         note.id,
-            "note_obj":   note,
+            "kind":       "doc",
+            "icon":       "bi-file-earmark-arrow-down",
+            "color":      "info",
+            "title":      doc.doc_name,
+            "detail":     f"{doc.type_label} · {doc.size_display}",
+            "user":       doc.uploader,
+            "created_at": doc.created_at,
+            "id":         doc.id,
         })
-    timeline.sort(key=lambda x: x["created_at"], reverse=True)
+    # Eskiden yeniye sırala (tabloda #1 en eski adım)
+    timeline.sort(key=lambda x: x["created_at"])
 
     return templates.TemplateResponse(
         "requests/detail.html",
@@ -707,7 +715,9 @@ async def requests_detail(
             # Kütüphane
             "timeline":               timeline,
             "req_documents":          req_documents,
-            "document_types":         _RDT,
+            # Operasyon Ajanı modülü
+            "oa_module":  _get_oa_module(req.id, db),
+            "oa_active":  _get_oa_module(req.id, db) is not None,
         },
     )
 

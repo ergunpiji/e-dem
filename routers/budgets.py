@@ -36,6 +36,7 @@ from database import get_db
 from models import (
     Budget, Customer, Request as ReqModel, Service, SERVICE_CATEGORIES, User, _uuid, _now,
 )
+from routers.library import log_activity, save_document
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 from templates_config import templates
@@ -727,6 +728,11 @@ async def budgets_approve(
         if req:
             req.status     = "offer_sent"
             req.updated_at = _now()
+            log_activity(
+                db, req.id, "budget_approved",
+                f"Bütçe fiyatlandırıldı ve onaylandı ({budget.venue_name or 'bütçe'})",
+                user_id=current_user.id,
+            )
         db.commit()
     if back:
         return RedirectResponse(url=f"/requests/{back}#tab-summary", status_code=status.HTTP_302_FOUND)
@@ -921,6 +927,29 @@ async def budgets_export(
         f'attachment; filename="{filename_ascii}"; '
         f"filename*=UTF-8''{filename_utf8}"
     )
+
+    # Kütüphane: teklif Excel'ini otomatik arşivle
+    if req:
+        try:
+            save_document(
+                db=db,
+                request_id=req.id,
+                buf=output,
+                doc_type="teklif",
+                file_name=filename_ascii,
+                user_id=current_user.id,
+            )
+            log_activity(
+                db=db,
+                request_id=req.id,
+                event_type="document_added",
+                title=f"Teklif Excel indirildi ({budget.venue_name or 'bütçe'})",
+                user_id=current_user.id,
+            )
+            db.commit()
+        except Exception as _e:
+            import traceback
+            print(f"[LIBRARY] teklif kayıt hatası: {_e}\n{traceback.format_exc()}", flush=True)
 
     return StreamingResponse(
         output,
@@ -1243,6 +1272,14 @@ async def budgets_send_statement(
     budget.statement_status  = "sent"
     budget.statement_sent_at = _now()
     budget.updated_at        = _now()
+
+    req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
+    if req:
+        log_activity(
+            db, req.id, "document_added",
+            f"Hesap dökümü müşteriye gönderildi ({budget.venue_name or 'bütçe'})",
+            user_id=current_user.id,
+        )
     db.commit()
 
     return RedirectResponse(url=f"/budgets/{budget_id}/statement", status_code=status.HTTP_302_FOUND)

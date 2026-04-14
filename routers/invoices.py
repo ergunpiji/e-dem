@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db
 from models import Budget, Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, User, _uuid, _now
+from routers.library import log_activity
 from templates_config import templates
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -392,6 +393,16 @@ async def invoices_create(
         inv.document_name = doc_name
 
     db.add(inv)
+    db.flush()
+
+    # Kütüphane: fatura girişi logu
+    from models import INVOICE_TYPE_LABELS as _ITL
+    log_activity(
+        db, req_id, "invoice_created",
+        f"Fatura eklendi — {_ITL.get(inv.invoice_type, inv.invoice_type)}: {inv.vendor_name or inv.invoice_no or '—'}",
+        detail=f"Tutar: ₺{inv.amount:,.0f}",
+        user_id=current_user.id,
+    )
     db.commit()
 
     # Bildirim: PM onayı bekleniyor

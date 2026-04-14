@@ -449,6 +449,116 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     </div>
 
+    {# ─── Operasyon Ajanı Modülü ─── #}
+    <div id="operasyon-module">
+    {% if oa_active %}
+      {# Modül Aktif #}
+      <div class="card mb-4 border-0" style="background:linear-gradient(135deg,#1e3a5f 0%,#1e5f8c 100%); color:#fff;">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <h6 class="fw-bold mb-1" style="font-size:15px;">
+                <span style="font-size:20px; margin-right:6px;">⚙️</span> Operasyon Ajanı
+              </h6>
+              <span style="background:rgba(255,255,255,.2); border-radius:20px;
+                           padding:2px 10px; font-size:11px; font-weight:600;">
+                ✅ Aktif
+              </span>
+            </div>
+            <form method="post"
+                  action="/requests/{{ req.id }}/modules/operasyon/deactivate"
+                  onsubmit="return confirm('Modülü devre dışı bırakmak istediğinizden emin misiniz?')">
+              <button type="submit"
+                      style="background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.3);
+                             color:#fff; border-radius:8px; padding:4px 12px; font-size:12px; cursor:pointer;">
+                Kapat
+              </button>
+            </form>
+          </div>
+
+          {# Linkler #}
+          <div style="display:grid; gap:8px;">
+            {% if oa_module.oa_manager_url %}
+            <div style="background:rgba(255,255,255,.12); border-radius:10px; padding:10px 14px;">
+              <div style="font-size:11px; opacity:.7; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">👔 Yönetici Linki</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <code style="font-size:12px; flex:1; word-break:break-all; opacity:.9;">{{ oa_module.oa_manager_url }}</code>
+                <button onclick="copyLink('{{ oa_module.oa_manager_url }}', this)"
+                        style="background:rgba(255,255,255,.2); border:none; color:#fff;
+                               border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap;">
+                  Kopyala
+                </button>
+              </div>
+            </div>
+            {% endif %}
+            {% if oa_module.oa_coordinator_url %}
+            <div style="background:rgba(255,255,255,.12); border-radius:10px; padding:10px 14px;">
+              <div style="font-size:11px; opacity:.7; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">🎯 Koordinatör Linki</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <code style="font-size:12px; flex:1; word-break:break-all; opacity:.9;">{{ oa_module.oa_coordinator_url }}</code>
+                <button onclick="copyLink('{{ oa_module.oa_coordinator_url }}', this)"
+                        style="background:rgba(255,255,255,.2); border:none; color:#fff;
+                               border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap;">
+                  Kopyala
+                </button>
+              </div>
+            </div>
+            {% endif %}
+            {% if oa_module.oa_transfer_supplier_url %}
+            <div style="background:rgba(255,255,255,.08); border-radius:10px; padding:10px 14px;">
+              <div style="font-size:11px; opacity:.7; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">🚌 Transfer Tedarikçisi</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <code style="font-size:12px; flex:1; word-break:break-all; opacity:.9;">{{ oa_module.oa_transfer_supplier_url }}</code>
+                <button onclick="copyLink('{{ oa_module.oa_transfer_supplier_url }}', this)"
+                        style="background:rgba(255,255,255,.15); border:none; color:#fff;
+                               border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap;">
+                  Kopyala
+                </button>
+              </div>
+            </div>
+            {% endif %}
+            {% if oa_module.oa_accommodation_supplier_url %}
+            <div style="background:rgba(255,255,255,.08); border-radius:10px; padding:10px 14px;">
+              <div style="font-size:11px; opacity:.7; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">🏨 Konaklama Tedarikçisi</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <code style="font-size:12px; flex:1; word-break:break-all; opacity:.9;">{{ oa_module.oa_accommodation_supplier_url }}</code>
+                <button onclick="copyLink('{{ oa_module.oa_accommodation_supplier_url }}', this)"
+                        style="background:rgba(255,255,255,.15); border:none; color:#fff;
+                               border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap;">
+                  Kopyala
+                </button>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+    {% else %}
+      {# Modül Kapalı #}
+      <div class="card mb-4">
+        <div class="card-body text-center py-4">
+          <div style="font-size:32px; margin-bottom:8px;">⚙️</div>
+          <h6 class="fw-bold mb-1">Operasyon Ajanı</h6>
+          <p class="text-muted mb-3" style="font-size:13px;">
+            Katılımcı takibi, transfer, konaklama, günlük program ve tedarikçi görev planı.
+          </p>
+          {% if request.query_params.get('oa_error') %}
+          <div class="alert alert-danger py-2 mb-3" style="font-size:13px;">
+            ⚠️ Operasyon Ajanı'na ulaşılamadı. Servisin çalıştığını kontrol edin.
+          </div>
+          {% endif %}
+          <form method="post"
+                action="/requests/{{ req.id }}/modules/operasyon/activate">
+            <button type="submit" class="btn btn-primary btn-sm">
+              ⚙️ Operasyon Ajanını Aç
+            </button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+    </div>
+
   </div>
 
   {# ─── SAĞ: Hizmetler + Mekanlar + RFQ ─── #}
@@ -1815,199 +1925,89 @@ document.addEventListener('DOMContentLoaded', function() {
     <h6 class="fw-bold mb-0">
       <i class="bi bi-archive me-2 text-primary"></i>Kütüphane
       <span class="badge bg-secondary ms-1" style="font-size:11px;">
-        {{ timeline | length + req_documents | length }} kayıt
+        {{ (timeline | length) + (req_documents | length) }} kayıt
       </span>
     </h6>
   </div>
-  <div class="card-body p-3">
+  <div class="card-body p-0">
 
-    {# ─── 2 Sütun: Sol = Aktivite Akışı, Sağ = Belgeler ─── #}
-    <div class="row g-3">
-
-      {# ── Sol: Not + Aktivite Timeline ── #}
-      <div class="col-lg-7">
-
-        {# Not ekle formu #}
-        <form method="post" action="/requests/{{ req.id }}/notes" class="mb-3">
-          <div class="d-flex gap-2 align-items-start">
-            <div style="width:32px; height:32px; border-radius:50%; background:#e2e8f0;
-                        display:flex; align-items:center; justify-content:center;
-                        font-size:12px; font-weight:700; color:#64748b; flex-shrink:0;">
-              {{ current_user.initials }}
-            </div>
-            <div class="flex-grow-1">
-              <textarea name="content" class="form-control form-control-sm"
-                        rows="2" placeholder="Not ekle…"
-                        style="resize:none; font-size:13px;"></textarea>
-              <div class="text-end mt-1">
-                <button type="submit" class="btn btn-primary btn-sm">
-                  <i class="bi bi-send me-1"></i>Gönder
-                </button>
-              </div>
-            </div>
-          </div>
-        </form>
-
-        {# Timeline #}
-        <div style="position:relative;">
-          {# Sol dikey çizgi #}
-          <div style="position:absolute; left:15px; top:0; bottom:0; width:2px;
-                      background:#e2e8f0; z-index:0;"></div>
-
+    {# ── Adım adım belge & aktivite akışı ── #}
+    {% if timeline or req_documents %}
+    <div class="table-responsive">
+      <table class="table table-sm mb-0" style="font-size:12px;">
+        <thead style="background:#f1f5f9;">
+          <tr>
+            <th class="ps-3" style="width:36px;">#</th>
+            <th>Açıklama</th>
+            <th style="width:110px;">Tarih</th>
+            <th style="width:80px;">Yapan</th>
+            <th class="pe-3 text-end" style="width:70px;">Dosya</th>
+          </tr>
+        </thead>
+        <tbody>
+          {# Belgeler + aktivite logları zaman sırasıyla birleştirilmiş #}
+          {% set ns = namespace(idx=0) %}
           {% for item in timeline %}
-          <div class="d-flex gap-2 mb-3" style="position:relative; z-index:1;">
-            {# İkon balonu #}
-            <div style="width:32px; height:32px; border-radius:50%; flex-shrink:0;
-                        background:{% if item.color == 'primary' %}#dbeafe
-                          {% elif item.color == 'success' %}#dcfce7
-                          {% elif item.color == 'danger' %}#fee2e2
-                          {% elif item.color == 'warning' %}#fef9c3
-                          {% elif item.color == 'info' %}#cffafe
-                          {% else %}#f1f5f9{% endif %};
-                        display:flex; align-items:center; justify-content:center;">
-              <i class="bi {{ item.icon }}"
-                 style="font-size:13px; color:{% if item.color == 'primary' %}#2563eb
-                   {% elif item.color == 'success' %}#16a34a
-                   {% elif item.color == 'danger' %}#dc2626
-                   {% elif item.color == 'warning' %}#d97706
-                   {% elif item.color == 'info' %}#0891b2
-                   {% else %}#64748b{% endif %};"></i>
-            </div>
-
-            {# İçerik #}
-            <div class="flex-grow-1 p-2 rounded"
-                 style="background:{% if item.kind == 'note' %}#f8fafc{% else %}white{% endif %};
-                        border:1px solid #e2e8f0; font-size:12px;">
-              <div class="d-flex align-items-start justify-content-between gap-1">
+          {% set ns.idx = ns.idx + 1 %}
+          <tr>
+            <td class="ps-3 text-muted">{{ ns.idx }}</td>
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <span style="width:24px; height:24px; border-radius:50%; flex-shrink:0;
+                             background:{% if item.color == 'primary' %}#dbeafe
+                               {% elif item.color == 'success' %}#dcfce7
+                               {% elif item.color == 'danger' %}#fee2e2
+                               {% elif item.color == 'warning' %}#fef9c3
+                               {% elif item.color == 'info' %}#cffafe
+                               {% else %}#f1f5f9{% endif %};
+                             display:flex; align-items:center; justify-content:center;">
+                  <i class="bi {{ item.icon }}"
+                     style="font-size:11px; color:{% if item.color == 'primary' %}#2563eb
+                       {% elif item.color == 'success' %}#16a34a
+                       {% elif item.color == 'danger' %}#dc2626
+                       {% elif item.color == 'warning' %}#d97706
+                       {% elif item.color == 'info' %}#0891b2
+                       {% else %}#64748b{% endif %};"></i>
+                </span>
                 <div>
-                  <span class="fw-semibold" style="font-size:12px;">{{ item.title }}</span>
+                  <span class="fw-semibold">{{ item.title }}</span>
                   {% if item.detail %}
-                  <div class="text-muted mt-1" style="font-size:12px; white-space:pre-wrap;">{{ item.detail }}</div>
-                  {% endif %}
-                </div>
-                <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                  <span class="text-muted" style="font-size:10px; white-space:nowrap;">
-                    {{ item.created_at.strftime("%d.%m.%Y %H:%M") }}
-                  </span>
-                  {% if item.kind == 'note' and (item.user and item.user.id == current_user.id or current_user.role in ('admin','mudur')) %}
-                  <form method="post"
-                        action="/requests/{{ req.id }}/notes/{{ item.id }}/delete"
-                        onsubmit="return confirm('Bu notu silmek istiyor musunuz?');"
-                        style="display:inline;">
-                    <button type="submit" class="btn btn-link p-0 text-danger" style="font-size:11px;">
-                      <i class="bi bi-trash3"></i>
-                    </button>
-                  </form>
+                  <div class="text-muted" style="font-size:11px;">{{ item.detail }}</div>
                   {% endif %}
                 </div>
               </div>
-              {% if item.user %}
-              <div class="mt-1" style="font-size:10px; color:#94a3b8;">
-                <i class="bi bi-person me-1"></i>{{ item.user.full_name }}
-              </div>
-              {% endif %}
-            </div>
-          </div>
-          {% else %}
-          <div class="text-center py-4 text-muted" style="font-size:13px; position:relative; z-index:1;">
-            <i class="bi bi-clock-history d-block mb-2" style="font-size:2rem; opacity:.3;"></i>
-            Henüz aktivite yok
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      {# ── Sağ: Belgeler ── #}
-      <div class="col-lg-5">
-        <div class="fw-semibold mb-2" style="font-size:13px;">
-          <i class="bi bi-paperclip me-1 text-primary"></i>Belgeler
-          <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ req_documents | length }}</span>
-        </div>
-
-        {# Yükleme formu #}
-        <form method="post" action="/requests/{{ req.id }}/documents"
-              enctype="multipart/form-data" class="mb-3 p-2 rounded"
-              style="background:#f8fafc; border:1px solid #e2e8f0;">
-          <div class="mb-2">
-            <input type="text" name="doc_name" class="form-control form-control-sm"
-                   placeholder="Belge adı (isteğe bağlı)" style="font-size:12px;">
-          </div>
-          <div class="d-flex gap-2 mb-2">
-            <select name="doc_type" class="form-select form-select-sm" style="font-size:12px;">
-              {% for dt in document_types %}
-              <option value="{{ dt.value }}">{{ dt.label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-2">
-            <input type="file" name="file" class="form-control form-control-sm"
-                   style="font-size:12px;" required>
-          </div>
-          <button type="submit" class="btn btn-outline-primary btn-sm w-100" style="font-size:12px;">
-            <i class="bi bi-upload me-1"></i>Yükle
-          </button>
-        </form>
-
-        {# Belge listesi #}
-        {% if req_documents %}
-        <div class="d-flex flex-column gap-2">
-          {% for doc in req_documents %}
-          <div class="d-flex align-items-center gap-2 p-2 rounded"
-               style="border:1px solid #e2e8f0; background:white; font-size:12px;">
-            {# Dosya tipi ikonu #}
-            {% set ext = doc.file_name.rsplit('.', 1)[-1].lower() if '.' in doc.file_name else '' %}
-            <div style="width:32px; height:32px; border-radius:6px; flex-shrink:0;
-                        display:flex; align-items:center; justify-content:center;
-                        background:{% if ext in ('pdf',) %}#fee2e2
-                          {% elif ext in ('xlsx','xls','csv') %}#dcfce7
-                          {% elif ext in ('docx','doc') %}#dbeafe
-                          {% elif ext in ('pptx','ppt') %}#fef9c3
-                          {% else %}#f1f5f9{% endif %};">
-              <i class="bi {% if ext == 'pdf' %}bi-file-earmark-pdf text-danger
-                {% elif ext in ('xlsx','xls','csv') %}bi-file-earmark-excel text-success
-                {% elif ext in ('docx','doc') %}bi-file-earmark-word text-primary
-                {% elif ext in ('pptx','ppt') %}bi-file-earmark-ppt text-warning
-                {% else %}bi-file-earmark text-secondary{% endif %}"
-                 style="font-size:14px;"></i>
-            </div>
-            <div class="flex-grow-1 overflow-hidden">
-              <div class="fw-semibold text-truncate" style="font-size:12px;" title="{{ doc.doc_name }}">
-                {{ doc.doc_name }}
-              </div>
-              <div class="text-muted" style="font-size:10px;">
-                <span class="badge bg-light text-dark border me-1">{{ doc.type_label }}</span>
-                {{ doc.size_display }} ·
-                {{ doc.created_at.strftime("%d.%m.%Y") }}
-              </div>
-            </div>
-            <div class="d-flex gap-1 flex-shrink-0">
-              <a href="/requests/{{ req.id }}/documents/{{ doc.id }}/download"
+            </td>
+            <td class="text-muted" style="white-space:nowrap;">
+              {{ item.created_at.strftime("%d.%m.%Y %H:%M") }}
+            </td>
+            <td class="text-muted" style="font-size:11px;">
+              {{ item.user.full_name if item.user else '—' }}
+            </td>
+            <td class="pe-3 text-end">
+              {% if item.kind == 'doc' %}
+              <a href="/requests/{{ req.id }}/documents/{{ item.id }}/download"
                  class="btn btn-light btn-sm p-1" title="İndir" style="font-size:11px;">
                 <i class="bi bi-download"></i>
               </a>
-              {% if doc.uploaded_by == current_user.id or current_user.role in ('admin','mudur') %}
-              <form method="post"
-                    action="/requests/{{ req.id }}/documents/{{ doc.id }}/delete"
-                    onsubmit="return confirm('Bu belgeyi silmek istiyor musunuz?');">
-                <button type="submit" class="btn btn-light btn-sm p-1 text-danger"
-                        title="Sil" style="font-size:11px;">
-                  <i class="bi bi-trash3"></i>
-                </button>
-              </form>
+              {% else %}
+              <span class="text-muted" style="font-size:11px;">—</span>
               {% endif %}
-            </div>
-          </div>
+            </td>
+          </tr>
           {% endfor %}
-        </div>
-        {% else %}
-        <div class="text-center py-4 text-muted" style="font-size:12px;">
-          <i class="bi bi-folder2-open d-block mb-1" style="font-size:1.8rem; opacity:.3;"></i>
-          Henüz belge eklenmemiş
-        </div>
-        {% endif %}
-      </div>
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-archive d-block mb-2" style="font-size:2.5rem; opacity:.2;"></i>
+      <p class="mb-0" style="font-size:13px;">
+        Henüz kayıt yok.<br>
+        <small>Durum değişiklikleri, teklif indirmeleri ve fatura hareketleri burada otomatik görünür.</small>
+      </p>
+    </div>
+    {% endif %}
 
-    </div>{# /row #}
   </div>
 </div>
 
@@ -3666,6 +3666,13 @@ function applyVenuePickerSelection(section, emailFilterSection) {
   }
 })();
 
+function copyLink(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✅ Kopyalandı';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  });
+}
 </script>
 
 {% endblock %}
