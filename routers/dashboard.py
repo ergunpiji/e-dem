@@ -34,15 +34,16 @@ def _last_12_months() -> list[str]:
 def _build_financial_stats(db: Session, req_id_filter=None):
     """Onaylı faturalardan ciro/kar/aylık veri hesapla — sadece gerçek rakamlar."""
     inv_query = db.query(Invoice).filter(
-        Invoice.status.in_(["approved", "active"]),
+        Invoice.status.in_(["approved", "gm_approved", "active"]),
     )
     if req_id_filter is not None:
         inv_query = inv_query.filter(Invoice.request_id.in_(req_id_filter))
 
     invoices = inv_query.all()
 
-    total_sale = 0.0
-    total_cost = 0.0
+    total_sale     = 0.0
+    total_cost     = 0.0
+    total_komisyon = 0.0
     monthly: dict[str, dict] = defaultdict(lambda: {"sale": 0.0, "cost": 0.0})
 
     for inv in invoices:
@@ -50,10 +51,13 @@ def _build_financial_stats(db: Session, req_id_filter=None):
             total_sale += inv.amount
         elif inv.invoice_type == "iade_kesilen":
             total_sale -= inv.amount
-        elif inv.invoice_type in ("gelen", "komisyon"):
+        elif inv.invoice_type == "gelen":
             total_cost += inv.amount
         elif inv.invoice_type == "iade_gelen":
             total_cost -= inv.amount
+        elif inv.invoice_type == "komisyon":
+            # Komisyon faturası → gelir (kar'a direkt katkı)
+            total_komisyon += inv.amount
         else:
             continue
 
@@ -71,13 +75,17 @@ def _build_financial_stats(db: Session, req_id_filter=None):
                 monthly[key]["sale"] += inv.amount
             elif inv.invoice_type == "iade_kesilen":
                 monthly[key]["sale"] -= inv.amount
-            elif inv.invoice_type in ("gelen", "komisyon"):
+            elif inv.invoice_type == "gelen":
                 monthly[key]["cost"] += inv.amount
             elif inv.invoice_type == "iade_gelen":
                 monthly[key]["cost"] -= inv.amount
+            elif inv.invoice_type == "komisyon":
+                monthly[key]["sale"] += inv.amount   # komisyon → gelir
 
-    kar = total_sale - total_cost
-    karlilik = round(kar / total_sale * 100, 1) if total_sale > 0 else 0.0
+    # Kar = kesilen + komisyon − gelen (requests/detail.html ile aynı formül)
+    kar = total_sale + total_komisyon - total_cost
+    total_revenue = total_sale + total_komisyon
+    karlilik = round(kar / total_revenue * 100, 1) if total_revenue > 0 else 0.0
 
     labels = _last_12_months()
     chart_sale = [round(monthly[m]["sale"], 0) for m in labels]
@@ -85,13 +93,13 @@ def _build_financial_stats(db: Session, req_id_filter=None):
     chart_labels = [m[5:] + "/" + m[2:4] for m in labels]
 
     return {
-        "total_sale":   round(total_sale, 2),
-        "total_cost":   round(total_cost, 2),
-        "total_kar":    round(kar, 2),
-        "karlilik":     karlilik,
-        "chart_labels": chart_labels,
-        "chart_sale":   chart_sale,
-        "chart_cost":   chart_cost,
+        "total_sale":      round(total_revenue, 2),   # ciro + komisyon
+        "total_cost":      round(total_cost, 2),
+        "total_kar":       round(kar, 2),
+        "karlilik":        karlilik,
+        "chart_labels":    chart_labels,
+        "chart_sale":      chart_sale,
+        "chart_cost":      chart_cost,
     }
 
 
