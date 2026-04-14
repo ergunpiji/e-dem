@@ -561,7 +561,7 @@ class Request(Base):
     activity_logs        = relationship("ActivityLog", back_populates="request",
                                         cascade="all, delete-orphan",
                                         order_by="ActivityLog.created_at")
-    notes                = relationship("RequestNote", back_populates="request",
+    req_notes            = relationship("RequestNote", back_populates="request",
                                         cascade="all, delete-orphan",
                                         order_by="RequestNote.created_at")
     documents            = relationship("RequestDocument", back_populates="request",
@@ -1423,7 +1423,7 @@ class RequestNote(Base):
     created_at  = Column(DateTime, default=_now, nullable=False)
     updated_at  = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
-    request = relationship("Request", back_populates="notes")
+    request = relationship("Request", back_populates="req_notes")
     creator = relationship("User", foreign_keys=[created_by])
 
 
@@ -1457,3 +1457,29 @@ class RequestDocument(Base):
             return f"{s // 1024} KB"
         else:
             return f"{s / (1024*1024):.1f} MB"
+
+
+# ---------------------------------------------------------------------------
+# Operasyon Ajanı Modülü — referansa bağlı aktif modüller
+# ---------------------------------------------------------------------------
+class RequestModule(Base):
+    """Bir referansa bağlanan Operasyon Ajanı modülü."""
+    __tablename__ = "request_modules"
+
+    id               = Column(String(36), primary_key=True, default=_uuid)
+    request_id       = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    module_type      = Column(String(32), default="operasyon")   # gelecekte başka modüller
+    activated_by     = Column(String(36), ForeignKey("users.id"), nullable=True)
+    activated_at     = Column(DateTime, default=_now)
+
+    # Operasyon Ajanı tarafından dönen bilgiler
+    oa_event_id             = Column(String(36))
+    oa_manager_url          = Column(String(500))
+    oa_coordinator_url      = Column(String(500))
+    oa_transfer_supplier_url     = Column(String(500))
+    oa_accommodation_supplier_url = Column(String(500))
+
+    active = Column(Boolean, default=True)
+
+    request   = relationship("Request")
+    activator = relationship("User", foreign_keys=[activated_by])
