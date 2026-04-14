@@ -252,7 +252,7 @@ async def reports_financial(
     in_range_req_ids = [r.id for r in req_date_q.all()]
 
     inv_query = db.query(Invoice).filter(
-        Invoice.status.in_(["approved", "active"]),
+        Invoice.status.in_(["approved", "gm_approved", "mudur_approved", "active"]),
         Invoice.request_id.in_(in_range_req_ids),
     )
 
@@ -262,11 +262,11 @@ async def reports_financial(
     ref_fin: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0})
     for inv in invoices:
         rid = inv.request_id
-        if inv.invoice_type == "kesilen":
+        if inv.invoice_type in ("kesilen", "komisyon"):
             ref_fin[rid]["ciro"] += inv.amount
         elif inv.invoice_type == "iade_kesilen":
             ref_fin[rid]["ciro"] -= inv.amount
-        elif inv.invoice_type in ("gelen", "komisyon"):
+        elif inv.invoice_type == "gelen":
             ref_fin[rid]["maliyet"] += inv.amount
         elif inv.invoice_type == "iade_gelen":
             ref_fin[rid]["maliyet"] -= inv.amount
@@ -341,11 +341,11 @@ async def reports_financial(
                 pass
         if not ym:
             continue
-        if inv.invoice_type == "kesilen":
+        if inv.invoice_type in ("kesilen", "komisyon"):
             monthly[ym]["ciro"] += inv.amount
         elif inv.invoice_type == "iade_kesilen":
             monthly[ym]["ciro"] -= inv.amount
-        elif inv.invoice_type in ("gelen", "komisyon"):
+        elif inv.invoice_type == "gelen":
             monthly[ym]["maliyet"] += inv.amount
         elif inv.invoice_type == "iade_gelen":
             monthly[ym]["maliyet"] -= inv.amount
