@@ -20,7 +20,7 @@ from auth import get_current_user
 from database import generate_ref_no, get_db
 from models import (
     Budget, Customer, CustomCategory, EmailTemplate, EventType, REQUEST_STATUSES, REQUEST_TABS,
-    TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, User, Venue,
+    TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, RequestModule, User, Venue,
     _uuid, _now, REQUEST_STATUS_LABELS,
 )
 from routers.library import log_activity
