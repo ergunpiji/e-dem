@@ -109,14 +109,27 @@ async def nav_counts_middleware(request: Request, call_next):
                     counts["requests_pending"] = db.execute(
                         _text("SELECT COUNT(*) FROM requests WHERE status='pending'")
                     ).scalar() or 0
-                if role in ("yonetici", "asistan", "mudur", "admin"):
-                    # PM: kendi bütçeleri onay bekliyor
+                if role in ("yonetici", "asistan"):
+                    # PM: kendi bütçeleri fiyatlandırma bekliyor
                     counts["budgets_pending"] = db.execute(
                         _text(
                             "SELECT COUNT(*) FROM budgets b "
                             "JOIN requests r ON r.id=b.request_id "
                             "WHERE b.budget_status='pending_manager' AND r.created_by=:uid"
                         ), {"uid": uid}
+                    ).scalar() or 0
+                if role in ("mudur", "admin", "muhasebe_muduru"):
+                    # Yönetici: tüm bütçeler fiyatlandırma bekliyor (PM'ler için)
+                    counts["budgets_pending_all"] = db.execute(
+                        _text(
+                            "SELECT COUNT(*) FROM budgets "
+                            "WHERE budget_status='pending_manager'"
+                        )
+                    ).scalar() or 0
+                if role in ("mudur", "admin"):
+                    # Müdür onayı bekleyen faturalar (limit aşıldı, GM onayı gerekiyor)
+                    counts["inv_pending_mudur"] = db.execute(
+                        _text("SELECT COUNT(*) FROM invoices WHERE status='mudur_approved'")
                     ).scalar() or 0
             except Exception:
                 pass

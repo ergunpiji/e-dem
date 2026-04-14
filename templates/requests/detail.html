@@ -3,6 +3,23 @@
 {% block page_title_block %}{{ page_title }}{% endblock %}
 
 {% block topbar_actions %}
+{# ── Compact durum güncelle ── #}
+{% if can_edit_status or can_direct_manage %}
+<form method="post" action="/requests/{{ req.id }}/status"
+      class="d-flex align-items-center gap-1">
+  <select name="new_status" class="form-select form-select-sm"
+          style="width:auto; min-width:150px; font-size:12px;">
+    {% for s in statuses %}
+    {% if can_edit_status or s.value in ('in_progress','venues_contacted','budget_ready','completed','cancelled') %}
+    <option value="{{ s.value }}" {% if req.status == s.value %}selected{% endif %}>{{ s.label }}</option>
+    {% endif %}
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-warning btn-sm" style="font-size:12px; white-space:nowrap;">
+    <i class="bi bi-arrow-repeat me-1"></i>Güncelle
+  </button>
+</form>
+{% endif %}
 {% if can_edit_req and req.status == 'draft' %}
 <a href="/requests/{{ req.id }}/edit" class="btn btn-outline-secondary btn-sm">
   <i class="bi bi-pencil me-1"></i> Düzenle
@@ -425,33 +442,6 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     </div>
 
-    {# Durum Güncelle (E-dem veya direkt yöneten PM) #}
-    {% if can_edit_status or can_direct_manage %}
-    <div class="card">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">
-          <i class="bi bi-arrow-repeat me-2 text-warning"></i>Durum Güncelle
-        </h6>
-        <form method="post" action="/requests/{{ req.id }}/status">
-          <div class="mb-3">
-            <select name="new_status" class="form-select form-select-sm">
-              {% for s in statuses %}
-              {# PM direkt yönetimde sadece ilgili durumlara geçiş yapabilir #}
-              {% if can_edit_status or s.value in ('in_progress', 'venues_contacted', 'budget_ready', 'completed', 'cancelled') %}
-              <option value="{{ s.value }}" {% if req.status == s.value %}selected{% endif %}>
-                {{ s.label }}
-              </option>
-              {% endif %}
-              {% endfor %}
-            </select>
-          </div>
-          <button type="submit" class="btn btn-warning btn-sm w-100">
-            <i class="bi bi-check-lg me-1"></i>Durumu Güncelle
-          </button>
-        </form>
-      </div>
-    </div>
-    {% endif %}
   </div>
 
   {# ─── SAĞ: Hizmetler + Mekanlar + RFQ ─── #}
