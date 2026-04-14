@@ -24,14 +24,24 @@
 {% block content %}
 <div class="container-fluid py-3">
 
-  {# Özet kart #}
+  {# Özet kartlar #}
   <div class="row g-3 mb-3">
+    {% if pending_count > 0 %}
     <div class="col-6 col-md-2">
       <div class="card text-center py-2 border-0 shadow-sm">
         <div class="fs-4 fw-bold text-warning">{{ pending_count }}</div>
-        <div class="small text-muted">Onay Bekliyor</div>
+        <div class="small text-muted">Müdür Onayı Bekliyor</div>
       </div>
     </div>
+    {% endif %}
+    {% if mudur_approved_count > 0 and can_gm_approve %}
+    <div class="col-6 col-md-2">
+      <div class="card text-center py-2 border-0 shadow-sm">
+        <div class="fs-4 fw-bold text-info">{{ mudur_approved_count }}</div>
+        <div class="small text-muted">GM Onayı Bekliyor</div>
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   {# ── Filtre çubuğu ── #}
@@ -51,6 +61,7 @@
         <a href="/invoices?status_filter=mudur_approved&type_filter={{ type_filter }}"
            class="btn btn-outline-info {% if status_filter == 'mudur_approved' %}active{% endif %}">
           GM Onayı Bekliyor
+          {% if mudur_approved_count > 0 %}<span class="badge bg-info text-dark ms-1">{{ mudur_approved_count }}</span>{% endif %}
         </a>
         <a href="/invoices?status_filter=gm_approved&type_filter={{ type_filter }}"
            class="btn btn-outline-primary {% if status_filter == 'gm_approved' %}active{% endif %}">
@@ -193,22 +204,22 @@
                     <i class="bi bi-box-arrow-up-right" style="font-size:11px;"></i>
                   </a>
 
-                  {# Müdür: pending → mudur_approved #}
+                  {# Müdür: pending → mudur_approved veya gm_approved (limit'e göre) #}
                   {% if inv.status == 'pending' and can_mudur_approve %}
                   <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
                     <button type="submit" class="btn btn-sm btn-outline-warning py-0 px-2"
-                            title="Müdür Olarak Onayla"
-                            onclick="return confirm('Fatura talebini müdür olarak onaylıyor musunuz?')">
+                            title="Onayla"
+                            onclick="return confirm('Fatura talebini onaylıyor musunuz?')">
                       <i class="bi bi-check2" style="font-size:11px;"></i>
                     </button>
                   </form>
                   {% endif %}
-                  {# GM: pending veya mudur_approved → gm_approved #}
+                  {# Admin (GM): mudur_approved → gm_approved #}
                   {% if inv.status == 'mudur_approved' and can_gm_approve %}
                   <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
                     <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2"
-                            title="Genel Müdür Olarak Onayla"
-                            onclick="return confirm('Fatura talebini Genel Müdür olarak onaylıyor musunuz?')">
+                            title="Admin Olarak Onayla"
+                            onclick="return confirm('Fatura talebini onaylıyor musunuz?')">
                       <i class="bi bi-check2-all" style="font-size:11px;"></i>
                     </button>
                   </form>

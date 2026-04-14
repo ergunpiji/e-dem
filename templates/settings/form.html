@@ -81,7 +81,7 @@
                       placeholder="Saygılarımızla,&#10;E-dem Etkinlik Yönetimi&#10;Tel: ...">{{ settings.email_signature or '' }}</textarea>
             <div class="form-text">RFQ e-postalarının sonuna otomatik eklenir.</div>
           </div>
-          <div class="mb-0">
+          <div class="mb-3">
             <label class="form-label fw-semibold" style="font-size:13px;">Para Birimi</label>
             <select name="currency" class="form-select">
               <option value="₺" {% if settings.currency == '₺' %}selected{% endif %}>₺ — Türk Lirası</option>
@@ -89,6 +89,18 @@
               <option value="€" {% if settings.currency == '€' %}selected{% endif %}>€ — EUR</option>
               <option value="£" {% if settings.currency == '£' %}selected{% endif %}>£ — GBP</option>
             </select>
+          </div>
+          <div class="mb-0">
+            <label class="form-label fw-semibold" style="font-size:13px;">
+              Müdür Fatura Onay Limiti (₺)
+            </label>
+            <input type="text" name="invoice_mudur_limit" class="form-control"
+                   value="{{ '{:,.0f}'.format(settings.invoice_mudur_limit).replace(',', '.') if settings.invoice_mudur_limit else '' }}"
+                   placeholder="Boş bırakın = her zaman Admin onayı gerekli">
+            <div class="form-text" style="font-size:11px;">
+              Bu tutarın altındaki faturalar müdür onayından sonra doğrudan muhasebeye geçer.
+              Üstündekiler Admin (GM) onayına ihtiyaç duyar.
+            </div>
           </div>
         </div>
       </div>

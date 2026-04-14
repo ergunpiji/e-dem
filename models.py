@@ -1236,6 +1236,7 @@ class Settings(Base):
     rfq_subject_tpl = Column(String(300),
                              default="{event_name} Fiyat Teklifi - {request_no}")
     currency        = Column(String(10), default="₺")
+    invoice_mudur_limit = Column(Float, nullable=True)   # None = her zaman GM onayı gerekli
     updated_at      = Column(DateTime, default=_now, onupdate=_now)
 
     def to_dict(self) -> dict:

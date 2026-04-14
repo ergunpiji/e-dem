@@ -30,13 +30,22 @@ def _require_finance(current_user: User):
         raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
 
 
+def _is_gm(user: User) -> bool:
+    """Admin rolü VEYA 'Genel Müdür' unvanına sahip kullanıcılar GM yetkisi taşır."""
+    if user.role == "admin":
+        return True
+    if user.org_title and user.org_title.name == "Genel Müdür":
+        return True
+    return False
+
+
 def _require_approval_permission(current_user: User, inv):
     """
     Onay/red için yetki:
-    - pending       → mudur veya muhasebe_muduru/admin onaylayabilir
-    - mudur_approved → sadece muhasebe_muduru/admin (GM) onaylayabilir
+    - pending        → mudur veya GM onaylayabilir
+    - mudur_approved → sadece GM (admin veya Genel Müdür unvanlı) onaylayabilir
     """
-    if current_user.role in ("admin", "muhasebe_muduru"):
+    if _is_gm(current_user):
         return  # GM her adımda onaylayabilir
     if current_user.role == "mudur" and getattr(inv, "status", "") == "pending":
         return  # Müdür sadece pending'i onaylayabilir
@@ -108,33 +117,39 @@ async def invoices_list(
 
     invoices = query.order_by(Invoice.created_at.desc()).all()
 
-    pending_count = db.query(Invoice).join(Invoice.request).filter(
-        Invoice.status.in_(["pending", "mudur_approved"])
-    )
+    _count_base = db.query(Invoice).join(Invoice.request)
     if current_user.role in ("yonetici", "asistan"):
         from models import Request as ReqModel
-        pending_count = pending_count.filter(ReqModel.created_by == current_user.id)
-    pending_count = pending_count.count()
+        _count_base = _count_base.filter(ReqModel.created_by == current_user.id)
+    elif current_user.role == "mudur" and current_user.team_id:
+        from models import Request as ReqModel, User as UserModel
+        _team_ids = [u.id for u in db.query(UserModel).filter(
+            UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
+        _count_base = _count_base.filter(ReqModel.created_by.in_(_team_ids))
 
-    can_cut          = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    can_approve      = current_user.role in ("admin", "mudur", "muhasebe_muduru")
-    can_mudur_approve = current_user.role in ("admin", "mudur")   # pending → mudur_approved
-    can_gm_approve   = current_user.role in ("admin", "muhasebe_muduru")  # → gm_approved
+    pending_count        = _count_base.filter(Invoice.status == "pending").count()
+    mudur_approved_count = _count_base.filter(Invoice.status == "mudur_approved").count()
+
+    can_cut           = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    can_approve       = _is_gm(current_user) or current_user.role == "mudur"
+    can_mudur_approve = _is_gm(current_user) or current_user.role == "mudur"
+    can_gm_approve    = _is_gm(current_user)   # mudur_approved → gm_approved
 
     return templates.TemplateResponse("invoices/list.html", {
-        "request":           request,
-        "current_user":      current_user,
-        "page_title":        "Faturalar",
-        "invoices":          invoices,
-        "status_filter":     status_filter,
-        "type_filter":       type_filter,
-        "pending_count":     pending_count,
-        "invoice_types":     INVOICE_TYPES,
-        "INVOICE_TYPE_LABELS": {t["value"]: t["label"] for t in INVOICE_TYPES},
-        "can_cut":           can_cut,
-        "can_approve":       can_approve,
-        "can_mudur_approve": can_mudur_approve,
-        "can_gm_approve":    can_gm_approve,
+        "request":              request,
+        "current_user":         current_user,
+        "page_title":           "Faturalar",
+        "invoices":             invoices,
+        "status_filter":        status_filter,
+        "type_filter":          type_filter,
+        "pending_count":        pending_count,
+        "mudur_approved_count": mudur_approved_count,
+        "invoice_types":        INVOICE_TYPES,
+        "INVOICE_TYPE_LABELS":  {t["value"]: t["label"] for t in INVOICE_TYPES},
+        "can_cut":              can_cut,
+        "can_approve":          can_approve,
+        "can_mudur_approve":    can_mudur_approve,
+        "can_gm_approve":       can_gm_approve,
     })
 
 
@@ -564,18 +579,28 @@ async def invoices_approve(
     _require_approval_permission(current_user, inv)
 
     if inv.status == "pending":
-        if current_user.role == "mudur":
-            # Müdür onayı: pending → mudur_approved (GM onayı bekleniyor)
-            inv.status = "mudur_approved"
-        else:
-            # GM (muhasebe_muduru / admin) direkt onaylar, müdür adımını atlar
+        if _is_gm(current_user):
+            # GM direkt onaylar, müdür adımını atlar
             inv.status = "gm_approved"
+        elif current_user.role == "mudur":
+            # Müdür onayı: limit kontrolü
+            from models import Settings
+            settings = db.query(Settings).filter(Settings.id == 1).first()
+            limit = getattr(settings, "invoice_mudur_limit", None) if settings else None
+            if limit is not None and (inv.total_amount or 0) <= limit:
+                # Tutar limit dahilinde → GM onayı gerekmez, muhasebe kuyruğuna geç
+                inv.status = "gm_approved"
+            else:
+                # Limit yok veya tutar limiti aşıyor → GM onayı gerekli
+                inv.status = "mudur_approved"
+        else:
+            raise HTTPException(status_code=403, detail="Bu aşamada onay yetkiniz yok.")
     elif inv.status == "mudur_approved":
-        if current_user.role in ("admin", "muhasebe_muduru"):
+        if _is_gm(current_user):
             # GM onayı: mudur_approved → gm_approved
             inv.status = "gm_approved"
         else:
-            raise HTTPException(status_code=403, detail="Bu aşamada sadece Genel Müdür onaylayabilir.")
+            raise HTTPException(status_code=403, detail="Bu aşamada sadece GM onaylayabilir.")
     else:
         raise HTTPException(status_code=400, detail="Bu fatura onay için uygun durumda değil.")
 

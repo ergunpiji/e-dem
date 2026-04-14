@@ -916,6 +916,7 @@ def migrate_db():
         _safe_add_column(conn, "teams", "code", "TEXT", "''")
         _safe_add_column(conn, "users", "team_id",    "TEXT")
         _safe_add_column(conn, "users", "manager_id", "TEXT")
+        _safe_add_column(conn, "settings", "invoice_mudur_limit", "REAL")
 
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()

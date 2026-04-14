@@ -534,8 +534,10 @@ async def requests_detail(
     pending_invoices     = [inv for inv in (req.invoices or []) if inv.status == "pending"]
     gm_approved_invoices = [inv for inv in (req.invoices or []) if inv.status == "gm_approved"]
     rejected_invoices    = [inv for inv in (req.invoices or []) if inv.status == "rejected"]
-    # geriye uyumluluk — eski "active" kayıtlar da dahil
-    active_invoices      = approved_invoices + [inv for inv in (req.invoices or []) if inv.status == "active"]
+    # Kar/zarar hesabına: onaylanmış (approved), kesilecek (gm_approved) ve eski "active" dahildir.
+    # mudur_approved ve pending henüz GM onayından geçmediği için hariç tutulur.
+    active_invoices = [inv for inv in (req.invoices or [])
+                       if inv.status in ("approved", "gm_approved", "active")]
 
     invoice_ciro     = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "kesilen")
                       - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_kesilen"))

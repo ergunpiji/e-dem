@@ -51,14 +51,15 @@ async def settings_form(
 @router.post("", name="settings_save")
 async def settings_save(
     request: Request,
-    company_name:    str = Form(""),
-    company_address: str = Form(""),
-    company_phone:   str = Form(""),
-    company_email:   str = Form(""),
-    logo_url:        str = Form(""),
-    email_signature: str = Form(""),
-    rfq_subject_tpl: str = Form("{event_name} Fiyat Teklifi - {request_no}"),
-    currency:        str = Form("₺"),
+    company_name:         str = Form(""),
+    company_address:      str = Form(""),
+    company_phone:        str = Form(""),
+    company_email:        str = Form(""),
+    logo_url:             str = Form(""),
+    email_signature:      str = Form(""),
+    rfq_subject_tpl:      str = Form("{event_name} Fiyat Teklifi - {request_no}"),
+    currency:             str = Form("₺"),
+    invoice_mudur_limit:  str = Form(""),   # boş = limitsiz (her zaman GM onayı)
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -72,5 +73,10 @@ async def settings_save(
     s.email_signature = email_signature.strip()
     s.rfq_subject_tpl = rfq_subject_tpl.strip() or "{event_name} Fiyat Teklifi - {request_no}"
     s.currency        = currency.strip() or "₺"
+    limit_str = invoice_mudur_limit.strip().replace(".", "").replace(",", ".")
+    try:
+        s.invoice_mudur_limit = float(limit_str) if limit_str else None
+    except ValueError:
+        s.invoice_mudur_limit = None
     db.commit()
     return RedirectResponse(url="/settings?saved=1", status_code=status.HTTP_302_FOUND)
