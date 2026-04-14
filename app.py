@@ -198,6 +198,7 @@ from routers import notifications as notifications_router
 from routers import exchange_rates as exchange_rates_router
 from routers import closure as closure_router
 from routers import teams as teams_router
+from routers import library as library_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -219,3 +220,4 @@ app.include_router(notifications_router.router)
 app.include_router(exchange_rates_router.router)
 app.include_router(closure_router.router)
 app.include_router(teams_router.router)
+app.include_router(library_router.router)

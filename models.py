@@ -558,6 +558,15 @@ class Request(Base):
                                         order_by="UndocumentedEntry.entry_date")
     closure_request      = relationship("ClosureRequest", back_populates="request",
                                         uselist=False, cascade="all, delete-orphan")
+    activity_logs        = relationship("ActivityLog", back_populates="request",
+                                        cascade="all, delete-orphan",
+                                        order_by="ActivityLog.created_at")
+    notes                = relationship("RequestNote", back_populates="request",
+                                        cascade="all, delete-orphan",
+                                        order_by="RequestNote.created_at")
+    documents            = relationship("RequestDocument", back_populates="request",
+                                        cascade="all, delete-orphan",
+                                        order_by="RequestDocument.created_at")
 
     @property
     def cities(self) -> list:
@@ -1326,3 +1335,125 @@ class ClosureRequest(Base):
     @property
     def status_color(self) -> str:
         return CLOSURE_STATUS_COLORS.get(self.status, "secondary")
+
+
+# ---------------------------------------------------------------------------
+# Kütüphane — Notlar, Belgeler, Aktivite Logu
+# ---------------------------------------------------------------------------
+
+ACTIVITY_EVENT_ICONS = {
+    "status_change":    "bi-arrow-right-circle",
+    "note_added":       "bi-chat-left-text",
+    "document_added":   "bi-paperclip",
+    "document_removed": "bi-trash",
+    "budget_created":   "bi-calculator",
+    "budget_submitted": "bi-send",
+    "budget_approved":  "bi-check-circle",
+    "budget_rejected":  "bi-x-circle",
+    "invoice_created":  "bi-receipt",
+    "invoice_approved": "bi-receipt-cutoff",
+    "invoice_rejected": "bi-x-circle",
+    "closure_submitted":"bi-flag",
+    "closure_approved": "bi-folder-check",
+    "closure_rejected": "bi-folder-x",
+    "request_created":  "bi-plus-circle",
+}
+
+ACTIVITY_EVENT_COLORS = {
+    "status_change":    "primary",
+    "note_added":       "secondary",
+    "document_added":   "info",
+    "document_removed": "danger",
+    "budget_created":   "info",
+    "budget_submitted": "warning",
+    "budget_approved":  "success",
+    "budget_rejected":  "danger",
+    "invoice_created":  "info",
+    "invoice_approved": "success",
+    "invoice_rejected": "danger",
+    "closure_submitted":"warning",
+    "closure_approved": "success",
+    "closure_rejected": "danger",
+    "request_created":  "primary",
+}
+
+REQUEST_DOCUMENT_TYPES = [
+    {"value": "teklif",   "label": "Teklif"},
+    {"value": "sozlesme", "label": "Sözleşme"},
+    {"value": "fatura",   "label": "Fatura"},
+    {"value": "sunum",    "label": "Sunum"},
+    {"value": "diger",    "label": "Diğer"},
+]
+REQUEST_DOCUMENT_TYPE_LABELS = {d["value"]: d["label"] for d in REQUEST_DOCUMENT_TYPES}
+
+
+class ActivityLog(Base):
+    """Referans aktivite logu — otomatik ve manuel kayıtlar"""
+    __tablename__ = "activity_logs"
+
+    id          = Column(String(36), primary_key=True, default=_uuid)
+    request_id  = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    user_id     = Column(String(36), ForeignKey("users.id"), nullable=True)
+    event_type  = Column(String(50), nullable=False)   # status_change | note_added | ...
+    title       = Column(String(300), nullable=False)
+    detail      = Column(Text, default="")
+    created_at  = Column(DateTime, default=_now, nullable=False)
+
+    request = relationship("Request", back_populates="activity_logs")
+    user    = relationship("User", foreign_keys=[user_id])
+
+    @property
+    def icon(self) -> str:
+        return ACTIVITY_EVENT_ICONS.get(self.event_type, "bi-circle")
+
+    @property
+    def color(self) -> str:
+        return ACTIVITY_EVENT_COLORS.get(self.event_type, "secondary")
+
+
+class RequestNote(Base):
+    """Referans iç notu — yazışma, karar, gözlem"""
+    __tablename__ = "request_notes"
+
+    id          = Column(String(36), primary_key=True, default=_uuid)
+    request_id  = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    created_by  = Column(String(36), ForeignKey("users.id"), nullable=False)
+    content     = Column(Text, nullable=False)
+    is_pinned   = Column(Boolean, default=False, nullable=False)
+    created_at  = Column(DateTime, default=_now, nullable=False)
+    updated_at  = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    request = relationship("Request", back_populates="notes")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class RequestDocument(Base):
+    """Referansa eklenen belge — teklif, sözleşme, sunum vb."""
+    __tablename__ = "request_documents"
+
+    id          = Column(String(36), primary_key=True, default=_uuid)
+    request_id  = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    uploaded_by = Column(String(36), ForeignKey("users.id"), nullable=False)
+    doc_type    = Column(String(20), default="diger")   # teklif|sozlesme|fatura|sunum|diger
+    doc_name    = Column(String(255), nullable=False)   # kullanıcının verdiği isim
+    file_path   = Column(String(500), nullable=False)   # static/ altında relative path
+    file_name   = Column(String(255), nullable=False)   # orijinal dosya adı
+    file_size   = Column(Integer, default=0)            # byte
+    created_at  = Column(DateTime, default=_now, nullable=False)
+
+    request  = relationship("Request", back_populates="documents")
+    uploader = relationship("User", foreign_keys=[uploaded_by])
+
+    @property
+    def type_label(self) -> str:
+        return REQUEST_DOCUMENT_TYPE_LABELS.get(self.doc_type, self.doc_type)
+
+    @property
+    def size_display(self) -> str:
+        s = self.file_size or 0
+        if s < 1024:
+            return f"{s} B"
+        elif s < 1024 * 1024:
+            return f"{s // 1024} KB"
+        else:
+            return f"{s / (1024*1024):.1f} MB"

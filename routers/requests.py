@@ -21,8 +21,9 @@ from database import generate_ref_no, get_db
 from models import (
     Budget, Customer, CustomCategory, EmailTemplate, EventType, REQUEST_STATUSES, REQUEST_TABS,
     TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, User, Venue,
-    _uuid, _now,
+    _uuid, _now, REQUEST_STATUS_LABELS,
 )
+from routers.library import log_activity
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 from templates_config import templates
@@ -300,6 +301,12 @@ async def requests_create(
         updated_at=_now(),
     )
     db.add(req)
+    db.flush()
+    log_activity(
+        db, req.id, "request_created",
+        f"Referans oluşturuldu: {req.request_no}",
+        user_id=current_user.id,
+    )
     db.commit()
     return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
 
@@ -603,6 +610,48 @@ async def requests_detail(
     from datetime import date as _date
     today = _date.today().strftime("%Y-%m-%d")
 
+    # ── Kütüphane ──
+    from models import ActivityLog as _AL, RequestNote as _RN, RequestDocument as _RD, REQUEST_DOCUMENT_TYPES as _RDT
+    activity_logs = (db.query(_AL)
+                     .filter(_AL.request_id == req_id)
+                     .order_by(_AL.created_at.desc())
+                     .all())
+    req_notes = (db.query(_RN)
+                 .filter(_RN.request_id == req_id)
+                 .order_by(_RN.created_at.desc())
+                 .all())
+    req_documents = (db.query(_RD)
+                     .filter(_RD.request_id == req_id)
+                     .order_by(_RD.created_at.desc())
+                     .all())
+
+    # Birleşik timeline: loglar + notlar (son 60 kayıt)
+    timeline = []
+    for al in activity_logs:
+        timeline.append({
+            "kind":       "log",
+            "icon":       al.icon,
+            "color":      al.color,
+            "title":      al.title,
+            "detail":     al.detail,
+            "user":       al.user,
+            "created_at": al.created_at,
+            "id":         al.id,
+        })
+    for note in req_notes:
+        timeline.append({
+            "kind":       "note",
+            "icon":       "bi-chat-left-text",
+            "color":      "secondary",
+            "title":      f"{note.creator.full_name if note.creator else '—'} not ekledi",
+            "detail":     note.content,
+            "user":       note.creator,
+            "created_at": note.created_at,
+            "id":         note.id,
+            "note_obj":   note,
+        })
+    timeline.sort(key=lambda x: x["created_at"], reverse=True)
+
     return templates.TemplateResponse(
         "requests/detail.html",
         {
@@ -655,6 +704,10 @@ async def requests_detail(
             "undoc_gelir_total":      undoc_gelir_total,
             "undoc_gider_total":      undoc_gider_total,
             "today":                  today,
+            # Kütüphane
+            "timeline":               timeline,
+            "req_documents":          req_documents,
+            "document_types":         _RDT,
         },
     )
 
@@ -819,8 +872,14 @@ async def requests_update_status(
     if not is_edem_or_admin and not is_pm_direct:
         raise HTTPException(status_code=403, detail="Yetkisiz erişim.")
 
+    old_status = req.status
     req.status     = new_status
     req.updated_at = _now()
+    log_activity(
+        db, req_id, "status_change",
+        f"Durum güncellendi: {REQUEST_STATUS_LABELS.get(old_status, old_status)} → {REQUEST_STATUS_LABELS.get(new_status, new_status)}",
+        user_id=current_user.id,
+    )
     db.commit()
     return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
 
