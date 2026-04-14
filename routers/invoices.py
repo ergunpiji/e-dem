@@ -536,15 +536,11 @@ async def invoices_cut(
     due_date:     str = Form(""),
     document:     UploadFile = File(None),
 ):
-    """Muhasebe fatura talebini kesip onaylar. Detayları doldurur + belge ekler + status=approved."""
+    """Muhasebe onaylı faturaya detay ekler (fatura no, tarih, belge). Durum değişmez."""
     _require_finance(current_user)
     inv = _get_invoice_or_404(db, invoice_id)
-    # muhasebe rolü sadece gm_approved olanı kesebilir; muhasebe_muduru/admin pending'i de kesebilir
-    if current_user.role == "muhasebe":
-        if inv.status != "gm_approved":
-            raise HTTPException(status_code=400, detail="Fatura henüz Genel Müdür tarafından onaylanmadı.")
-    elif inv.status not in ("pending", "gm_approved"):
-        raise HTTPException(status_code=400, detail="Bu fatura zaten işlenmiş veya iptal edilmiş.")
+    if inv.status not in ("approved", "gm_approved"):
+        raise HTTPException(status_code=400, detail="Sadece onaylı faturalara detay eklenebilir.")
 
     if invoice_no.strip():
         inv.invoice_no = invoice_no.strip()
@@ -558,9 +554,9 @@ async def invoices_cut(
         inv.document_path = doc_path
         inv.document_name = doc_name
 
-    inv.status      = "approved"
-    inv.approved_by = current_user.id
-    inv.approved_at = _now()
+    # Eski gm_approved kayıtlar için durum approved'a güncellenir; zaten approved olanlar değişmez
+    if inv.status == "gm_approved":
+        inv.status = "approved"
     inv.updated_at  = _now()
     db.commit()
     return RedirectResponse(url="/invoices?status_filter=gm_approved", status_code=303)
@@ -580,16 +576,16 @@ async def invoices_approve(
 
     if inv.status == "pending":
         if _is_gm(current_user):
-            # GM direkt onaylar, müdür adımını atlar
-            inv.status = "gm_approved"
+            # GM direkt onaylar → approved (muhasebe adımı yok)
+            inv.status = "approved"
         elif current_user.role == "mudur":
             # Müdür onayı: limit kontrolü
             from models import Settings
             settings = db.query(Settings).filter(Settings.id == 1).first()
             limit = getattr(settings, "invoice_mudur_limit", None) if settings else None
             if limit is not None and (inv.total_amount or 0) <= limit:
-                # Tutar limit dahilinde → GM onayı gerekmez, muhasebe kuyruğuna geç
-                inv.status = "gm_approved"
+                # Tutar limit dahilinde → GM onayı gerekmez, doğrudan onaylandı
+                inv.status = "approved"
             else:
                 # Limit yok veya tutar limiti aşıyor → GM onayı gerekli
                 inv.status = "mudur_approved"
@@ -597,10 +593,16 @@ async def invoices_approve(
             raise HTTPException(status_code=403, detail="Bu aşamada onay yetkiniz yok.")
     elif inv.status == "mudur_approved":
         if _is_gm(current_user):
-            # GM onayı: mudur_approved → gm_approved
-            inv.status = "gm_approved"
+            # GM onayı: mudur_approved → approved (doğrudan)
+            inv.status = "approved"
         else:
             raise HTTPException(status_code=403, detail="Bu aşamada sadece GM onaylayabilir.")
+    elif inv.status == "gm_approved":
+        # Eski kayıtlar için geriye dönük uyumluluk
+        if _is_gm(current_user) or current_user.role in ("muhasebe_muduru", "muhasebe"):
+            inv.status = "approved"
+        else:
+            raise HTTPException(status_code=403, detail="Bu aşamada yetkiniz yok.")
     else:
         raise HTTPException(status_code=400, detail="Bu fatura onay için uygun durumda değil.")
 
@@ -612,7 +614,7 @@ async def invoices_approve(
 
     if inv.status == "mudur_approved":
         return RedirectResponse(url="/invoices?status_filter=pending", status_code=303)
-    return RedirectResponse(url="/invoices?status_filter=mudur_approved", status_code=303)
+    return RedirectResponse(url="/invoices?status_filter=approved", status_code=303)
 
 
 # ---------------------------------------------------------------------------

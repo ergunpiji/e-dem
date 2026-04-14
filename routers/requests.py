@@ -544,9 +544,10 @@ async def requests_detail(
     invoice_komisyon = sum(inv.amount for inv in active_invoices if inv.invoice_type == "komisyon")
     invoice_maliyet  = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "gelen")
                       - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_gelen"))
-    # Net maliyet: brüt gelen faturalar - komisyon geliri (komisyon maliyeti düşürür)
-    invoice_net_maliyet = invoice_maliyet - invoice_komisyon
-    invoice_kar      = invoice_ciro - invoice_net_maliyet
+    # Net maliyet: sadece gelen faturalar (komisyon artık kar'a direkt ekleniyor, maliyet düşümü değil)
+    invoice_net_maliyet = invoice_maliyet
+    # Kar = kesilen fatura geliri + komisyon geliri − gelen fatura maliyeti
+    invoice_kar      = invoice_ciro + invoice_komisyon - invoice_net_maliyet
 
     # Belgesiz gelir/gider → ciro ve kar'a dahil et (HBF öncesi)
     from models import UndocumentedEntry as _UE

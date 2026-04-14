@@ -63,12 +63,8 @@
           GM Onayı Bekliyor
           {% if mudur_approved_count > 0 %}<span class="badge bg-info text-dark ms-1">{{ mudur_approved_count }}</span>{% endif %}
         </a>
-        <a href="/invoices?status_filter=gm_approved&type_filter={{ type_filter }}"
-           class="btn btn-outline-primary {% if status_filter == 'gm_approved' %}active{% endif %}">
-          Kesilecek
-        </a>
         <a href="/invoices?status_filter=approved&type_filter={{ type_filter }}"
-           class="btn btn-outline-success {% if status_filter == 'approved' %}active{% endif %}">Kesildi</a>
+           class="btn btn-outline-success {% if status_filter == 'approved' %}active{% endif %}">Onaylandı</a>
         <a href="/invoices?status_filter=rejected&type_filter={{ type_filter }}"
            class="btn btn-outline-danger {% if status_filter == 'rejected' %}active{% endif %}">Reddedildi</a>
       </div>
@@ -177,9 +173,9 @@
                 {% elif inv.status == 'mudur_approved' %}
                   <span class="badge bg-info text-dark">GM Onayı Bekliyor</span>
                 {% elif inv.status == 'gm_approved' %}
-                  <span class="badge bg-primary">Kesilecek</span>
+                  <span class="badge bg-warning text-dark">Onay Bekliyor (Eski)</span>
                 {% elif inv.status == 'approved' %}
-                  <span class="badge bg-success">Kesildi</span>
+                  <span class="badge bg-success">Onaylandı</span>
                   {% if inv.approved_at %}
                   <div class="small text-muted" style="font-size:10px;">
                     {{ inv.approver.name if inv.approver else '' }}
@@ -232,12 +228,12 @@
                   </button>
                   {% endif %}
 
-                  {# Muhasebe: gm_approved → kes #}
-                  {% if inv.status == 'gm_approved' and can_cut %}
-                  <button class="btn btn-sm btn-success py-0 px-2"
-                          title="Faturayı Kes"
+                  {# Muhasebe: onaylı faturaya belge/detay ekle #}
+                  {% if inv.status in ('approved', 'gm_approved') and can_cut %}
+                  <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                          title="Belge / Detay Ekle"
                           onclick="openCutModal('{{ inv.id }}')">
-                    <i class="bi bi-scissors" style="font-size:11px;"></i>
+                    <i class="bi bi-paperclip" style="font-size:11px;"></i>
                   </button>
                   {% endif %}
                 </div>
@@ -290,7 +286,7 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header py-2">
-        <h6 class="modal-title"><i class="bi bi-scissors me-2 text-success"></i>Faturayı Kes & Projeye Ekle</h6>
+        <h6 class="modal-title"><i class="bi bi-paperclip me-2 text-secondary"></i>Fatura Detayı / Belge Ekle</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" id="cutInvoiceForm" enctype="multipart/form-data">
@@ -322,8 +318,8 @@
         </div>
         <div class="modal-footer py-2">
           <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
-          <button type="submit" class="btn btn-sm btn-success">
-            <i class="bi bi-scissors me-1"></i>Faturayı Kes & Ekle
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Kaydet
           </button>
         </div>
       </form>
