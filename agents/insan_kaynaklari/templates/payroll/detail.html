@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Bordro Slip — HR Ajanı{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Bordro Slip — {{ payroll.period_label }}</div>
+    <div class="page-subtitle">{{ payroll.employee.full_name if payroll.employee else '' }}</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    {% if user.role == 'hr_admin' and payroll.status == 'taslak' %}
+    <form method="post" action="/payroll/{{ payroll.id }}/approve" style="display:inline">
+      <button type="submit" class="btn btn-success">Onayla &amp; Çalışana Bildir</button>
+    </form>
+    {% elif user.role == 'hr_admin' and payroll.status == 'onaylandi' %}
+    <button onclick="document.getElementById('paidModal').classList.add('open')" class="btn btn-primary">Ödendi Olarak İşaretle</button>
+    {% endif %}
+    <a href="/payroll" class="btn btn-secondary">Geri</a>
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Maaş Dökümü -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Maaş Dökümü</span>
+      <span class="badge badge-{% if payroll.status == 'odendi' %}success{% elif payroll.status == 'onaylandi' %}info{% else %}neutral{% endif %}">
+        {{ payroll.status_label }}
+      </span>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table style="width:100%">
+        <tbody>
+          <tr style="background:#f0fdf4"><td style="padding:10px 16px;font-weight:600">Brüt Maaş</td><td class="text-right font-mono" style="padding:10px 16px">{{ payroll.gross_salary | currency }}</td></tr>
+          {% if payroll.overtime_pay > 0 %}
+          <tr><td style="padding:8px 16px;color:var(--text-muted)">+ Fazla Mesai</td><td class="text-right font-mono amount-positive" style="padding:8px 16px">{{ payroll.overtime_pay | currency }}</td></tr>
+          {% endif %}
+          {% if payroll.meal_allowance > 0 %}
+          <tr><td style="padding:8px 16px;color:var(--text-muted)">+ Yemek Yardımı</td><td class="text-right font-mono amount-positive" style="padding:8px 16px">{{ payroll.meal_allowance | currency }}</td></tr>
+          {% endif %}
+          {% if payroll.other_additions > 0 %}
+          <tr><td style="padding:8px 16px;color:var(--text-muted)">+ Diğer Eklemeler</td><td class="text-right font-mono amount-positive" style="padding:8px 16px">{{ payroll.other_additions | currency }}</td></tr>
+          {% endif %}
+          <tr style="border-top:1px solid var(--border)"><td style="padding:8px 16px;color:var(--text-muted)">− SGK (Çalışan %14)</td><td class="text-right font-mono amount-negative" style="padding:8px 16px">{{ payroll.sgk_employee | currency }}</td></tr>
+          <tr><td style="padding:8px 16px;color:var(--text-muted)">− Gelir Vergisi</td><td class="text-right font-mono amount-negative" style="padding:8px 16px">{{ payroll.income_tax | currency }}</td></tr>
+          <tr><td style="padding:8px 16px;color:var(--text-muted)">− Damga Vergisi</td><td class="text-right font-mono amount-negative" style="padding:8px 16px">{{ payroll.stamp_tax | currency }}</td></tr>
+          {% if payroll.other_deductions > 0 %}
+          <tr><td style="padding:8px 16px;color:var(--text-muted)">− Diğer Kesintiler</td><td class="text-right font-mono amount-negative" style="padding:8px 16px">{{ payroll.other_deductions | currency }}</td></tr>
+          {% endif %}
+          <tr style="background:#f0fdf4;border-top:2px solid var(--border)">
+            <td style="padding:12px 16px;font-weight:700;font-size:15px">NET MAAŞ</td>
+            <td class="text-right font-mono" style="padding:12px 16px;font-weight:700;font-size:18px;color:var(--success)">{{ payroll.net_salary | currency }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- İşveren Maliyeti -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">Ek Bilgiler</span></div>
+    <div class="card-body">
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">İşveren SGK (%20.5)</div>
+        <div class="font-mono" style="font-size:16px;font-weight:600;color:var(--warning)">{{ payroll.sgk_employer | currency }}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Toplam işveren maliyeti: {{ (payroll.gross_salary + payroll.sgk_employer) | currency }}</div>
+      </div>
+      {% if payroll.payment_date %}
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Ödeme Tarihi</div>
+        <div style="font-size:14px;font-weight:600">{{ payroll.payment_date | fmtdate }}</div>
+      </div>
+      {% endif %}
+      {% if payroll.notes %}
+      <div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Notlar</div>
+        <div style="font-size:13px">{{ payroll.notes }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Overtime detayları -->
+{% if overtime_rows %}
+<div class="card mt-4">
+  <div class="card-header"><span class="card-title">⏰ Bu Dönem Fazla Mesai</span></div>
+  <div class="card-body" style="padding:0">
+    <table>
+      <thead>
+        <tr><th>Tarih</th><th>Süre</th><th>Çarpan</th><th>Gerekçe</th></tr>
+      </thead>
+      <tbody>
+        {% for ot in overtime_rows %}
+        <tr>
+          <td class="nowrap">{{ ot.work_date | fmtdate }}</td>
+          <td>{{ ot.hours | fmthours }}</td>
+          <td><span class="badge badge-info">{{ ot.rate_label }}</span></td>
+          <td>{{ ot.reason or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Ödendi Modal -->
+<div id="paidModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Ödeme Tarihi Gir</div>
+    <form method="post" action="/payroll/{{ payroll.id }}/mark-paid">
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Ödeme Tarihi</label>
+        <input type="date" name="payment_date" required>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="submit" class="btn btn-primary">Onayla</button>
+        <button type="button" onclick="document.getElementById('paidModal').classList.remove('open')" class="btn btn-secondary">İptal</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>document.querySelector('[name=payment_date]').value = new Date().toISOString().split('T')[0];</script>
+{% endblock %}

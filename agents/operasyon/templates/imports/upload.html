@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Excel Aktar — {{ event.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">📥 Excel'den Katılımcı Aktar</div>
+    <div class="page-subtitle">{{ event.name }}</div>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">❌ {{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <div style="margin-bottom:16px;">
+    <div class="card-title" style="margin-bottom:8px;">Nasıl çalışır?</div>
+    <p style="color:#64748b; font-size:13px; line-height:1.7;">
+      Müşterinin gönderdiği Excel dosyasını yükleyin — <strong>format önemli değil</strong>.
+      Yapay zeka dosyayı analiz ederek ad, soyad, uçuş bilgileri, konaklama gibi verileri
+      otomatik olarak tanıyacak ve standart formata dönüştürecek.
+      Onaylamadan önce önizleme göreceksiniz.
+    </p>
+  </div>
+
+  <form method="post" action="/events/{{ event.id }}/import/upload" enctype="multipart/form-data" id="upload-form">
+    <div class="upload-area" id="upload-area">
+      <div class="upload-area-icon">📂</div>
+      <div class="upload-area-title">Excel dosyasını buraya sürükleyin veya tıklayın</div>
+      <div class="upload-area-hint">.xlsx veya .xls formatı desteklenir</div>
+      <input type="file" name="file" id="file-input" accept=".xlsx,.xls" style="display:none">
+    </div>
+  </form>
+</div>
+
+<div class="card" style="background:#f8fafc;">
+  <div class="card-title" style="margin-bottom:12px;">💡 İpuçları</div>
+  <ul style="color:#64748b; font-size:13px; line-height:2; padding-left:16px;">
+    <li>Dosyada hangi sütunlar hangi isimde olursa olsun otomatik tanınır</li>
+    <li>Birden fazla sayfa varsa hepsi taranır</li>
+    <li>Uçuş bilgisi olmayan katılımcılar da aktarılır</li>
+    <li>Tarih formatları otomatik dönüştürülür</li>
+    <li>İsimler "Ad Soyad" ya da ayrı sütunlarda olabilir</li>
+  </ul>
+</div>
+{% endblock %}
