@@ -88,8 +88,11 @@ def _compute_totals(lines: list) -> tuple[float, float, float]:
 @router.get("", response_class=HTMLResponse, name="invoices_list")
 async def invoices_list(
     request: Request,
-    status_filter: str = "all",   # all | pending | approved | rejected | cancelled
-    type_filter: str = "all",     # all | kesilen | gelen | komisyon | iade_kesilen | iade_gelen
+    status_filter: str = "all",
+    type_filter: str = "all",
+    q: str = "",            # serbest metin: fatura no, tedarikçi, referans no
+    date_from: str = "",    # YYYY-MM-DD
+    date_to: str = "",      # YYYY-MM-DD
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -114,6 +117,19 @@ async def invoices_list(
         query = query.filter(Invoice.status == status_filter)
     if type_filter != "all":
         query = query.filter(Invoice.invoice_type == type_filter)
+    if q.strip():
+        from models import Request as ReqModel
+        term = f"%{q.strip()}%"
+        query = query.filter(
+            Invoice.invoice_no.ilike(term) |
+            Invoice.vendor_name.ilike(term) |
+            ReqModel.request_no.ilike(term) |
+            ReqModel.event_name.ilike(term)
+        )
+    if date_from:
+        query = query.filter(Invoice.invoice_date >= date_from)
+    if date_to:
+        query = query.filter(Invoice.invoice_date <= date_to)
 
     invoices = query.order_by(Invoice.created_at.desc()).all()
 
@@ -142,6 +158,9 @@ async def invoices_list(
         "invoices":             invoices,
         "status_filter":        status_filter,
         "type_filter":          type_filter,
+        "q":                    q,
+        "date_from":            date_from,
+        "date_to":              date_to,
         "pending_count":        pending_count,
         "mudur_approved_count": mudur_approved_count,
         "invoice_types":        INVOICE_TYPES,

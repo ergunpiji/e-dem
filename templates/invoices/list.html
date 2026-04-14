@@ -12,97 +12,130 @@
 
 {% block extra_head %}
 <style>
-  .filter-bar { background:#fff; border-radius:10px; padding:12px 18px;
-                box-shadow:0 1px 4px rgba(0,0,0,.06); margin-bottom:18px;
-                display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
   .inv-table th { font-size:11px; text-transform:uppercase; letter-spacing:.4px;
                   color:#64748b; background:#f8fafc; white-space:nowrap; }
   .inv-table td { font-size:13px; vertical-align:middle; }
+  .filter-chip { display:inline-flex; align-items:center; gap:4px; padding:2px 8px;
+                 border-radius:12px; font-size:11px; background:#e2e8f0; color:#475569; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3">
 
-  {# Özet kartlar #}
-  <div class="row g-3 mb-3">
-    {% if pending_count > 0 %}
-    <div class="col-6 col-md-2">
-      <div class="card text-center py-2 border-0 shadow-sm">
-        <div class="fs-4 fw-bold text-warning">{{ pending_count }}</div>
-        <div class="small text-muted">Müdür Onayı Bekliyor</div>
-      </div>
-    </div>
-    {% endif %}
-    {% if mudur_approved_count > 0 and can_gm_approve %}
-    <div class="col-6 col-md-2">
-      <div class="card text-center py-2 border-0 shadow-sm">
-        <div class="fs-4 fw-bold text-info">{{ mudur_approved_count }}</div>
-        <div class="small text-muted">GM Onayı Bekliyor</div>
-      </div>
-    </div>
-    {% endif %}
-  </div>
 
-  {# ── Filtre çubuğu ── #}
-  <div class="filter-bar">
+  {# ── Filtre Formu ── #}
+  <form method="get" action="/invoices" id="invoiceFilterForm">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body py-3 px-3">
+        <div class="row g-2 align-items-end">
 
-    {# Durum: buton grubu #}
-    <div class="d-flex align-items-center gap-2">
-      <span class="small text-muted fw-semibold">Durum:</span>
-      <div class="btn-group btn-group-sm">
-        <a href="/invoices?status_filter=all&type_filter={{ type_filter }}"
-           class="btn btn-outline-secondary {% if status_filter == 'all' %}active{% endif %}">Tümü</a>
-        <a href="/invoices?status_filter=pending&type_filter={{ type_filter }}"
-           class="btn btn-outline-warning {% if status_filter == 'pending' %}active{% endif %}">
-          Müdür Onayı Bekliyor
-          {% if pending_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pending_count }}</span>{% endif %}
-        </a>
-        <a href="/invoices?status_filter=mudur_approved&type_filter={{ type_filter }}"
-           class="btn btn-outline-info {% if status_filter == 'mudur_approved' %}active{% endif %}">
-          GM Onayı Bekliyor
-          {% if mudur_approved_count > 0 %}<span class="badge bg-info text-dark ms-1">{{ mudur_approved_count }}</span>{% endif %}
-        </a>
-        <a href="/invoices?status_filter=approved&type_filter={{ type_filter }}"
-           class="btn btn-outline-success {% if status_filter == 'approved' %}active{% endif %}">Onaylandı</a>
-        <a href="/invoices?status_filter=rejected&type_filter={{ type_filter }}"
-           class="btn btn-outline-danger {% if status_filter == 'rejected' %}active{% endif %}">Reddedildi</a>
-      </div>
-    </div>
+          {# Arama #}
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1" style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">
+              Ara
+            </label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" name="q" class="form-control" value="{{ q }}"
+                     placeholder="Fatura no, tedarikçi, referans, etkinlik adı…">
+              {% if q %}<button type="button" class="btn btn-outline-secondary" onclick="clearField('q')"><i class="bi bi-x"></i></button>{% endif %}
+            </div>
+          </div>
 
-    {# Tür: dropdown #}
-    <div class="d-flex align-items-center gap-2">
-      <span class="small text-muted fw-semibold">Tür:</span>
-      <div class="dropdown">
-        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
-                data-bs-toggle="dropdown" style="min-width:160px; text-align:left;">
-          {% if type_filter == 'all' %}
-            Tüm Türler
-          {% else %}
-            {% for t in invoice_types %}{% if t.value == type_filter %}{{ t.label }}{% endif %}{% endfor %}
+          {# Durum #}
+          <div class="col-6 col-md-2">
+            <label class="form-label mb-1" style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Durum</label>
+            <select name="status_filter" class="form-select form-select-sm">
+              <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Tümü</option>
+              <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>
+                Müdür Onayı Bekliyor{% if pending_count %} ({{ pending_count }}){% endif %}
+              </option>
+              <option value="mudur_approved" {% if status_filter == 'mudur_approved' %}selected{% endif %}>
+                GM Onayı Bekliyor{% if mudur_approved_count %} ({{ mudur_approved_count }}){% endif %}
+              </option>
+              <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Onaylandı</option>
+              <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Reddedildi</option>
+              <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>İptal</option>
+            </select>
+          </div>
+
+          {# Tür #}
+          <div class="col-6 col-md-2">
+            <label class="form-label mb-1" style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Tür</label>
+            <select name="type_filter" class="form-select form-select-sm">
+              <option value="all" {% if type_filter == 'all' %}selected{% endif %}>Tüm Türler</option>
+              {% for t in invoice_types %}
+              <option value="{{ t.value }}" {% if type_filter == t.value %}selected{% endif %}>{{ t.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Tarih Aralığı #}
+          <div class="col-6 col-md-2">
+            <label class="form-label mb-1" style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Tarih (Başlangıç)</label>
+            <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label mb-1" style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Tarih (Bitiş)</label>
+            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+          </div>
+
+        </div>
+
+        {# Butonlar + aktif filtre chip'leri #}
+        <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-search me-1"></i>Filtrele
+          </button>
+          {% if q or status_filter != 'all' or type_filter != 'all' or date_from or date_to %}
+          <a href="/invoices" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-x-circle me-1"></i>Filtreleri Temizle
+          </a>
+          {# Aktif filtreler #}
+          {% if status_filter != 'all' %}
+          <span class="filter-chip">Durum: <strong>
+            {% if status_filter == 'pending' %}Müdür Onayı Bekliyor
+            {% elif status_filter == 'mudur_approved' %}GM Onayı Bekliyor
+            {% elif status_filter == 'approved' %}Onaylandı
+            {% elif status_filter == 'rejected' %}Reddedildi
+            {% else %}{{ status_filter }}{% endif %}
+          </strong></span>
           {% endif %}
-        </button>
-        <ul class="dropdown-menu dropdown-menu-start">
-          <li>
-            <a class="dropdown-item {% if type_filter == 'all' %}active{% endif %}"
-               href="/invoices?status_filter={{ status_filter }}&type_filter=all">
-              Tüm Türler
-            </a>
-          </li>
-          <li><hr class="dropdown-divider"></li>
-          {% for t in invoice_types %}
-          <li>
-            <a class="dropdown-item {% if type_filter == t.value %}active{% endif %}"
-               href="/invoices?status_filter={{ status_filter }}&type_filter={{ t.value }}">
-              {{ t.label }}
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
+          {% if type_filter != 'all' %}
+          <span class="filter-chip">Tür: <strong>{% for t in invoice_types %}{% if t.value == type_filter %}{{ t.label }}{% endif %}{% endfor %}</strong></span>
+          {% endif %}
+          {% if q %}<span class="filter-chip">Arama: <strong>{{ q }}</strong></span>{% endif %}
+          {% if date_from %}<span class="filter-chip">Başlangıç: <strong>{{ date_from[8:10] }}.{{ date_from[5:7] }}.{{ date_from[0:4] }}</strong></span>{% endif %}
+          {% if date_to %}<span class="filter-chip">Bitiş: <strong>{{ date_to[8:10] }}.{{ date_to[5:7] }}.{{ date_to[0:4] }}</strong></span>{% endif %}
+          {% endif %}
+          <span class="text-muted ms-auto" style="font-size:12px;">{{ invoices | length }} fatura</span>
+        </div>
+
       </div>
     </div>
 
-  </div>
+    {# Hızlı durum butonları — onay bekleyenler için #}
+    {% if pending_count > 0 or mudur_approved_count > 0 %}
+    <div class="d-flex gap-2 mb-3 flex-wrap">
+      {% if pending_count > 0 %}
+      <button type="button" class="btn btn-warning btn-sm"
+              onclick="setStatus('pending')">
+        <i class="bi bi-clock me-1"></i>Müdür Onayı Bekliyor
+        <span class="badge bg-white text-warning ms-1">{{ pending_count }}</span>
+      </button>
+      {% endif %}
+      {% if mudur_approved_count > 0 and can_gm_approve %}
+      <button type="button" class="btn btn-info btn-sm"
+              onclick="setStatus('mudur_approved')">
+        <i class="bi bi-clock me-1"></i>GM Onayı Bekliyor
+        <span class="badge bg-white text-info ms-1">{{ mudur_approved_count }}</span>
+      </button>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </form>
 
   {# ── Tablo ── #}
   <div class="card border-0 shadow-sm">
@@ -246,9 +279,9 @@
       {% else %}
       <div class="text-center py-5 text-muted">
         <i class="bi bi-receipt fs-1 d-block mb-2 opacity-25"></i>
-        {% if status_filter == 'pending' %}Müdür onayı bekleyen fatura yok.
+        {% if q or date_from or date_to %}Arama kriterlerine uyan fatura bulunamadı.
+        {% elif status_filter == 'pending' %}Müdür onayı bekleyen fatura yok.
         {% elif status_filter == 'mudur_approved' %}GM onayı bekleyen fatura yok.
-        {% elif status_filter == 'gm_approved' %}Kesilecek fatura yok.
         {% elif status_filter != 'all' %}Bu filtreye uyan fatura bulunamadı.
         {% else %}Henüz fatura girilmemiş.{% endif %}
       </div>
@@ -329,6 +362,14 @@
 {% endif %}
 
 <script>
+function setStatus(val) {
+  document.querySelector('select[name=status_filter]').value = val;
+  document.getElementById('invoiceFilterForm').submit();
+}
+function clearField(name) {
+  document.querySelector('[name=' + name + ']').value = '';
+  document.getElementById('invoiceFilterForm').submit();
+}
 function openRejectModal(invId) {
   document.getElementById('rejectForm').action = '/invoices/' + invId + '/reject';
   new bootstrap.Modal(document.getElementById('rejectModal')).show();
