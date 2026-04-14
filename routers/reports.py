@@ -235,25 +235,26 @@ async def reports_financial(
             User.role.in_(["mudur", "yonetici", "asistan"]), User.active == True
         ).all()
 
-    # Fatura bazlı sorgulama — sadece onaylı faturalar, tarih aralığı invoice_date'e göre
-    inv_query = db.query(Invoice).filter(
-        Invoice.status.in_(["approved", "active"]),
-        Invoice.invoice_date >= d_from.isoformat(),
-        Invoice.invoice_date <= d_to.isoformat(),
+    # Fatura bazlı sorgulama: taleplerin etkinlik başlangıç tarihi (check_in) aralığa göre filtrele.
+    # Gruplama ile tutarlı olması için fatura tarihi değil iş tarihi esas alınır.
+    req_date_q = db.query(ReqModel.id).filter(
+        ReqModel.check_in >= d_from.isoformat(),
+        ReqModel.check_in <= d_to.isoformat(),
     )
 
     if scoped_user_ids is not None:
-        scoped_req_ids = [r.id for r in db.query(ReqModel.id)
-                          .filter(ReqModel.created_by.in_(scoped_user_ids)).all()]
-        inv_query = inv_query.filter(Invoice.request_id.in_(scoped_req_ids))
+        req_date_q = req_date_q.filter(ReqModel.created_by.in_(scoped_user_ids))
     elif current_user.role in ("yonetici", "asistan"):
-        own_req_ids = [r.id for r in db.query(ReqModel.id)
-                       .filter(ReqModel.created_by == current_user.id).all()]
-        inv_query = inv_query.filter(Invoice.request_id.in_(own_req_ids))
+        req_date_q = req_date_q.filter(ReqModel.created_by == current_user.id)
     elif manager_id:
-        mgr_req_ids = [r.id for r in db.query(ReqModel.id)
-                       .filter(ReqModel.created_by == manager_id).all()]
-        inv_query = inv_query.filter(Invoice.request_id.in_(mgr_req_ids))
+        req_date_q = req_date_q.filter(ReqModel.created_by == manager_id)
+
+    in_range_req_ids = [r.id for r in req_date_q.all()]
+
+    inv_query = db.query(Invoice).filter(
+        Invoice.status.in_(["approved", "active"]),
+        Invoice.request_id.in_(in_range_req_ids),
+    )
 
     invoices = inv_query.all()
 
