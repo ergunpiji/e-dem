@@ -321,14 +321,24 @@ async def reports_financial(
         cust_map[k]["kar"]     += r["kar"]
     cust_list = sorted(cust_map.items(), key=lambda x: x[1]["ciro"], reverse=True)[:15]
 
-    # Aylık trend (fatura tarihine göre)
+    # Aylık trend — referansın etkinlik başlangıç tarihine (check_in) göre grupla.
+    # Fatura tarihi değil, işin gerçekleştiği ay esas alınır.
     monthly: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0})
     for inv in invoices:
-        if not inv.invoice_date:
-            continue
-        try:
-            ym = inv.invoice_date[:7]  # YYYY-MM
-        except Exception:
+        req_r = reqs.get(inv.request_id)
+        ym = None
+        if req_r and req_r.check_in:
+            try:
+                ci = req_r.check_in
+                ym = ci.strftime("%Y-%m") if hasattr(ci, "strftime") else str(ci)[:7]
+            except Exception:
+                pass
+        if not ym and inv.invoice_date:
+            try:
+                ym = inv.invoice_date[:7]
+            except Exception:
+                pass
+        if not ym:
             continue
         if inv.invoice_type == "kesilen":
             monthly[ym]["ciro"] += inv.amount

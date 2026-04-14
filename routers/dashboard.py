@@ -61,11 +61,23 @@ def _build_financial_stats(db: Session, req_id_filter=None):
         else:
             continue
 
-        # Aylık gruplama: invoice_date → fatura tarihi kullan
+        # Aylık gruplama: referansın etkinlik başlangıç tarihini (check_in) kullan.
+        # Fatura önce ya da sonra gelse bile iş hangi ayda gerçekleştiyse o aya yaz.
+        # Fallback: fatura tarihi → oluşturulma tarihi
         key = None
-        if inv.invoice_date:
+        req_obj = inv.request
+        if req_obj and req_obj.check_in:
             try:
-                key = inv.invoice_date[:7]  # YYYY-MM
+                ci = req_obj.check_in
+                if hasattr(ci, "strftime"):
+                    key = ci.strftime("%Y-%m")
+                else:
+                    key = str(ci)[:7]
+            except Exception:
+                pass
+        if not key and inv.invoice_date:
+            try:
+                key = inv.invoice_date[:7]
             except Exception:
                 pass
         if not key and inv.created_at:
