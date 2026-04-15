@@ -449,44 +449,6 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     </div>
 
-    {# ─── Operasyon Ajanı Modülü ─── #}
-    <div id="operasyon-module">
-    {% if oa_active %}
-      {# Modül Aktif — sadece giriş butonu #}
-      {% if oa_module.oa_manager_url %}
-      <a href="{{ oa_module.oa_manager_url }}" target="_blank"
-         class="d-block mb-4 text-decoration-none"
-         style="background:linear-gradient(135deg,#1e3a5f,#1e5f8c); color:#fff;
-                border-radius:12px; padding:14px 20px;
-                display:flex; align-items:center; justify-content:space-between;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <span style="font-size:22px;">⚙️</span>
-          <div>
-            <div style="font-weight:700; font-size:14px;">Operasyon Akışı</div>
-            <div style="font-size:11px; opacity:.7; margin-top:1px;">Aktif · Yönetim Paneline Gir</div>
-          </div>
-        </div>
-        <span style="font-size:18px; opacity:.8;">→</span>
-      </a>
-      {% endif %}
-    {% else %}
-      {# Modül Kapalı — oluştur butonu #}
-      <form method="post" action="/requests/{{ req.id }}/modules/operasyon/activate">
-        <button type="submit"
-                style="width:100%; background:#f8fafc; border:2px dashed #cbd5e1;
-                       border-radius:12px; padding:14px 20px; cursor:pointer;
-                       display:flex; align-items:center; gap:10px; margin-bottom:16px;
-                       color:#64748b; font-size:13px; font-weight:600; text-align:left;">
-          <span style="font-size:22px;">⚙️</span>
-          <div>
-            <div style="color:#1e293b; font-weight:700; font-size:14px;">Operasyon Akışı Oluştur</div>
-            <div style="font-size:11px; margin-top:1px;">Katılımcı, transfer, konaklama ve program yönetimi</div>
-          </div>
-          <span style="margin-left:auto; font-size:16px;">+</span>
-        </button>
-      </form>
-    {% endif %}
-    </div>
 
   </div>
 
@@ -654,6 +616,38 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endif %}
       </div>
     </div>
+
+    {# ─── Operasyon Akışı ─── #}
+    {% if oa_active and oa_module.oa_manager_url %}
+    <a href="{{ oa_module.oa_manager_url }}" target="_blank"
+       class="d-flex align-items-center justify-content-between text-decoration-none mb-4"
+       style="background:linear-gradient(135deg,#1e3a5f,#1e5f8c); color:#fff;
+              border-radius:12px; padding:14px 20px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:22px;">⚙️</span>
+        <div>
+          <div style="font-weight:700; font-size:14px;">Operasyon Akışı</div>
+          <div style="font-size:11px; opacity:.7; margin-top:1px;">Aktif · Yönetim Paneline Gir</div>
+        </div>
+      </div>
+      <span style="font-size:18px; opacity:.8;">→</span>
+    </a>
+    {% elif not oa_active %}
+    <form method="post" action="/requests/{{ req.id }}/modules/operasyon/activate" class="mb-4">
+      <button type="submit"
+              style="width:100%; background:#f8fafc; border:2px dashed #cbd5e1;
+                     border-radius:12px; padding:14px 20px; cursor:pointer;
+                     display:flex; align-items:center; gap:10px;
+                     color:#64748b; font-size:13px; font-weight:600; text-align:left;">
+        <span style="font-size:22px;">⚙️</span>
+        <div>
+          <div style="color:#1e293b; font-weight:700; font-size:14px;">Operasyon Akışı Oluştur</div>
+          <div style="font-size:11px; margin-top:1px;">Katılımcı, transfer, konaklama ve program yönetimi</div>
+        </div>
+        <span style="margin-left:auto; font-size:16px;">+</span>
+      </button>
+    </form>
+    {% endif %}
 
     {# Seçilen Tedarikçiler (kompakt, aktif sekmeye göre filtrelenir) #}
     {% if pref_venues %}
