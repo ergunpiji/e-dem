@@ -2,13 +2,11 @@
 Token tabanlı kullanıcı girişi.
 /access/{token} → cookie atar → event sayfasına yönlendirir.
 """
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, Request, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from config import url
+from config import url, now_tr
 from database import get_db
 from models import UserToken, Event
 from templates_config import templates
@@ -41,7 +39,7 @@ def get_current_user(
         return None
 
     # Son kullanım zamanını güncelle
-    ut.last_used_at = datetime.utcnow()
+    ut.last_used_at = now_tr()
     db.commit()
 
     return {"event_id": ut.event_id, "role": ut.role, "label": ut.label}
@@ -84,7 +82,7 @@ async def token_login(
         </body></html>
         """, status_code=404)
 
-    ut.last_used_at = datetime.utcnow()
+    ut.last_used_at = now_tr()
     db.commit()
 
     response = RedirectResponse(url=url(f"/events/{ut.event_id}"), status_code=303)

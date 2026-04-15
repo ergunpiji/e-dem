@@ -5,9 +5,9 @@ Müşteri / Katılımcı Portalı — Salt-okunur etkinlik görünümü.
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from datetime import datetime
 from collections import OrderedDict
 
+from config import now_tr
 from database import get_db
 from models import Event, UserToken, Participant, AgendaSession, SESSION_TYPES, AccommodationRecord, TransferRecord
 from templates_config import templates
@@ -37,7 +37,7 @@ async def client_portal(
         """, status_code=404)
 
     # Son kullanım zamanını güncelle
-    ut.last_used_at = datetime.utcnow()
+    ut.last_used_at = now_tr()
     db.commit()
 
     event = db.query(Event).filter(Event.id == ut.event_id).first()

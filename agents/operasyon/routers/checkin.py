@@ -7,10 +7,9 @@ from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from templates_config import templates
 from sqlalchemy.orm import Session
-from datetime import datetime
 from typing import List
 
-from config import url
+from config import url, now_tr
 from database import get_db
 from models import Event, Participant, AccommodationRecord, TransferRecord, Notification, SupplierTask, TASK_STATUSES, SUPPLIER_TASK_TYPES
 
@@ -41,7 +40,7 @@ def _create_notification(db: Session, event_id: str, actor: str,
         action=action,
         participant_name=participant_name,
         detail=detail,
-        created_at=datetime.utcnow(),
+        created_at=now_tr(),
     )
     db.add(notif)
 
@@ -60,7 +59,7 @@ async def checkin_accommodation(
     if acc:
         acc.checked_in = not acc.checked_in
         if acc.checked_in:
-            acc.checked_in_at = datetime.utcnow()
+            acc.checked_in_at = now_tr()
             acc.checked_in_by = "PM"
             _create_notification(
                 db, event_id, "PM", "checked_in",
@@ -88,7 +87,7 @@ async def board_transfer(
     if t:
         t.boarded = not t.boarded
         if t.boarded:
-            t.boarded_at = datetime.utcnow()
+            t.boarded_at = now_tr()
             t.boarded_by = "PM"
             _create_notification(
                 db, event_id, "PM", "boarded",
@@ -111,7 +110,7 @@ async def bulk_checkin(
     acc_ids: List[str] = Form(default=[]),
     db: Session = Depends(get_db)
 ):
-    now = datetime.utcnow()
+    now = now_tr()
     for acc_id in acc_ids:
         acc = db.query(AccommodationRecord).filter(AccommodationRecord.id == acc_id).first()
         if acc and not acc.checked_in:
@@ -139,7 +138,7 @@ async def bulk_board(
     transfer_ids: List[str] = Form(default=[]),
     db: Session = Depends(get_db)
 ):
-    now = datetime.utcnow()
+    now = now_tr()
     for tid in transfer_ids:
         t = db.query(TransferRecord).filter(TransferRecord.id == tid).first()
         if t and not t.boarded:
@@ -261,7 +260,7 @@ async def supplier_checkin(
     if acc and not acc.checked_in:
         supplier_label = f"Tedarikçi"
         acc.checked_in = True
-        acc.checked_in_at = datetime.utcnow()
+        acc.checked_in_at = now_tr()
         acc.checked_in_by = supplier_label
         _create_notification(
             db, event.id, supplier_label, "checked_in",
@@ -289,7 +288,7 @@ async def supplier_board(
     if t and not t.boarded:
         supplier_label = f"Tedarikçi"
         t.boarded = True
-        t.boarded_at = datetime.utcnow()
+        t.boarded_at = now_tr()
         t.boarded_by = supplier_label
         _create_notification(
             db, event.id, supplier_label, "boarded",

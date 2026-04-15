@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 from collections import defaultdict, OrderedDict
 
-from config import url
+from config import url, now_tr
 from database import get_db
 from models import Event, AgendaSession, SupplierTask, SESSION_TYPES, SUPPLIER_TASK_TYPES, TASK_STATUSES
 from templates_config import templates
@@ -278,7 +278,6 @@ async def create_task(
     db: Session = Depends(get_db)
 ):
     import uuid
-    from datetime import datetime as dt
     t = SupplierTask(
         id=str(uuid.uuid4()),
         event_id=event_id,
@@ -289,7 +288,7 @@ async def create_task(
         task_time=task_time or None,
         status=status,
         notes=notes or None,
-        created_at=dt.utcnow(),
+        created_at=now_tr(),
     )
     db.add(t)
     db.commit()
@@ -423,7 +422,7 @@ async def import_tasks_from_edem(
             task_time=None,
             status="pending",
             notes=notes or None,
-            created_at=dt.utcnow(),
+            created_at=now_tr(),
         )
         db.add(t)
 

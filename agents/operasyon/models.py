@@ -8,6 +8,7 @@ Bir katılımcı yalnızca temel bilgileriyle de var olabilir.
 import uuid
 import secrets
 from datetime import datetime, date
+from config import now_tr
 from sqlalchemy import (
     String, Integer, Float, Boolean, Date, DateTime,
     ForeignKey, Text, Enum as SAEnum
@@ -40,7 +41,7 @@ class Event(Base):
     venue: Mapped[str | None] = mapped_column(String)
     city: Mapped[str | None] = mapped_column(String)
     notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tr)
 
     participants: Mapped[list["Participant"]] = relationship(
         back_populates="event", cascade="all, delete-orphan"
@@ -90,8 +91,8 @@ class Participant(Base):
     special_needs: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tr)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_tr, onupdate=now_tr)
 
     # İlişkiler (hepsi opsiyonel)
     event: Mapped["Event"] = relationship(back_populates="participants")
@@ -268,7 +269,7 @@ class Notification(Base):
     detail: Mapped[str | None] = mapped_column(String)   # "Oda 204" | "Araç Grubu 1"
 
     read: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tr)
 
     event: Mapped["Event"] = relationship()
 
@@ -360,7 +361,7 @@ class SupplierTask(Base):
     task_time: Mapped[str | None] = mapped_column(String)   # "09:00"
     status: Mapped[str] = mapped_column(String, default="pending")
     notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tr)
 
     event: Mapped["Event"] = relationship()
 
@@ -398,7 +399,7 @@ class UserToken(Base):
     token: Mapped[str] = mapped_column(String, unique=True, default=new_token)
     label: Mapped[str] = mapped_column(String, default="Yönetici")  # görünen isim
     role: Mapped[str] = mapped_column(String, default="manager")     # manager | coordinator
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tr)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
