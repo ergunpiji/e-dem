@@ -38,5 +38,15 @@ def get_db():
 
 
 def init_db():
-    from models import Base as ModelsBase  # noqa: F401
-    ModelsBase.metadata.create_all(bind=engine)
+    import sys as _sys
+    # E-dem içine mount edilince operasyon modülleri _oa.* adıyla sys.modules'ta,
+    # standalone çalışınca düz "models" adıyla bulunur.
+    _models = (
+        _sys.modules.get("_oa.models")
+        or _sys.modules.get("models")
+    )
+    if _models is not None:
+        _models.Base.metadata.create_all(bind=engine)
+    else:
+        from models import Base as _B  # standalone fallback
+        _B.metadata.create_all(bind=engine)
