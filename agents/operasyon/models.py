@@ -256,7 +256,7 @@ class TransferRecord(Base):
 # Bildirim (PM'e gönderilen durum güncellemeleri)
 # ---------------------------------------------------------------------------
 class Notification(Base):
-    __tablename__ = "notifications"
+    __tablename__ = "oa_notifications"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), nullable=False)
