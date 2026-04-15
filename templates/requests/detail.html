@@ -645,7 +645,8 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     </div>
     {% elif not oa_active %}
-    <form method="post" action="/requests/{{ req.id }}/modules/operasyon/activate" class="mb-4">
+    <form method="post" action="/requests/{{ req.id }}/modules/operasyon/activate"
+          target="_blank" class="mb-4">
       <button type="submit"
               style="width:100%; background:#f8fafc; border:2px dashed #cbd5e1;
                      border-radius:12px; padding:14px 20px; cursor:pointer;
