@@ -2,6 +2,7 @@
 Check-in (konaklama) ve Boarding (transfer) işlemleri
 PM ve tedarikçi token erişimi için ortak route'lar.
 """
+import sys as _sys
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from templates_config import templates
@@ -12,6 +13,16 @@ from typing import List
 from config import url
 from database import get_db
 from models import Event, Participant, AccommodationRecord, TransferRecord, Notification, SupplierTask, TASK_STATUSES, SUPPLIER_TASK_TYPES
+
+
+def _ensure_tables():
+    """Eksik tablolar varsa oluştur (notifications gibi)."""
+    db_mod = _sys.modules.get("_oa.database") or _sys.modules.get("database")
+    if db_mod and hasattr(db_mod, "init_db"):
+        try:
+            db_mod.init_db()
+        except Exception:
+            pass
 
 router = APIRouter(tags=["checkin"])
 
@@ -369,18 +380,36 @@ async def notifications_page(
     if not event:
         return RedirectResponse(url=url("/events"))
 
-    notifs = (
-        db.query(Notification)
-        .filter(Notification.event_id == event_id)
-        .order_by(Notification.created_at.desc())
-        .all()
-    )
+    try:
+        notifs = (
+            db.query(Notification)
+            .filter(Notification.event_id == event_id)
+            .order_by(Notification.created_at.desc())
+            .all()
+        )
+    except Exception:
+        # Tablo mevcut değilse yarat ve tekrar dene
+        db.rollback()
+        _ensure_tables()
+        try:
+            notifs = (
+                db.query(Notification)
+                .filter(Notification.event_id == event_id)
+                .order_by(Notification.created_at.desc())
+                .all()
+            )
+        except Exception:
+            notifs = []
+
     # Okunmamışları okundu işaretle
-    unread = [n for n in notifs if not n.read]
-    for n in unread:
-        n.read = True
-    if unread:
-        db.commit()
+    try:
+        unread = [n for n in notifs if not n.read]
+        for n in unread:
+            n.read = True
+        if unread:
+            db.commit()
+    except Exception:
+        db.rollback()
 
     return templates.TemplateResponse("notifications/list.html", {
         "request": request,
@@ -395,9 +424,14 @@ async def notifications_count(
     event_id: str,
     db: Session = Depends(get_db)
 ):
-    count = (
-        db.query(Notification)
-        .filter(Notification.event_id == event_id, Notification.read == False)
-        .count()
-    )
+    try:
+        count = (
+            db.query(Notification)
+            .filter(Notification.event_id == event_id, Notification.read == False)
+            .count()
+        )
+    except Exception:
+        db.rollback()
+        _ensure_tables()
+        count = 0
     return JSONResponse({"count": count})
