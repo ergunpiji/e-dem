@@ -25,7 +25,7 @@ async def services_list(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    services    = db.query(Service).order_by(Service.category, Service.name).all()
+    services    = db.query(Service).order_by(Service.category, Service.sort_order, Service.name).all()
     custom_cats = db.query(CustomCategory).all()
 
     # Servisleri kategoriye göre grupla
@@ -108,6 +108,24 @@ async def services_delete(
 # ---------------------------------------------------------------------------
 # Excel şablon indir + toplu içe aktar
 # ---------------------------------------------------------------------------
+
+@router.post("/reorder", name="services_reorder")
+async def services_reorder(
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Sürükle-bırak sıra kaydı. Body: {"ids": ["id1","id2",...]}"""
+    from fastapi.responses import JSONResponse as _JSON
+    body = await request.json()
+    ids: list[str] = body.get("ids", [])
+    for order, svc_id in enumerate(ids):
+        svc = db.query(Service).filter(Service.id == svc_id).first()
+        if svc:
+            svc.sort_order = order
+    db.commit()
+    return _JSON({"ok": True})
+
 
 @router.get("/template", name="services_template")
 async def services_template(current_user: User = Depends(require_admin)):

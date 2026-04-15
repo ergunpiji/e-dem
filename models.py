@@ -833,6 +833,7 @@ class Service(Base):
     unit        = Column(String(50), default="Adet")
     description = Column(Text, default="")
     active      = Column(Boolean, default=True, nullable=False)
+    sort_order  = Column(Integer, default=0, nullable=False)
 
     def to_dict(self) -> dict:
         return {
@@ -842,6 +843,7 @@ class Service(Base):
             "unit":        self.unit,
             "description": self.description,
             "active":      self.active,
+            "sort_order":  self.sort_order,
         }
 
 
