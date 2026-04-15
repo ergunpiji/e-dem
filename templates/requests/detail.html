@@ -619,19 +619,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
     {# ─── Operasyon Akışı ─── #}
     {% if oa_active and oa_module.oa_manager_url %}
-    <a href="{{ oa_module.oa_manager_url }}" target="_blank"
-       class="d-flex align-items-center justify-content-between text-decoration-none mb-4"
-       style="background:linear-gradient(135deg,#1e3a5f,#1e5f8c); color:#fff;
-              border-radius:12px; padding:14px 20px;">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span style="font-size:22px;">⚙️</span>
-        <div>
-          <div style="font-weight:700; font-size:14px;">Operasyon Akışı</div>
-          <div style="font-size:11px; opacity:.7; margin-top:1px;">Aktif · Yönetim Paneline Gir</div>
+    <div class="mb-4">
+      <a href="{{ oa_module.oa_manager_url }}" target="_blank"
+         class="d-flex align-items-center justify-content-between text-decoration-none"
+         style="background:linear-gradient(135deg,#1e3a5f,#1e5f8c); color:#fff;
+                border-radius:12px; padding:14px 20px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:22px;">⚙️</span>
+          <div>
+            <div style="font-weight:700; font-size:14px;">Operasyon Akışı</div>
+            <div style="font-size:11px; opacity:.7; margin-top:1px;">Aktif · Yönetim Paneline Gir</div>
+          </div>
         </div>
+        <span style="font-size:18px; opacity:.8;">→</span>
+      </a>
+      <div class="text-end mt-1">
+        <form method="post" action="/requests/{{ req.id }}/modules/operasyon/deactivate"
+              style="display:inline;"
+              onsubmit="return confirm('Operasyon akışını sıfırlamak istediğinizden emin misiniz?')">
+          <button type="submit"
+                  style="background:none; border:none; font-size:11px; color:#94a3b8; cursor:pointer; padding:0;">
+            Sıfırla
+          </button>
+        </form>
       </div>
-      <span style="font-size:18px; opacity:.8;">→</span>
-    </a>
+    </div>
     {% elif not oa_active %}
     <form method="post" action="/requests/{{ req.id }}/modules/operasyon/activate" class="mb-4">
       <button type="submit"

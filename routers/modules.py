@@ -39,6 +39,7 @@ def _get_oa_db():
 @router.post("/requests/{request_id}/modules/operasyon/activate")
 async def activate_operasyon(
     request_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -57,6 +58,10 @@ async def activate_operasyon(
         return RedirectResponse(url=f"/requests/{request_id}#operasyon-module", status_code=303)
 
     # Payload hazırla
+    # base_url: mevcut isteğin host'u + /operasyon (OA_PUBLIC_BASE env var öncelikli)
+    _host_base = str(request.base_url).rstrip("/") + "/operasyon"
+    _oa_base = os.environ.get("OA_PUBLIC_BASE", _host_base).rstrip("/")
+
     payload = {
         "edem_request_id":  req.id,
         "edem_request_no":  req.request_no or "",
@@ -65,6 +70,7 @@ async def activate_operasyon(
         "end_date":         (req.check_out.isoformat() if hasattr(req.check_out, 'isoformat') else str(req.check_out)) if req.check_out else datetime.today().date().isoformat(),
         "venue":            None,
         "city":             req.cities_display or None,
+        "base_url":         _oa_base,
     }
 
     # Onaylı bütçeden mekanı al

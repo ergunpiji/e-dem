@@ -104,7 +104,7 @@ def _activate_internal(body: dict, db: Session) -> dict:
     db.commit()
     db.refresh(event)
 
-    base = OA_PUBLIC_BASE.rstrip("/")
+    base = (body.get("base_url") or OA_PUBLIC_BASE).rstrip("/")
 
     return {
         "event_id":                    event.id,
