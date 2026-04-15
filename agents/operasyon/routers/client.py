@@ -9,7 +9,7 @@ from datetime import datetime
 from collections import OrderedDict
 
 from database import get_db
-from models import Event, UserToken, Participant, AgendaSession, SESSION_TYPES
+from models import Event, UserToken, Participant, AgendaSession, SESSION_TYPES, AccommodationRecord, TransferRecord
 from templates_config import templates
 
 router = APIRouter(tags=["client"])
@@ -58,11 +58,46 @@ async def client_portal(
             by_day[key] = []
         by_day[key].append(s)
 
-    # Katılımcı istatistikleri (isimler gösterilmez, sadece sayılar)
+    # Katılımcı istatistikleri
     participants = db.query(Participant).filter(Participant.event_id == event.id).all()
     participant_count = len(participants)
     complete_count = sum(1 for p in participants if p.status == "complete")
     warning_count  = sum(1 for p in participants if p.status == "warning")
+
+    # Konaklama check-in durumu
+    accommodations = (
+        db.query(AccommodationRecord)
+        .join(Participant, AccommodationRecord.participant_id == Participant.id)
+        .filter(Participant.event_id == event.id)
+        .order_by(AccommodationRecord.checked_in.desc(), AccommodationRecord.hotel, Participant.last_name)
+        .all()
+    )
+    acc_checked_in = sum(1 for a in accommodations if a.checked_in)
+
+    # Transfer biniş durumu — gruba göre sırala
+    transfers = (
+        db.query(TransferRecord)
+        .join(Participant, TransferRecord.participant_id == Participant.id)
+        .filter(Participant.event_id == event.id)
+        .order_by(TransferRecord.boarded.desc(), TransferRecord.transfer_date, TransferRecord.pickup_time, Participant.last_name)
+        .all()
+    )
+    transfer_boarded = sum(1 for t in transfers if t.boarded)
+
+    # Transfer'ları gruba göre grupla (araç grubu veya tarih+saat)
+    from collections import defaultdict
+    transfer_groups: dict = defaultdict(list)
+    for t in transfers:
+        if t.vehicle_group:
+            key = t.vehicle_group
+        elif t.transfer_date:
+            direction = "Karşılama" if t.direction == "in" else "Gidiş"
+            key = f"{direction} · {t.transfer_date.strftime('%d.%m.%Y')}"
+            if t.pickup_time:
+                key += f" · {t.pickup_time}"
+        else:
+            key = "Karşılama" if t.direction == "in" else "Gidiş"
+        transfer_groups[key].append(t)
 
     return templates.TemplateResponse("client/overview.html", {
         "request":          request,
@@ -72,5 +107,10 @@ async def client_portal(
         "participant_count": participant_count,
         "complete_count":   complete_count,
         "warning_count":    warning_count,
+        "accommodations":   accommodations,
+        "acc_checked_in":   acc_checked_in,
+        "transfers":        transfers,
+        "transfer_boarded": transfer_boarded,
+        "transfer_groups":  dict(transfer_groups),
         "token":            token,
     })
