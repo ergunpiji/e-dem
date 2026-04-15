@@ -19,21 +19,22 @@ from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["modules"])
 
-# Operasyon ajanının Python yolunu ekle (main modülünü import edebilmek için)
-_oa_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agents", "operasyon")
-if _oa_dir not in sys.path:
-    sys.path.insert(0, _oa_dir)
-
-
 def _get_oa_db():
-    """Operasyon ajanının DB session'ını döner."""
-    from database import SessionLocal as OASession  # operasyon/database.py
-    db = OASession()
-    try:
-        return db
-    except Exception:
-        db.close()
-        raise
+    """Operasyon ajanının DB session'ını döner.
+    _mount_operasyon() operasyon modüllerini _oa.* isimleriyle sys.modules'a kaydeder.
+    """
+    oa_db_mod = sys.modules.get("_oa.database")
+    if oa_db_mod is None:
+        raise RuntimeError("Operasyon database modülü yüklü değil (_oa.database)")
+    return oa_db_mod.SessionLocal()
+
+
+def _get_activate_fn():
+    """Operasyon _activate_internal fonksiyonunu sys.modules'tan döner."""
+    oa_api = sys.modules.get("_oa.routers.api")
+    if oa_api is None:
+        raise RuntimeError("Operasyon API modülü yüklü değil (_oa.routers.api)")
+    return oa_api._activate_internal
 
 
 @router.post("/requests/{request_id}/modules/operasyon/activate")
@@ -81,14 +82,16 @@ async def activate_operasyon(
             payload["venue"] = b.venue_name
 
     try:
-        # Operasyon ajanını doğrudan çağır (HTTP round-trip yok)
-        from routers.api import _activate_internal  # operasyon/routers/api.py
+        # sys.modules["_oa.routers.api"] ve "_oa.database" üzerinden çağır
+        # (app.py'deki _mount_operasyon() bu isimleri kayıt eder)
+        _activate_internal = _get_activate_fn()
         oa_db = _get_oa_db()
         try:
             data = _activate_internal(payload, oa_db)
         finally:
             oa_db.close()
     except Exception as exc:
+        import traceback; traceback.print_exc()
         return RedirectResponse(
             url=f"/requests/{request_id}?oa_error=1",
             status_code=303
