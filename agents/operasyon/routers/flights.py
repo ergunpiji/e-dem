@@ -4,6 +4,7 @@ from templates_config import templates
 from sqlalchemy.orm import Session
 from datetime import date
 
+from config import url
 from database import get_db
 from models import Event, Participant, FlightRecord, TransferRecord
 from services.cascade import update_transfer_from_flight
@@ -21,7 +22,7 @@ async def flight_list(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     q = db.query(FlightRecord).join(Participant).filter(Participant.event_id == event_id)
     if direction:
@@ -117,7 +118,7 @@ async def create_flight(
     update_transfer_from_flight(db, flight)
 
     return RedirectResponse(
-        url=f"/events/{event_id}/participants/{participant_id}", status_code=303
+        url=url(f"/events/{event_id}/participants/{participant_id}"), status_code=303
     )
 
 
@@ -133,5 +134,5 @@ async def delete_flight(
         db.delete(flight)
         db.commit()
     return RedirectResponse(
-        url=f"/events/{event_id}/participants/{participant_id}", status_code=303
+        url=url(f"/events/{event_id}/participants/{participant_id}"), status_code=303
     )

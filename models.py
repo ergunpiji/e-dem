@@ -1478,8 +1478,10 @@ class RequestModule(Base):
     oa_event_id             = Column(String(36))
     oa_manager_url          = Column(String(500))
     oa_coordinator_url      = Column(String(500))
-    oa_transfer_supplier_url     = Column(String(500))
+    oa_transfer_supplier_url      = Column(String(500))
     oa_accommodation_supplier_url = Column(String(500))
+    oa_task_supplier_url    = Column(String(500))   # Teknik/Dekor/Diğer tedarikçi görev portalı
+    oa_client_url           = Column(String(500))   # Müşteri / salt-okunur etkinlik portalı
 
     active = Column(Boolean, default=True)
 

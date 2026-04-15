@@ -585,6 +585,10 @@ def migrate_db():
         _safe_add_column(conn, "customers", "excel_config_json",   "TEXT", "'{}'")
         _safe_add_column(conn, "customers", "docs_json",           "TEXT", "'[]'")
 
+        # RequestModule — yeni portal URL kolonları
+        _safe_add_column(conn, "request_modules", "oa_task_supplier_url", "TEXT")
+        _safe_add_column(conn, "request_modules", "oa_client_url",        "TEXT")
+
         # Invoices tablosu — yoksa oluştur
         if _is_sqlite:
             conn.execute(text("""

@@ -1,9 +1,12 @@
 """
 Operasyon Ajanı Modülü — E-dem entegrasyonu.
 Bir referansa Operasyon Ajanı modülünü bağlar / kaldırır.
+
+Sub-app olarak mount edildiğinde HTTP çağrısı yerine doğrudan
+_activate_internal() fonksiyonu kullanılır.
 """
 import os
-import httpx
+import sys
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
@@ -16,12 +19,21 @@ from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["modules"])
 
-OA_BASE_URL   = os.environ.get("OA_BASE_URL",  "http://localhost:8001")
-OA_API_KEY    = os.environ.get("OA_API_KEY",   "oa-dev-key-change-in-production")
+# Operasyon ajanının Python yolunu ekle (main modülünü import edebilmek için)
+_oa_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agents", "operasyon")
+if _oa_dir not in sys.path:
+    sys.path.insert(0, _oa_dir)
 
 
-def _oa_headers():
-    return {"X-Api-Key": OA_API_KEY, "Content-Type": "application/json"}
+def _get_oa_db():
+    """Operasyon ajanının DB session'ını döner."""
+    from database import SessionLocal as OASession  # operasyon/database.py
+    db = OASession()
+    try:
+        return db
+    except Exception:
+        db.close()
+        raise
 
 
 @router.post("/requests/{request_id}/modules/operasyon/activate")
@@ -44,7 +56,7 @@ async def activate_operasyon(
     if existing:
         return RedirectResponse(url=f"/requests/{request_id}#operasyon-module", status_code=303)
 
-    # Operasyon Ajanı API'sine istek at
+    # Payload hazırla
     payload = {
         "edem_request_id":  req.id,
         "edem_request_no":  req.request_no or "",
@@ -63,16 +75,14 @@ async def activate_operasyon(
             payload["venue"] = b.venue_name
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{OA_BASE_URL}/api/activate",
-                json=payload,
-                headers=_oa_headers(),
-            )
-        resp.raise_for_status()
-        data = resp.json()
+        # Operasyon ajanını doğrudan çağır (HTTP round-trip yok)
+        from routers.api import _activate_internal  # operasyon/routers/api.py
+        oa_db = _get_oa_db()
+        try:
+            data = _activate_internal(payload, oa_db)
+        finally:
+            oa_db.close()
     except Exception as exc:
-        # Operasyon ajanına ulaşılamıyor — hata mesajıyla geri dön
         return RedirectResponse(
             url=f"/requests/{request_id}?oa_error=1",
             status_code=303
@@ -87,6 +97,8 @@ async def activate_operasyon(
         oa_coordinator_url=data.get("coordinator_url"),
         oa_transfer_supplier_url=data.get("transfer_supplier_url"),
         oa_accommodation_supplier_url=data.get("accommodation_supplier_url"),
+        oa_task_supplier_url=data.get("task_supplier_url"),
+        oa_client_url=data.get("client_url"),
         active=True,
     )
     db.add(module)

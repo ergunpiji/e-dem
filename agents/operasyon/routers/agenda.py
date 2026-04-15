@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 from collections import defaultdict, OrderedDict
 
+from config import url
 from database import get_db
 from models import Event, AgendaSession, SupplierTask, SESSION_TYPES, SUPPLIER_TASK_TYPES, TASK_STATUSES
 from templates_config import templates
@@ -23,7 +24,7 @@ async def agenda_view(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     sessions = (
         db.query(AgendaSession)
@@ -118,7 +119,7 @@ async def create_session(
     )
     db.add(s)
     db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/agenda", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/agenda"), status_code=303)
 
 
 @router.get("/agenda/{session_id}/edit", response_class=HTMLResponse)
@@ -178,7 +179,7 @@ async def update_session(
         s.description = description or None
         s.notes = notes or None
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/agenda", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/agenda"), status_code=303)
 
 
 @router.post("/agenda/{session_id}/delete")
@@ -191,7 +192,7 @@ async def delete_session(
     if s:
         db.delete(s)
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/agenda", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/agenda"), status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +209,7 @@ async def tasks_view(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     q = db.query(SupplierTask).filter(SupplierTask.event_id == event_id)
     if status:
@@ -292,7 +293,7 @@ async def create_task(
     )
     db.add(t)
     db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/tasks", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/tasks"), status_code=303)
 
 
 @router.post("/tasks/{task_id}/status")
@@ -306,7 +307,7 @@ async def update_task_status(
     if t:
         t.status = status
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/tasks", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/tasks"), status_code=303)
 
 
 @router.get("/tasks/{task_id}/edit", response_class=HTMLResponse)
@@ -356,7 +357,7 @@ async def update_task(
         t.status = status
         t.notes = notes or None
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/tasks", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/tasks"), status_code=303)
 
 
 @router.post("/tasks/{task_id}/delete")
@@ -369,7 +370,7 @@ async def delete_task(
     if t:
         db.delete(t)
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/tasks", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/tasks"), status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -388,11 +389,11 @@ async def import_tasks_from_edem(
 
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event or not event.edem_request_id:
-        return RedirectResponse(url=f"/events/{event_id}/tasks", status_code=303)
+        return RedirectResponse(url=url(f"/events/{event_id}/tasks"), status_code=303)
 
     venue_name, rows = get_budget_rows(event.edem_request_id)
     if not rows:
-        return RedirectResponse(url=f"/events/{event_id}/tasks", status_code=303)
+        return RedirectResponse(url=url(f"/events/{event_id}/tasks"), status_code=303)
 
     # Tedarikçi adı: bütçedeki venue_name ya da etkinlik mekanı
     supplier = venue_name or event.venue or "Tedarikçi"
@@ -427,7 +428,7 @@ async def import_tasks_from_edem(
         db.add(t)
 
     db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/tasks?imported=1", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/tasks?imported=1"), status_code=303)
 
 
 @router.post("/agenda/import-edem")
@@ -441,11 +442,11 @@ async def import_agenda_from_edem(
 
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event or not event.edem_request_id:
-        return RedirectResponse(url=f"/events/{event_id}/agenda", status_code=303)
+        return RedirectResponse(url=url(f"/events/{event_id}/agenda"), status_code=303)
 
     venue_name, rows = get_budget_rows(event.edem_request_id)
     if not rows:
-        return RedirectResponse(url=f"/events/{event_id}/agenda", status_code=303)
+        return RedirectResponse(url=url(f"/events/{event_id}/agenda"), status_code=303)
 
     # Sadece program'a uygun section'lar
     AGENDA_SECTIONS = {"meeting", "fb", "transfer", "other"}
@@ -479,4 +480,4 @@ async def import_agenda_from_edem(
         db.add(s)
 
     db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/agenda?imported=1", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/agenda?imported=1"), status_code=303)

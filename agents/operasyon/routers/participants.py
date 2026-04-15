@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from templates_config import templates
 from sqlalchemy.orm import Session
 
+from config import url
 from database import get_db
 from models import Event, Participant, AccommodationRecord, FlightRecord, TransferRecord
 
@@ -19,7 +20,7 @@ async def list_participants(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     q = db.query(Participant).filter(Participant.event_id == event_id)
     if search:
@@ -85,7 +86,7 @@ async def create_participant(
     )
     db.add(p)
     db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/participants/{p.id}", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/participants/{p.id}"), status_code=303)
 
 
 @router.get("/{participant_id}", response_class=HTMLResponse)
@@ -101,7 +102,7 @@ async def participant_card(
         Participant.event_id == event_id
     ).first()
     if not participant:
-        return RedirectResponse(url=f"/events/{event_id}/participants")
+        return RedirectResponse(url=url(f"/events/{event_id}/participants"))
 
     # Uçuşları yükle
     flights = db.query(FlightRecord).filter(
@@ -154,7 +155,7 @@ async def edit_participant_form(
         Participant.event_id == event_id
     ).first()
     if not participant:
-        return RedirectResponse(url=f"/events/{event_id}/participants")
+        return RedirectResponse(url=url(f"/events/{event_id}/participants"))
     return templates.TemplateResponse("participants/form.html", {
         "request": request,
         "event": event,
@@ -195,7 +196,7 @@ async def update_participant(
         p.special_needs = special_needs or None
         p.notes = notes or None
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/participants/{participant_id}", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/participants/{participant_id}"), status_code=303)
 
 
 @router.post("/{participant_id}/delete")
@@ -207,4 +208,4 @@ async def delete_participant(event_id: str, participant_id: str, db: Session = D
     if p:
         db.delete(p)
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}/participants", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}/participants"), status_code=303)

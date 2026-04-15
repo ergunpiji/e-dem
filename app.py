@@ -223,3 +223,21 @@ app.include_router(closure_router.router)
 app.include_router(teams_router.router)
 app.include_router(library_router.router)
 app.include_router(modules_router.router)
+
+# ---------------------------------------------------------------------------
+# Operasyon Ajanı — sub-app olarak mount et (/operasyon/...)
+# ---------------------------------------------------------------------------
+import sys as _sys
+_oa_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents", "operasyon")
+if _oa_dir not in _sys.path:
+    _sys.path.insert(0, _oa_dir)
+
+# Prefix'i sub-app başlamadan önce ayarla (templates_config ve config bu env'yi okur)
+os.environ.setdefault("OA_URL_PREFIX", "/operasyon")
+
+# Operasyon uygulamasını import et
+import importlib as _il
+_oa_main = _il.import_module("main")   # agents/operasyon/main.py
+_operasyon_app = _oa_main.app
+
+app.mount("/operasyon", _operasyon_app)

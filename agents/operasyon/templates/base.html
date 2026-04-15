@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Operasyon Ajanı{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ base_url }}/static/css/style.css">
 </head>
 <body>
   <div class="app-layout">
@@ -25,46 +25,46 @@
             — {{ event.end_date.strftime('%d.%m.%Y') }}
           {% endif %}
         </div>
-        <a href="/events" class="sidebar-change-event">Etkinlik Değiştir</a>
+        <a href="{{ base_url }}/events" class="sidebar-change-event">Etkinlik Değiştir</a>
       </div>
 
       <nav class="sidebar-nav">
-        <a href="/events/{{ event.id }}" class="nav-item {% if active == 'dashboard' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}" class="nav-item {% if active == 'dashboard' %}active{% endif %}">
           <span class="nav-icon">📊</span> Dashboard
         </a>
-        <a href="/events/{{ event.id }}/participants" class="nav-item {% if active == 'participants' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}/participants" class="nav-item {% if active == 'participants' %}active{% endif %}">
           <span class="nav-icon">👥</span> Katılımcılar
         </a>
-        <a href="/events/{{ event.id }}/flights" class="nav-item {% if active == 'flights' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}/flights" class="nav-item {% if active == 'flights' %}active{% endif %}">
           <span class="nav-icon">✈️</span> Uçuşlar
         </a>
-        <a href="/events/{{ event.id }}/accommodations" class="nav-item {% if active == 'accommodations' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}/accommodations" class="nav-item {% if active == 'accommodations' %}active{% endif %}">
           <span class="nav-icon">🏨</span> Konaklama
         </a>
-        <a href="/events/{{ event.id }}/transfers" class="nav-item {% if active == 'transfers' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}/transfers" class="nav-item {% if active == 'transfers' %}active{% endif %}">
           <span class="nav-icon">🚌</span> Transferler
         </a>
         <div class="nav-divider"></div>
-        <a href="/events/{{ event.id }}/agenda" class="nav-item {% if active == 'agenda' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}/agenda" class="nav-item {% if active == 'agenda' %}active{% endif %}">
           <span class="nav-icon">📅</span> Günlük Program
         </a>
-        <a href="/events/{{ event.id }}/tasks" class="nav-item {% if active == 'tasks' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}/tasks" class="nav-item {% if active == 'tasks' %}active{% endif %}">
           <span class="nav-icon">📋</span> Görev Planı
         </a>
         <div class="nav-divider"></div>
-        <a href="/events/{{ event.id }}/notifications" class="nav-item {% if active == 'notifications' %}active{% endif %}"
+        <a href="{{ base_url }}/events/{{ event.id }}/notifications" class="nav-item {% if active == 'notifications' %}active{% endif %}"
            id="nav-notifications">
           <span class="nav-icon">🔔</span> Bildirimler
           <span id="notif-badge" style="display:none; background:#dc2626; color:#fff;
                 border-radius:10px; font-size:10px; padding:1px 6px; margin-left:auto;">0</span>
         </a>
-        <a href="/events/{{ event.id }}/import" class="nav-item {% if active == 'import' %}active{% endif %}">
+        <a href="{{ base_url }}/events/{{ event.id }}/import" class="nav-item {% if active == 'import' %}active{% endif %}">
           <span class="nav-icon">📥</span> Excel Aktar
         </a>
       </nav>
       {% else %}
       <nav class="sidebar-nav">
-        <a href="/events" class="nav-item {% if active == 'events' %}active{% endif %}">
+        <a href="{{ base_url }}/events" class="nav-item {% if active == 'events' %}active{% endif %}">
           <span class="nav-icon">📅</span> Etkinlikler
         </a>
       </nav>
@@ -77,12 +77,12 @@
     </main>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <script src="{{ base_url }}/static/js/app.js"></script>
   {% if event %}
   <script>
     // Okunmamış bildirim sayısını 30sn'de bir kontrol et
     function checkNotifications() {
-      fetch('/events/{{ event.id }}/notifications/count')
+      fetch('{{ base_url }}/events/{{ event.id }}/notifications/count')
         .then(r => r.json())
         .then(data => {
           const badge = document.getElementById('notif-badge');

@@ -4,6 +4,7 @@ from templates_config import templates
 from sqlalchemy.orm import Session
 from datetime import date
 
+from config import url
 from database import get_db
 from models import Event, Participant, AccommodationRecord
 
@@ -21,7 +22,7 @@ async def accommodation_list(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     q = db.query(AccommodationRecord).join(
         Participant, AccommodationRecord.participant_id == Participant.id
@@ -121,7 +122,7 @@ async def create_accommodation(
     db.commit()
 
     return RedirectResponse(
-        url=f"/events/{event_id}/participants/{participant_id}", status_code=303
+        url=url(f"/events/{event_id}/participants/{participant_id}"), status_code=303
     )
 
 
@@ -138,5 +139,5 @@ async def delete_accommodation(
         db.delete(acc)
         db.commit()
     return RedirectResponse(
-        url=f"/events/{event_id}/participants/{participant_id}", status_code=303
+        url=url(f"/events/{event_id}/participants/{participant_id}"), status_code=303
     )

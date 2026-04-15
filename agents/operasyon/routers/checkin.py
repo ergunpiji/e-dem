@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
 
+from config import url
 from database import get_db
 from models import Event, Participant, AccommodationRecord, TransferRecord, Notification
 
@@ -113,7 +114,7 @@ async def bulk_checkin(
             )
     db.commit()
     return RedirectResponse(
-        url=f"/events/{event_id}/accommodations?checked_in=1",
+        url=url(f"/events/{event_id}/accommodations?checked_in=1"),
         status_code=303
     )
 
@@ -141,7 +142,7 @@ async def bulk_board(
             )
     db.commit()
     return RedirectResponse(
-        url=f"/events/{event_id}/transfers?boarded=1",
+        url=url(f"/events/{event_id}/transfers?boarded=1"),
         status_code=303
     )
 
@@ -257,7 +258,7 @@ async def supplier_checkin(
             acc.hotel or None
         )
         db.commit()
-    return RedirectResponse(url=f"/supplier/{token}/accommodations", status_code=303)
+    return RedirectResponse(url=url(f"/supplier/{token}/accommodations"), status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +286,77 @@ async def supplier_board(
             t.vehicle_group or None
         )
         db.commit()
-    return RedirectResponse(url=f"/supplier/{token}/transfers", status_code=303)
+    return RedirectResponse(url=url(f"/supplier/{token}/transfers"), status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Tedarikçi Ekranı — Görev Portalı: /supplier/{token}/tasks
+# ---------------------------------------------------------------------------
+@router.get("/supplier/{token}/tasks", response_class=HTMLResponse)
+async def supplier_tasks(
+    request: Request,
+    token: str,
+    status: str = "",
+    db: Session = Depends(get_db)
+):
+    """Teknik/Dekor/Diğer tedarikçiler için görev listesi portalı."""
+    from models import SupplierTask, TASK_STATUSES, SUPPLIER_TASK_TYPES
+    from collections import defaultdict
+
+    event = db.query(Event).filter(Event.supplier_token == token).first()
+    if not event:
+        return HTMLResponse("<h2>Geçersiz bağlantı.</h2>", status_code=404)
+
+    q = db.query(SupplierTask).filter(SupplierTask.event_id == event.id)
+    if status:
+        q = q.filter(SupplierTask.status == status)
+
+    tasks = q.order_by(SupplierTask.task_date, SupplierTask.task_time, SupplierTask.supplier_name).all()
+
+    # Tedarikçiye göre grupla
+    by_supplier: dict = defaultdict(list)
+    for t in tasks:
+        by_supplier[t.supplier_name].append(t)
+
+    # İstatistikler
+    all_tasks = db.query(SupplierTask).filter(SupplierTask.event_id == event.id).all()
+    stats = {s: sum(1 for t in all_tasks if t.status == s) for s in TASK_STATUSES}
+
+    return templates.TemplateResponse("supplier/tasks.html", {
+        "request": request,
+        "event": event,
+        "token": token,
+        "tasks": tasks,
+        "by_supplier": dict(by_supplier),
+        "stats": stats,
+        "status_filter": status,
+        "task_statuses": TASK_STATUSES,
+        "supplier_task_types": SUPPLIER_TASK_TYPES,
+    })
+
+
+@router.post("/supplier/{token}/tasks/{task_id}/status")
+async def supplier_update_task_status(
+    token: str,
+    task_id: str,
+    status: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Tedarikçi görev durumunu günceller (pending→confirmed→done)."""
+    from models import SupplierTask
+
+    event = db.query(Event).filter(Event.supplier_token == token).first()
+    if not event:
+        return HTMLResponse("Geçersiz token", status_code=403)
+
+    task = db.query(SupplierTask).filter(
+        SupplierTask.id == task_id,
+        SupplierTask.event_id == event.id
+    ).first()
+    if task:
+        task.status = status
+        db.commit()
+    return RedirectResponse(url=url(f"/supplier/{token}/tasks"), status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +370,7 @@ async def notifications_page(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     notifs = (
         db.query(Notification)

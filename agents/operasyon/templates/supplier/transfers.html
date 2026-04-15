@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ event.name }} — Transfer Listesi</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ base_url }}/static/css/style.css">
   <style>
     body { background: #f1f5f9; }
     .supplier-wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
@@ -318,7 +318,7 @@
                   {% endif %}
                 {% else %}
                   <form method="post"
-                        action="/supplier/{{ token }}/transfers/{{ t.id }}/board"
+                        action="{{ base_url }}/supplier/{{ token }}/transfers/{{ t.id }}/board"
                         style="display:inline;">
                     <button type="submit" class="board-btn"
                             onclick="return confirm('{{ t.participant.full_name }} araca bindi mi?')">

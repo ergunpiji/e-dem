@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from collections import defaultdict
 from typing import List
 
+from config import url
 from database import get_db
 from models import Event, Participant, TransferRecord, FlightRecord
 
@@ -43,7 +44,7 @@ async def transfer_list(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     q = db.query(TransferRecord).join(Participant).filter(Participant.event_id == event_id)
     if direction:
@@ -158,7 +159,7 @@ async def create_transfer(
     db.commit()
 
     return RedirectResponse(
-        url=f"/events/{event_id}/participants/{participant_id}", status_code=303
+        url=url(f"/events/{event_id}/participants/{participant_id}"), status_code=303
     )
 
 
@@ -174,7 +175,7 @@ async def delete_transfer(
         db.delete(t)
         db.commit()
     return RedirectResponse(
-        url=f"/events/{event_id}/participants/{participant_id}", status_code=303
+        url=url(f"/events/{event_id}/participants/{participant_id}"), status_code=303
     )
 
 
@@ -186,7 +187,7 @@ async def delete_transfer(
 async def transfer_wizard(request: Request, event_id: str, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     # Uçuşu olan katılımcıları getir
     participants = db.query(Participant).filter(Participant.event_id == event_id).all()
@@ -228,7 +229,7 @@ async def transfer_wizard_generate(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     created = 0
 
@@ -340,7 +341,7 @@ async def transfer_wizard_generate(
 
     db.commit()
     return RedirectResponse(
-        url=f"/events/{event_id}/transfers?wizard_created={created}",
+        url=url(f"/events/{event_id}/transfers?wizard_created={created}"),
         status_code=303
     )
 
@@ -439,7 +440,7 @@ async def validate_flights_page(
 
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     flights = db.query(FlightRecord).join(Participant).filter(
         Participant.event_id == event_id

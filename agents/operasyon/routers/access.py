@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from config import url
 from database import get_db
 from models import UserToken, Event
 from templates_config import templates
@@ -58,7 +59,7 @@ def require_user(
     user = get_current_user(request, db, oa_access)
     if not user:
         from fastapi import HTTPException
-        raise HTTPException(status_code=307, headers={"Location": "/giris"})
+        raise HTTPException(status_code=307, headers={"Location": url("/giris")})
     return user
 
 
@@ -86,7 +87,7 @@ async def token_login(
     ut.last_used_at = datetime.utcnow()
     db.commit()
 
-    response = RedirectResponse(url=f"/events/{ut.event_id}", status_code=303)
+    response = RedirectResponse(url=url(f"/events/{ut.event_id}"), status_code=303)
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
@@ -107,6 +108,6 @@ async def login_required_page(request: Request):
 
 @router.get("/cikis")
 async def logout():
-    response = RedirectResponse(url="/giris", status_code=303)
+    response = RedirectResponse(url=url("/giris"), status_code=303)
     response.delete_cookie(COOKIE_NAME)
     return response

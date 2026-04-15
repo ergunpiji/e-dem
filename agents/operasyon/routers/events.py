@@ -4,6 +4,7 @@ from templates_config import templates
 from sqlalchemy.orm import Session
 from datetime import date
 
+from config import url
 from database import get_db
 from models import Event, UserToken
 from services import edem_bridge
@@ -33,7 +34,7 @@ def _auth_event(event_id: str, db: Session, oa_access: str | None):
     """
     user = _get_user(event_id, db, oa_access)
     if user is None:
-        return RedirectResponse(url="/giris", status_code=303)
+        return RedirectResponse(url=url("/giris"), status_code=303)
     return user
 
 
@@ -108,7 +109,7 @@ async def create_event(
     )
     db.add(event)
     db.commit()
-    return RedirectResponse(url=f"/events/{event.id}", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event.id}"), status_code=303)
 
 
 @router.get("/{event_id}", response_class=HTMLResponse)
@@ -122,7 +123,7 @@ async def event_dashboard(
         return auth
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
     return templates.TemplateResponse("events/dashboard.html", {
         "request": request,
         "event": event,
@@ -142,7 +143,7 @@ async def edit_event_form(
         return auth
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
     edem_available = edem_bridge.is_available()
     edem_refs = edem_bridge.get_references() if edem_available else []
     return templates.TemplateResponse("events/form.html", {
@@ -178,7 +179,7 @@ async def update_event(
         event.edem_request_id = edem_request_id or None
         event.edem_request_no = edem_request_no or None
         db.commit()
-    return RedirectResponse(url=f"/events/{event_id}", status_code=303)
+    return RedirectResponse(url=url(f"/events/{event_id}"), status_code=303)
 
 
 @router.post("/{event_id}/delete")
@@ -187,4 +188,4 @@ async def delete_event(event_id: str, db: Session = Depends(get_db)):
     if event:
         db.delete(event)
         db.commit()
-    return RedirectResponse(url="/events", status_code=303)
+    return RedirectResponse(url=url("/events"), status_code=303)

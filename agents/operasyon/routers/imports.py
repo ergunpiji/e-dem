@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 import json
 
+from config import url
 from database import get_db
 from models import Event, Participant, FlightRecord, AccommodationRecord, TransferRecord
 from services.excel_parser import parse_participant_excel
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/events/{event_id}/import", tags=["imports"])
 async def import_form(request: Request, event_id: str, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
     return templates.TemplateResponse("imports/upload.html", {
         "request": request,
         "event": event,
@@ -45,7 +46,7 @@ async def upload_excel(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     content = await file.read()
 
@@ -77,7 +78,7 @@ async def confirm_import(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        return RedirectResponse(url="/events")
+        return RedirectResponse(url=url("/events"))
 
     data = json.loads(parsed_json)
     imported = 0
@@ -176,6 +177,6 @@ async def confirm_import(
     db.commit()
 
     return RedirectResponse(
-        url=f"/events/{event_id}/participants?imported={imported}&skipped={skipped}",
+        url=url(f"/events/{event_id}/participants?imported={imported}&skipped={skipped}"),
         status_code=303
     )

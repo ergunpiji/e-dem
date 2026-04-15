@@ -530,6 +530,32 @@ document.addEventListener('DOMContentLoaded', function() {
               </div>
             </div>
             {% endif %}
+            {% if oa_module.oa_task_supplier_url %}
+            <div style="background:rgba(255,255,255,.08); border-radius:10px; padding:10px 14px;">
+              <div style="font-size:11px; opacity:.7; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">🔧 Tedarikçi Görev Portalı</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <code style="font-size:12px; flex:1; word-break:break-all; opacity:.9;">{{ oa_module.oa_task_supplier_url }}</code>
+                <button onclick="copyLink('{{ oa_module.oa_task_supplier_url }}', this)"
+                        style="background:rgba(255,255,255,.15); border:none; color:#fff;
+                               border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap;">
+                  Kopyala
+                </button>
+              </div>
+            </div>
+            {% endif %}
+            {% if oa_module.oa_client_url %}
+            <div style="background:rgba(255,255,255,.08); border-radius:10px; padding:10px 14px;">
+              <div style="font-size:11px; opacity:.7; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">👥 Müşteri Portalı</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <code style="font-size:12px; flex:1; word-break:break-all; opacity:.9;">{{ oa_module.oa_client_url }}</code>
+                <button onclick="copyLink('{{ oa_module.oa_client_url }}', this)"
+                        style="background:rgba(255,255,255,.15); border:none; color:#fff;
+                               border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; white-space:nowrap;">
+                  Kopyala
+                </button>
+              </div>
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>
