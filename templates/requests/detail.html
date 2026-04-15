@@ -465,15 +465,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 ✅ Aktif
               </span>
             </div>
-            <form method="post"
-                  action="/requests/{{ req.id }}/modules/operasyon/deactivate"
-                  onsubmit="return confirm('Modülü devre dışı bırakmak istediğinizden emin misiniz?')">
-              <button type="submit"
-                      style="background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.3);
-                             color:#fff; border-radius:8px; padding:4px 12px; font-size:12px; cursor:pointer;">
-                Kapat
-              </button>
-            </form>
+            <div style="display:flex; gap:8px; align-items:center;">
+              {% if oa_module.oa_manager_url %}
+              <a href="{{ oa_module.oa_manager_url }}" target="_blank"
+                 style="background:#fff; color:#1e3a5f; border-radius:8px;
+                        padding:6px 14px; font-size:13px; font-weight:700;
+                        text-decoration:none; white-space:nowrap;">
+                Operasyon'a Gir →
+              </a>
+              {% endif %}
+              <form method="post"
+                    action="/requests/{{ req.id }}/modules/operasyon/deactivate"
+                    onsubmit="return confirm('Modülü devre dışı bırakmak istediğinizden emin misiniz?')">
+                <button type="submit"
+                        style="background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.3);
+                               color:#fff; border-radius:8px; padding:4px 12px; font-size:12px; cursor:pointer;">
+                  Kapat
+                </button>
+              </form>
+            </div>
           </div>
 
           {# Linkler #}
