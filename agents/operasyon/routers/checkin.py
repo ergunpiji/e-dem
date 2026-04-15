@@ -11,7 +11,7 @@ from typing import List
 
 from config import url
 from database import get_db
-from models import Event, Participant, AccommodationRecord, TransferRecord, Notification
+from models import Event, Participant, AccommodationRecord, TransferRecord, Notification, SupplierTask, TASK_STATUSES, SUPPLIER_TASK_TYPES
 
 router = APIRouter(tags=["checkin"])
 
@@ -300,7 +300,6 @@ async def supplier_tasks(
     db: Session = Depends(get_db)
 ):
     """Teknik/Dekor/Diğer tedarikçiler için görev listesi portalı."""
-    from models import SupplierTask, TASK_STATUSES, SUPPLIER_TASK_TYPES
     from collections import defaultdict
 
     event = db.query(Event).filter(Event.supplier_token == token).first()
@@ -343,8 +342,6 @@ async def supplier_update_task_status(
     db: Session = Depends(get_db)
 ):
     """Tedarikçi görev durumunu günceller (pending→confirmed→done)."""
-    from models import SupplierTask
-
     event = db.query(Event).filter(Event.supplier_token == token).first()
     if not event:
         return HTMLResponse("Geçersiz token", status_code=403)

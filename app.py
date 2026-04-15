@@ -228,16 +228,45 @@ app.include_router(modules_router.router)
 # Operasyon Ajanı — sub-app olarak mount et (/operasyon/...)
 # ---------------------------------------------------------------------------
 import sys as _sys
-_oa_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents", "operasyon")
-if _oa_dir not in _sys.path:
-    _sys.path.insert(0, _oa_dir)
+import importlib as _il
 
-# Prefix'i sub-app başlamadan önce ayarla (templates_config ve config bu env'yi okur)
+_oa_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents", "operasyon")
 os.environ.setdefault("OA_URL_PREFIX", "/operasyon")
 
-# Operasyon uygulamasını import et
-import importlib as _il
-_oa_main = _il.import_module("main")   # agents/operasyon/main.py
-_operasyon_app = _oa_main.app
 
+def _mount_operasyon():
+    """
+    Operasyon agent'ı E-dem modülleriyle çakışmadan yükle.
+
+    E-dem ve operasyon her ikisi de 'database', 'models', 'config',
+    'templates_config', 'routers' gibi aynı isimli modüller kullanıyor.
+    sys.modules önbelleğinde E-dem'inkiler zaten yüklü olduğundan,
+    operasyon yüklenirken geçici olarak saklanıp sonra geri yükleniyor.
+    """
+    _bare = {"database", "models", "config", "templates_config", "main"}
+
+    # E-dem'in çakışan modüllerini geçici olarak sakla
+    _stash: dict = {}
+    for _n in list(_sys.modules.keys()):
+        if _n in _bare or _n == "routers" or _n.startswith("routers.") or _n.startswith("services."):
+            _stash[_n] = _sys.modules.pop(_n)
+
+    _sys.path.insert(0, _oa_dir)
+    try:
+        _oa_mod = _il.import_module("main")   # agents/operasyon/main.py
+        _app = _oa_mod.app
+    finally:
+        # Operasyon'un yüklediği modülleri _oa.* ismi altında sakla
+        for _n in list(_sys.modules.keys()):
+            if (_n in _bare or _n == "routers" or
+                    _n.startswith("routers.") or _n.startswith("services.")):
+                _sys.modules[f"_oa.{_n}"] = _sys.modules.pop(_n)
+        # E-dem'in orijinal modüllerini geri yükle
+        _sys.modules.update(_stash)
+        if _oa_dir in _sys.path:
+            _sys.path.remove(_oa_dir)
+    return _app
+
+
+_operasyon_app = _mount_operasyon()
 app.mount("/operasyon", _operasyon_app)
