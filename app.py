@@ -70,6 +70,11 @@ async def nav_counts_middleware(request: Request, call_next):
     from database import SessionLocal
     from sqlalchemy import text as _text
 
+    # Statik dosyalar veya API dokümantasyonu için veritabanına gitme
+    path = request.url.path
+    if path.startswith("/static") or path.startswith("/api") or "." in path.split("/")[-1]:
+        return await call_next(request)
+
     counts = {}
     token = request.cookies.get(COOKIE_NAME)
     if token:
@@ -255,6 +260,12 @@ def _mount_operasyon():
     try:
         _oa_mod = _il.import_module("main")   # agents/operasyon/main.py
         _app = _oa_mod.app
+
+        # Tablolar henüz yoksa yarat — burada çağırmak kritik:
+        # operasyon modülleri hâlâ düz isimlerle sys.modules'ta
+        # (database, models) olduğundan init_db() doğru Base'i bulur.
+        _oa_db = _il.import_module("database")
+        _oa_db.init_db()
     finally:
         # Operasyon'un yüklediği modülleri _oa.* ismi altında sakla
         for _n in list(_sys.modules.keys()):
