@@ -23,7 +23,7 @@
     </p>
   </div>
 
-  <form method="post" action="/events/{{ event.id }}/import/upload" enctype="multipart/form-data" id="upload-form">
+  <form method="post" action="{{ base_url }}/events/{{ event.id }}/import/upload" enctype="multipart/form-data" id="upload-form">
     <div class="upload-area" id="upload-area">
       <div class="upload-area-icon">📂</div>
       <div class="upload-area-title">Excel dosyasını buraya sürükleyin veya tıklayın</div>

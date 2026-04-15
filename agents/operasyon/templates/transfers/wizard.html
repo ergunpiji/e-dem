@@ -14,7 +14,7 @@
 </div>
 {% else %}
 
-<form method="post" action="/events/{{ event.id }}/transfers/wizard/generate">
+<form method="post" action="{{ base_url }}/events/{{ event.id }}/transfers/wizard/generate">
 
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
 
@@ -160,7 +160,7 @@
 
   <div class="btn-group">
     <button type="submit" class="btn btn-primary">🚌 Transferleri Oluştur</button>
-    <a href="/events/{{ event.id }}/transfers" class="btn btn-secondary">İptal</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/transfers" class="btn btn-secondary">İptal</a>
   </div>
 
 </form>

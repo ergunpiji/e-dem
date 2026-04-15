@@ -8,13 +8,13 @@
   </div>
   <div style="display:flex; gap:8px; align-items:center;">
     {% if event.edem_request_id %}
-    <form method="post" action="/events/{{ event.id }}/tasks/import-edem"
+    <form method="post" action="{{ base_url }}/events/{{ event.id }}/tasks/import-edem"
           onsubmit="return confirm('E-dem bütçesindeki hizmet kalemleri görev olarak eklenecek. Devam?')">
       <button type="submit" class="btn btn-secondary"
               style="font-size:13px;">📥 E-dem'den Aktar</button>
     </form>
     {% endif %}
-    <a href="/events/{{ event.id }}/tasks/new" class="btn btn-primary">+ Görev Ekle</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/tasks/new" class="btn btn-primary">+ Görev Ekle</a>
   </div>
 </div>
 
@@ -28,7 +28,7 @@
 {# İstatistik kartları #}
 <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
   {% for status_key, (icon, label, bg, color) in task_statuses.items() %}
-  <a href="/events/{{ event.id }}/tasks?status={{ status_key }}"
+  <a href="{{ base_url }}/events/{{ event.id }}/tasks?status={{ status_key }}"
      style="background:{{ bg }}; color:{{ color }}; border-radius:10px; padding:10px 18px;
              text-decoration:none; flex:1; min-width:110px; text-align:center;
              border:2px solid {% if status_filter == status_key %}{{ color }}{% else %}transparent{% endif %};">
@@ -38,7 +38,7 @@
   </a>
   {% endfor %}
   {% if status_filter %}
-  <a href="/events/{{ event.id }}/tasks" class="btn btn-secondary" style="align-self:center;">
+  <a href="{{ base_url }}/events/{{ event.id }}/tasks" class="btn btn-secondary" style="align-self:center;">
     Tümü Göster
   </a>
   {% endif %}
@@ -46,10 +46,10 @@
 
 {# Tedarikçi tipi filtresi #}
 <div class="filter-bar" style="flex-wrap:wrap; gap:6px; margin-bottom:16px;">
-  <a href="/events/{{ event.id }}/tasks{% if status_filter %}?status={{ status_filter }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/tasks{% if status_filter %}?status={{ status_filter }}{% endif %}"
      class="btn {% if not type_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Tümü</a>
   {% for type_key, type_label in supplier_task_types %}
-  <a href="/events/{{ event.id }}/tasks?supplier_type={{ type_key }}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/tasks?supplier_type={{ type_key }}{% if status_filter %}&status={{ status_filter }}{% endif %}"
      class="btn {% if type_filter == type_key %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
     {{ type_label }}
   </a>
@@ -77,7 +77,7 @@
                       padding:2px 10px; font-size:12px;">{{ done_cnt }}/{{ total_cnt }} bitti</span>
         {% endif %}
       </div>
-      <a href="/events/{{ event.id }}/tasks/new" class="btn btn-secondary btn-sm">+ Görev</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/tasks/new" class="btn btn-secondary btn-sm">+ Görev</a>
     </div>
     <div class="table-wrap">
       <table>
@@ -107,7 +107,7 @@
               {% endfor %}
             </td>
             <td>
-              <form method="post" action="/events/{{ event.id }}/tasks/{{ t.id }}/status"
+              <form method="post" action="{{ base_url }}/events/{{ event.id }}/tasks/{{ t.id }}/status"
                     style="display:inline;">
                 <select name="status" onchange="this.form.submit()"
                         style="background:{{ st[2] }}; color:{{ st[3] }}; border:none;
@@ -123,9 +123,9 @@
             </td>
             <td style="color:#94a3b8; font-size:12px;">{{ t.notes or '—' }}</td>
             <td style="white-space:nowrap;">
-              <a href="/events/{{ event.id }}/tasks/{{ t.id }}/edit"
+              <a href="{{ base_url }}/events/{{ event.id }}/tasks/{{ t.id }}/edit"
                  class="btn btn-secondary btn-sm">Düzenle</a>
-              <form method="post" action="/events/{{ event.id }}/tasks/{{ t.id }}/delete"
+              <form method="post" action="{{ base_url }}/events/{{ event.id }}/tasks/{{ t.id }}/delete"
                     style="display:inline;"
                     onsubmit="return confirm('Bu görevi sil?')">
                 <button type="submit" class="btn btn-secondary btn-sm"
@@ -147,9 +147,9 @@
     <div class="empty-state-text">Transfer, otel, teknik ekipman, catering gibi tedarikçilerin görevlerini buraya ekleyin.</div>
     <br>
     <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
-      <a href="/events/{{ event.id }}/tasks/new" class="btn btn-primary">+ İlk Görevi Ekle</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/tasks/new" class="btn btn-primary">+ İlk Görevi Ekle</a>
       {% if event.edem_request_id %}
-      <form method="post" action="/events/{{ event.id }}/tasks/import-edem"
+      <form method="post" action="{{ base_url }}/events/{{ event.id }}/tasks/import-edem"
             onsubmit="return confirm('E-dem bütçesindeki kalemler görev olarak eklenecek. Devam?')">
         <button type="submit" class="btn btn-secondary">📥 E-dem'den Aktar</button>
       </form>

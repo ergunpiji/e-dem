@@ -6,7 +6,7 @@
 </div>
 
 <div class="card">
-  <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/new">
+  <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/new">
     <div class="form-grid">
       <div class="form-group full">
         <label>Otel Adı</label>
@@ -52,7 +52,7 @@
     <br>
     <div class="btn-group">
       <button type="submit" class="btn btn-primary">Kaydet</button>
-      <a href="/events/{{ event.id }}/participants/{{ participant.id }}" class="btn btn-secondary">İptal</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}" class="btn btn-secondary">İptal</a>
     </div>
   </form>
 </div>

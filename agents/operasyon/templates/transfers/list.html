@@ -7,9 +7,9 @@
     <div class="page-subtitle">{{ transfers | length }} transfer kaydı</div>
   </div>
   <div class="btn-group">
-    <a href="/supplier/{{ event.supplier_token }}/transfers" target="_blank"
+    <a href="{{ base_url }}/supplier/{{ event.supplier_token }}/transfers" target="_blank"
        class="btn btn-secondary" title="Tedarikçi bağlantısı">🔗 Tedarikçi Linki</a>
-    <a href="/events/{{ event.id }}/transfers/wizard" class="btn btn-primary">✨ Transfer Sihirbazı</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/transfers/wizard" class="btn btn-primary">✨ Transfer Sihirbazı</a>
   </div>
 </div>
 
@@ -29,28 +29,28 @@
   {% if direction_filter %}<input type="hidden" name="direction" value="{{ direction_filter }}">{% endif %}
   {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
   <button type="submit" class="btn btn-secondary">Ara</button>
-  {% if search %}<a href="/events/{{ event.id }}/transfers{% if direction_filter or status_filter %}?{% endif %}{% if direction_filter %}direction={{ direction_filter }}{% endif %}{% if direction_filter and status_filter %}&{% endif %}{% if status_filter %}status={{ status_filter }}{% endif %}" class="btn btn-secondary">✕</a>{% endif %}
+  {% if search %}<a href="{{ base_url }}/events/{{ event.id }}/transfers{% if direction_filter or status_filter %}?{% endif %}{% if direction_filter %}direction={{ direction_filter }}{% endif %}{% if direction_filter and status_filter %}&{% endif %}{% if status_filter %}status={{ status_filter }}{% endif %}" class="btn btn-secondary">✕</a>{% endif %}
 </form>
 
 {# Filtre çubuğu #}
 <div class="filter-bar" style="flex-wrap:wrap; gap:8px;">
   {% set s = "&search=" ~ search if search else "" %}
-  <a href="/events/{{ event.id }}/transfers{% if search %}?search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/transfers{% if search %}?search={{ search }}{% endif %}"
      class="btn {% if not direction_filter and not status_filter %}btn-primary{% else %}btn-secondary{% endif %}">Tümü</a>
-  <a href="/events/{{ event.id }}/transfers?direction=in{{ s }}"
+  <a href="{{ base_url }}/events/{{ event.id }}/transfers?direction=in{{ s }}"
      class="btn {% if direction_filter == 'in' and not status_filter %}btn-primary{% else %}btn-secondary{% endif %}">↓ Karşılama</a>
-  <a href="/events/{{ event.id }}/transfers?direction=out{{ s }}"
+  <a href="{{ base_url }}/events/{{ event.id }}/transfers?direction=out{{ s }}"
      class="btn {% if direction_filter == 'out' and not status_filter %}btn-primary{% else %}btn-secondary{% endif %}">↑ Gidiş</a>
   <span style="border-left:1px solid #e2e8f0; margin:0 4px;"></span>
-  <a href="/events/{{ event.id }}/transfers?status=pending{{ s }}"
+  <a href="{{ base_url }}/events/{{ event.id }}/transfers?status=pending{{ s }}"
      class="btn {% if status_filter == 'pending' %}btn-warning{% else %}btn-secondary{% endif %}">⏳ Bekliyor</a>
-  <a href="/events/{{ event.id }}/transfers?status=boarded{{ s }}"
+  <a href="{{ base_url }}/events/{{ event.id }}/transfers?status=boarded{{ s }}"
      class="btn {% if status_filter == 'boarded' %}btn-success{% else %}btn-secondary{% endif %}">✅ Bindi</a>
 </div>
 
 {# Toplu biniş formu #}
 {% if transfers %}
-<form method="post" action="/events/{{ event.id }}/transfers/bulk-board" id="bulk-form">
+<form method="post" action="{{ base_url }}/events/{{ event.id }}/transfers/bulk-board" id="bulk-form">
   <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
     <button type="submit" class="btn btn-primary btn-sm"
             onclick="return confirm('Seçili transfer kayıtlarını bindi olarak işaretle?')">
@@ -127,7 +127,7 @@
                 </span>
               </td>
               <td>
-                <a href="/events/{{ event.id }}/participants/{{ t.participant_id }}" class="table-link">
+                <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ t.participant_id }}" class="table-link">
                   {{ t.participant.full_name }}
                 </a>
               </td>
@@ -152,7 +152,7 @@
               </td>
               <td>
                 <form method="post"
-                      action="/events/{{ event.id }}/transfers/{{ t.id }}/board"
+                      action="{{ base_url }}/events/{{ event.id }}/transfers/{{ t.id }}/board"
                       style="display:inline;">
                   <input type="hidden" name="redirect_to"
                          value="/events/{{ event.id }}/transfers{% if direction_filter %}?direction={{ direction_filter }}{% endif %}{% if status_filter %}?status={{ status_filter }}{% endif %}">

@@ -4,11 +4,11 @@
 
 <div class="page-header">
   <div>
-    <a href="/events/{{ event.id }}/participants" style="color:#64748b; font-size:13px; text-decoration:none;">← Katılımcı Listesi</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/participants" style="color:#64748b; font-size:13px; text-decoration:none;">← Katılımcı Listesi</a>
   </div>
   <div class="btn-group">
-    <a href="/events/{{ event.id }}/participants/{{ participant.id }}/edit" class="btn btn-secondary">Düzenle</a>
-    <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/delete"
+    <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/edit" class="btn btn-secondary">Düzenle</a>
+    <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/delete"
           data-confirm="{{ participant.full_name }} kişisini silmek istediğinize emin misiniz?">
       <button type="submit" class="btn btn-danger btn-sm">Sil</button>
     </form>
@@ -66,8 +66,8 @@
           </div>
           {% endif %}
           <div class="btn-group">
-            <a href="/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=in" class="btn btn-secondary btn-sm">Düzenle</a>
-            <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/flights/{{ flight_in.id }}/delete">
+            <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=in" class="btn btn-secondary btn-sm">Düzenle</a>
+            <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/flights/{{ flight_in.id }}/delete">
               <button class="btn btn-danger btn-sm">Sil</button>
             </form>
           </div>
@@ -75,7 +75,7 @@
         {% else %}
         <div style="margin-bottom:10px;">
           <span class="pcard-empty">Geliş uçuşu girilmemiş</span>
-          <a href="/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=in" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
+          <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=in" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
         </div>
         {% endif %}
 
@@ -96,8 +96,8 @@
           </div>
           {% endif %}
           <div class="btn-group">
-            <a href="/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=out" class="btn btn-secondary btn-sm">Düzenle</a>
-            <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/flights/{{ flight_out.id }}/delete">
+            <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=out" class="btn btn-secondary btn-sm">Düzenle</a>
+            <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/flights/{{ flight_out.id }}/delete">
               <button class="btn btn-danger btn-sm">Sil</button>
             </form>
           </div>
@@ -105,7 +105,7 @@
         {% else %}
         <div>
           <span class="pcard-empty">Dönüş uçuşu girilmemiş</span>
-          <a href="/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=out" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
+          <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/flights/new?direction=out" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
         </div>
         {% endif %}
       </div>
@@ -159,20 +159,20 @@
           <div class="pcard-field">
             <div class="pcard-field-label">Oda Arkadaşı</div>
             <div class="pcard-field-value">
-              <a href="/events/{{ event.id }}/participants/{{ roommate.id }}" class="table-link">{{ roommate.full_name }}</a>
+              <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ roommate.id }}" class="table-link">{{ roommate.full_name }}</a>
             </div>
           </div>
         </div>
         {% endif %}
         <div class="btn-group" style="margin-top:10px;">
-          <a href="/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/new" class="btn btn-secondary btn-sm">Düzenle</a>
-          <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/delete">
+          <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/new" class="btn btn-secondary btn-sm">Düzenle</a>
+          <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/delete">
             <button class="btn btn-danger btn-sm">Sil</button>
           </form>
         </div>
         {% else %}
         <span class="pcard-empty">Konaklama bilgisi yok</span>
-        <a href="/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/new" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
+        <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/accommodation/new" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
         {% endif %}
       </div>
     </div>
@@ -192,8 +192,8 @@
             </div>
           </div>
           <div>
-            <a href="/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=in" class="btn btn-secondary btn-sm">Düzenle</a>
-            <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/transfers/{{ transfer_in.id }}/delete" style="display:inline;">
+            <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=in" class="btn btn-secondary btn-sm">Düzenle</a>
+            <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/transfers/{{ transfer_in.id }}/delete" style="display:inline;">
               <button class="btn btn-danger btn-sm">Sil</button>
             </form>
           </div>
@@ -201,7 +201,7 @@
         {% else %}
         <div style="margin-bottom:8px;">
           <span class="pcard-empty">Varış transferi yok</span>
-          <a href="/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=in" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
+          <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=in" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
         </div>
         {% endif %}
 
@@ -216,8 +216,8 @@
             </div>
           </div>
           <div>
-            <a href="/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=out" class="btn btn-secondary btn-sm">Düzenle</a>
-            <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/transfers/{{ transfer_out.id }}/delete" style="display:inline;">
+            <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=out" class="btn btn-secondary btn-sm">Düzenle</a>
+            <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/transfers/{{ transfer_out.id }}/delete" style="display:inline;">
               <button class="btn btn-danger btn-sm">Sil</button>
             </form>
           </div>
@@ -225,7 +225,7 @@
         {% else %}
         <div>
           <span class="pcard-empty">Dönüş transferi yok</span>
-          <a href="/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=out" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
+          <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new?direction=out" class="btn btn-secondary btn-sm" style="margin-left:10px;">+ Ekle</a>
         </div>
         {% endif %}
       </div>

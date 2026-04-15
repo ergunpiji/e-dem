@@ -71,11 +71,11 @@
 </div>
 
 <!-- Onay formu -->
-<form method="post" action="/events/{{ event.id }}/import/confirm">
+<form method="post" action="{{ base_url }}/events/{{ event.id }}/import/confirm">
   <input type="hidden" name="parsed_json" value="{{ parsed_json | e }}">
   <div class="btn-group">
     <button type="submit" class="btn btn-primary">✅ {{ parsed | length }} Katılımcıyı Aktar</button>
-    <a href="/events/{{ event.id }}/import" class="btn btn-secondary">← İptal, Yeniden Yükle</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/import" class="btn btn-secondary">← İptal, Yeniden Yükle</a>
   </div>
 </form>
 {% endblock %}

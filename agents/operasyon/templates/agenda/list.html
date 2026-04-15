@@ -8,13 +8,13 @@
   </div>
   <div style="display:flex; gap:8px; align-items:center;">
     {% if event.edem_request_id %}
-    <form method="post" action="/events/{{ event.id }}/agenda/import-edem"
+    <form method="post" action="{{ base_url }}/events/{{ event.id }}/agenda/import-edem"
           onsubmit="return confirm('E-dem bütçesindeki toplantı ve yemek kalemleri programa eklenecek. Devam?')">
       <button type="submit" class="btn btn-secondary"
               style="font-size:13px;">📥 E-dem'den Aktar</button>
     </form>
     {% endif %}
-    <a href="/events/{{ event.id }}/agenda/new" class="btn btn-primary">+ Oturum Ekle</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/agenda/new" class="btn btn-primary">+ Oturum Ekle</a>
   </div>
 </div>
 
@@ -34,7 +34,7 @@
                   padding:8px 18px; font-weight:700; font-size:15px;">
         {{ day.strftime('%A') }} &nbsp;·&nbsp; {{ day.strftime('%d %B %Y') }}
       </div>
-      <a href="/events/{{ event.id }}/agenda/new?session_date={{ day }}"
+      <a href="{{ base_url }}/events/{{ event.id }}/agenda/new?session_date={{ day }}"
          class="btn btn-secondary btn-sm">+ Bu Güne Ekle</a>
     </div>
 
@@ -93,9 +93,9 @@
               {% endif %}
             </div>
             <div style="display:flex; gap:4px; flex-shrink:0;">
-              <a href="/events/{{ event.id }}/agenda/{{ s.id }}/edit"
+              <a href="{{ base_url }}/events/{{ event.id }}/agenda/{{ s.id }}/edit"
                  class="btn btn-secondary btn-sm">Düzenle</a>
-              <form method="post" action="/events/{{ event.id }}/agenda/{{ s.id }}/delete"
+              <form method="post" action="{{ base_url }}/events/{{ event.id }}/agenda/{{ s.id }}/delete"
                     style="display:inline;"
                     onsubmit="return confirm('Bu oturumu sil?')">
                 <button type="submit" class="btn btn-secondary btn-sm"
@@ -118,9 +118,9 @@
     <div class="empty-state-text">Günlük oturumları, molalar ve diğer aktiviteleri buraya ekleyin.</div>
     <br>
     <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
-      <a href="/events/{{ event.id }}/agenda/new" class="btn btn-primary">+ İlk Oturumu Ekle</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/agenda/new" class="btn btn-primary">+ İlk Oturumu Ekle</a>
       {% if event.edem_request_id %}
-      <form method="post" action="/events/{{ event.id }}/agenda/import-edem"
+      <form method="post" action="{{ base_url }}/events/{{ event.id }}/agenda/import-edem"
             onsubmit="return confirm('E-dem bütçesindeki kalemler programa eklenecek. Devam?')">
         <button type="submit" class="btn btn-secondary">📥 E-dem'den Aktar</button>
       </form>

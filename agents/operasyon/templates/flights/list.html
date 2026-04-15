@@ -7,14 +7,14 @@
     <div class="page-subtitle">{{ flights | length }} uçuş kaydı</div>
   </div>
   <div class="btn-group">
-    <a href="/events/{{ event.id }}/transfers/wizard" class="btn btn-secondary">🚌 Transfer Sihirbazı</a>
-    <form method="post" action="/events/{{ event.id }}/flights/fill-missing" style="display:inline;">
+    <a href="{{ base_url }}/events/{{ event.id }}/transfers/wizard" class="btn btn-secondary">🚌 Transfer Sihirbazı</a>
+    <form method="post" action="{{ base_url }}/events/{{ event.id }}/flights/fill-missing" style="display:inline;">
       <button type="submit" class="btn btn-secondary"
               onclick="this.textContent='⏳ Dolduruluyor...'; this.disabled=true;">
         ✨ Eksik Detayları Tamamla
       </button>
     </form>
-    <a href="/events/{{ event.id }}/flights/validate" class="btn btn-secondary"
+    <a href="{{ base_url }}/events/{{ event.id }}/flights/validate" class="btn btn-secondary"
        onclick="this.textContent='⏳ Doğrulanıyor...'; this.style.pointerEvents='none';">
       🔍 Uçuşları Doğrula
     </a>
@@ -33,14 +33,14 @@
          class="search-input" style="flex:1; min-width:160px;">
   {% if direction_filter %}<input type="hidden" name="direction" value="{{ direction_filter }}">{% endif %}
   <button type="submit" class="btn btn-secondary">Ara</button>
-  {% if search %}<a href="/events/{{ event.id }}/flights{% if direction_filter %}?direction={{ direction_filter }}{% endif %}" class="btn btn-secondary">✕</a>{% endif %}
+  {% if search %}<a href="{{ base_url }}/events/{{ event.id }}/flights{% if direction_filter %}?direction={{ direction_filter }}{% endif %}" class="btn btn-secondary">✕</a>{% endif %}
 </form>
 <div class="filter-bar">
-  <a href="/events/{{ event.id }}/flights{% if search %}?search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/flights{% if search %}?search={{ search }}{% endif %}"
      class="btn {% if not direction_filter %}btn-primary{% else %}btn-secondary{% endif %}">Tümü</a>
-  <a href="/events/{{ event.id }}/flights?direction=in{% if search %}&search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/flights?direction=in{% if search %}&search={{ search }}{% endif %}"
      class="btn {% if direction_filter == 'in' %}btn-primary{% else %}btn-secondary{% endif %}">↓ Geliş</a>
-  <a href="/events/{{ event.id }}/flights?direction=out{% if search %}&search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/flights?direction=out{% if search %}&search={{ search }}{% endif %}"
      class="btn {% if direction_filter == 'out' %}btn-primary{% else %}btn-secondary{% endif %}">↑ Dönüş</a>
 </div>
 
@@ -72,7 +72,7 @@
             </span>
           </td>
           <td>
-            <a href="/events/{{ event.id }}/participants/{{ f.participant_id }}" class="table-link">
+            <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ f.participant_id }}" class="table-link">
               {{ f.participant.full_name }}
             </a>
           </td>

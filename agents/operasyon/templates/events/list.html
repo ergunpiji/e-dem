@@ -6,7 +6,7 @@
     <div class="page-title">Etkinlikler</div>
     <div class="page-subtitle">Yönetmek istediğiniz etkinliği seçin</div>
   </div>
-  <a href="/events/new" class="btn btn-primary">+ Yeni Etkinlik</a>
+  <a href="{{ base_url }}/events/new" class="btn btn-primary">+ Yeni Etkinlik</a>
 </div>
 
 {% if events %}
@@ -26,7 +26,7 @@
         {% for e in events %}
         <tr>
           <td>
-            <a href="/events/{{ e.id }}" class="table-link">{{ e.name }}</a>
+            <a href="{{ base_url }}/events/{{ e.id }}" class="table-link">{{ e.name }}</a>
             {% if e.edem_request_no %}
             <span style="font-size:10px; background:#eff6ff; color:#1d4ed8; padding:1px 6px; border-radius:999px; margin-left:6px;">
               🔗 {{ e.edem_request_no }}
@@ -43,9 +43,9 @@
           <td>{{ e.participant_count }}</td>
           <td>
             <div class="btn-group">
-              <a href="/events/{{ e.id }}" class="btn btn-secondary btn-sm">Aç</a>
-              <a href="/events/{{ e.id }}/edit" class="btn btn-secondary btn-sm">Düzenle</a>
-              <form method="post" action="/events/{{ e.id }}/delete" data-confirm="Bu etkinliği silmek istediğinize emin misiniz? Tüm katılımcı verileri de silinir.">
+              <a href="{{ base_url }}/events/{{ e.id }}" class="btn btn-secondary btn-sm">Aç</a>
+              <a href="{{ base_url }}/events/{{ e.id }}/edit" class="btn btn-secondary btn-sm">Düzenle</a>
+              <form method="post" action="{{ base_url }}/events/{{ e.id }}/delete" data-confirm="Bu etkinliği silmek istediğinize emin misiniz? Tüm katılımcı verileri de silinir.">
                 <button type="submit" class="btn btn-danger btn-sm">Sil</button>
               </form>
             </div>
@@ -63,7 +63,7 @@
     <div class="empty-state-title">Henüz etkinlik yok</div>
     <div class="empty-state-text">İlk etkinliğinizi oluşturun.</div>
     <br>
-    <a href="/events/new" class="btn btn-primary">+ Yeni Etkinlik</a>
+    <a href="{{ base_url }}/events/new" class="btn btn-primary">+ Yeni Etkinlik</a>
   </div>
 </div>
 {% endif %}

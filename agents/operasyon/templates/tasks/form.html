@@ -8,7 +8,7 @@
 </div>
 
 <div class="card">
-  <form method="post" action="/events/{{ event.id }}/tasks/{% if task %}{{ task.id }}/edit{% else %}new{% endif %}">
+  <form method="post" action="{{ base_url }}/events/{{ event.id }}/tasks/{% if task %}{{ task.id }}/edit{% else %}new{% endif %}">
     <div class="form-grid cols-3">
 
       <div class="form-group">
@@ -80,7 +80,7 @@
     <br>
     <div class="btn-group">
       <button type="submit" class="btn btn-primary">Kaydet</button>
-      <a href="/events/{{ event.id }}/tasks" class="btn btn-secondary">İptal</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/tasks" class="btn btn-secondary">İptal</a>
     </div>
   </form>
 </div>

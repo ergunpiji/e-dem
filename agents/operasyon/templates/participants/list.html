@@ -7,8 +7,8 @@
     <div class="page-subtitle">{{ participants | length }} katılımcı</div>
   </div>
   <div class="btn-group">
-    <a href="/events/{{ event.id }}/import" class="btn btn-secondary">📥 Excel Aktar</a>
-    <a href="/events/{{ event.id }}/participants/new" class="btn btn-primary">+ Ekle</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/import" class="btn btn-secondary">📥 Excel Aktar</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/participants/new" class="btn btn-primary">+ Ekle</a>
   </div>
 </div>
 
@@ -23,7 +23,7 @@
   </select>
   <button type="submit" class="btn btn-secondary">Filtrele</button>
   {% if search or status_filter %}
-  <a href="/events/{{ event.id }}/participants" class="btn btn-secondary">Temizle</a>
+  <a href="{{ base_url }}/events/{{ event.id }}/participants" class="btn btn-secondary">Temizle</a>
   {% endif %}
 </form>
 
@@ -47,7 +47,7 @@
         {% for p in participants %}
         <tr>
           <td>
-            <a href="/events/{{ event.id }}/participants/{{ p.id }}" class="table-link">
+            <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ p.id }}" class="table-link">
               {{ p.full_name }}
             </a>
           </td>
@@ -94,7 +94,7 @@
             </span>
           </td>
           <td>
-            <a href="/events/{{ event.id }}/participants/{{ p.id }}" class="btn btn-secondary btn-sm">Kart</a>
+            <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ p.id }}" class="btn btn-secondary btn-sm">Kart</a>
           </td>
         </tr>
         {% endfor %}
@@ -116,8 +116,8 @@
     {% if not search and not status_filter %}
     <br>
     <div class="btn-group" style="justify-content:center;">
-      <a href="/events/{{ event.id }}/import" class="btn btn-primary">📥 Excel Aktar</a>
-      <a href="/events/{{ event.id }}/participants/new" class="btn btn-secondary">+ Manuel Ekle</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/import" class="btn btn-primary">📥 Excel Aktar</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/participants/new" class="btn btn-secondary">+ Manuel Ekle</a>
     </div>
     {% endif %}
   </div>

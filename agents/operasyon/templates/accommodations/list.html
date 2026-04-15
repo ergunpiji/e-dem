@@ -6,7 +6,7 @@
     <div class="page-title">🏨 Konaklama Listesi</div>
     <div class="page-subtitle">{{ accommodations | length }} konaklama kaydı</div>
   </div>
-  <a href="/supplier/{{ event.supplier_token }}/accommodations" target="_blank"
+  <a href="{{ base_url }}/supplier/{{ event.supplier_token }}/accommodations" target="_blank"
      class="btn btn-secondary" title="Tedarikçi bağlantısı">🔗 Tedarikçi Linki</a>
 </div>
 
@@ -21,30 +21,30 @@
   {% if hotel_filter %}<input type="hidden" name="hotel" value="{{ hotel_filter }}">{% endif %}
   {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
   <button type="submit" class="btn btn-secondary">Ara</button>
-  {% if search %}<a href="/events/{{ event.id }}/accommodations{% if hotel_filter or status_filter %}?{% endif %}{% if hotel_filter %}hotel={{ hotel_filter }}{% endif %}{% if hotel_filter and status_filter %}&{% endif %}{% if status_filter %}status={{ status_filter }}{% endif %}" class="btn btn-secondary">✕</a>{% endif %}
+  {% if search %}<a href="{{ base_url }}/events/{{ event.id }}/accommodations{% if hotel_filter or status_filter %}?{% endif %}{% if hotel_filter %}hotel={{ hotel_filter }}{% endif %}{% if hotel_filter and status_filter %}&{% endif %}{% if status_filter %}status={{ status_filter }}{% endif %}" class="btn btn-secondary">✕</a>{% endif %}
 </form>
 
 {# Filtre çubuğu #}
 <div class="filter-bar" style="flex-wrap:wrap; gap:8px;">
   {# Otel filtresi #}
-  <a href="/events/{{ event.id }}/accommodations{% if search %}?search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/accommodations{% if search %}?search={{ search }}{% endif %}"
      class="btn {% if not hotel_filter and not status_filter %}btn-primary{% else %}btn-secondary{% endif %}">Tüm Oteller</a>
   {% for h in hotels %}
-  <a href="/events/{{ event.id }}/accommodations?hotel={{ h }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/accommodations?hotel={{ h }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
      class="btn {% if hotel_filter == h %}btn-primary{% else %}btn-secondary{% endif %}">{{ h }}</a>
   {% endfor %}
   <span style="border-left:1px solid #e2e8f0; margin:0 4px;"></span>
   {# Durum filtresi #}
-  <a href="/events/{{ event.id }}/accommodations{% if hotel_filter or search %}?{% endif %}{% if hotel_filter %}hotel={{ hotel_filter }}{% endif %}{% if hotel_filter and search %}&{% endif %}{% if search %}search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/accommodations{% if hotel_filter or search %}?{% endif %}{% if hotel_filter %}hotel={{ hotel_filter }}{% endif %}{% if hotel_filter and search %}&{% endif %}{% if search %}search={{ search }}{% endif %}"
      class="btn {% if not status_filter %}btn-secondary{% endif %}">Tümü</a>
-  <a href="/events/{{ event.id }}/accommodations?status=pending{% if hotel_filter %}&hotel={{ hotel_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/accommodations?status=pending{% if hotel_filter %}&hotel={{ hotel_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
      class="btn {% if status_filter == 'pending' %}btn-warning{% else %}btn-secondary{% endif %}">⏳ Giriş Yapılmadı</a>
-  <a href="/events/{{ event.id }}/accommodations?status=checked_in{% if hotel_filter %}&hotel={{ hotel_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
+  <a href="{{ base_url }}/events/{{ event.id }}/accommodations?status=checked_in{% if hotel_filter %}&hotel={{ hotel_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
      class="btn {% if status_filter == 'checked_in' %}btn-success{% else %}btn-secondary{% endif %}">✅ Giriş Yapıldı</a>
 </div>
 
 {% if accommodations %}
-<form method="post" action="/events/{{ event.id }}/accommodations/bulk-checkin">
+<form method="post" action="{{ base_url }}/events/{{ event.id }}/accommodations/bulk-checkin">
   <div style="display:flex; justify-content:flex-end; margin-bottom:8px; gap:8px; align-items:center;">
     <label style="font-size:13px; color:#64748b;">
       <input type="checkbox" id="select-all" onchange="document.querySelectorAll('input[name=acc_ids]').forEach(c=>c.checked=this.checked)">
@@ -83,7 +83,7 @@
               {% endif %}
             </td>
             <td>
-              <a href="/events/{{ event.id }}/participants/{{ a.participant_id }}" class="table-link">
+              <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ a.participant_id }}" class="table-link">
                 {{ a.participant.full_name }}
               </a>
             </td>
@@ -92,7 +92,7 @@
             <td>{{ a.room_type or '—' }}</td>
             <td>
               {% if a.roommate %}
-              <a href="/events/{{ event.id }}/participants/{{ a.roommate.id }}" class="table-link" style="font-size:12px;">
+              <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ a.roommate.id }}" class="table-link" style="font-size:12px;">
                 {{ a.roommate.full_name }}
               </a>
               {% else %}—{% endif %}
@@ -115,7 +115,7 @@
             </td>
             <td>
               <form method="post"
-                    action="/events/{{ event.id }}/accommodations/{{ a.id }}/checkin"
+                    action="{{ base_url }}/events/{{ event.id }}/accommodations/{{ a.id }}/checkin"
                     style="display:inline;">
                 <input type="hidden" name="redirect_to"
                        value="/events/{{ event.id }}/accommodations{% if hotel_filter or status_filter %}?{% endif %}{% if hotel_filter %}hotel={{ hotel_filter }}{% endif %}{% if hotel_filter and status_filter %}&{% endif %}{% if status_filter %}status={{ status_filter }}{% endif %}">

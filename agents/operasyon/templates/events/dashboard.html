@@ -19,8 +19,8 @@
     {% endif %}
   </div>
   <div class="btn-group">
-    <a href="/events/{{ event.id }}/edit" class="btn btn-secondary">Düzenle</a>
-    <a href="/events/{{ event.id }}/import" class="btn btn-primary">📥 Excel Aktar</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/edit" class="btn btn-secondary">Düzenle</a>
+    <a href="{{ base_url }}/events/{{ event.id }}/import" class="btn btn-primary">📥 Excel Aktar</a>
   </div>
 </div>
 
@@ -60,13 +60,13 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">👥 Son Katılımcılar</div>
-      <a href="/events/{{ event.id }}/participants" class="btn btn-secondary btn-sm">Tümünü Gör</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/participants" class="btn btn-secondary btn-sm">Tümünü Gör</a>
     </div>
     {% if event.participants %}
       {% for p in event.participants[-5:] | reverse %}
       <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f1f5f9;">
         <div>
-          <a href="/events/{{ event.id }}/participants/{{ p.id }}" class="table-link">{{ p.full_name }}</a>
+          <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ p.id }}" class="table-link">{{ p.full_name }}</a>
           {% if p.company %}<span style="color:#94a3b8; font-size:12px;"> · {{ p.company }}</span>{% endif %}
         </div>
         <span class="badge badge-{{ p.status }}">
@@ -80,7 +80,7 @@
       <div class="empty-state" style="padding:20px">
         <div class="empty-state-text">Henüz katılımcı yok.</div>
         <br>
-        <a href="/events/{{ event.id }}/participants/new" class="btn btn-primary btn-sm">+ Katılımcı Ekle</a>
+        <a href="{{ base_url }}/events/{{ event.id }}/participants/new" class="btn btn-primary btn-sm">+ Katılımcı Ekle</a>
       </div>
     {% endif %}
   </div>
@@ -90,22 +90,22 @@
       <div class="card-title">🚀 Hızlı İşlemler</div>
     </div>
     <div style="display:flex; flex-direction:column; gap:10px;">
-      <a href="/events/{{ event.id }}/participants/new" class="btn btn-secondary" style="justify-content:flex-start;">
+      <a href="{{ base_url }}/events/{{ event.id }}/participants/new" class="btn btn-secondary" style="justify-content:flex-start;">
         👤 Manuel Katılımcı Ekle
       </a>
-      <a href="/events/{{ event.id }}/import" class="btn btn-secondary" style="justify-content:flex-start;">
+      <a href="{{ base_url }}/events/{{ event.id }}/import" class="btn btn-secondary" style="justify-content:flex-start;">
         📥 Excel'den Katılımcı Aktar
       </a>
-      <a href="/events/{{ event.id }}/flights" class="btn btn-secondary" style="justify-content:flex-start;">
+      <a href="{{ base_url }}/events/{{ event.id }}/flights" class="btn btn-secondary" style="justify-content:flex-start;">
         ✈️ Uçuş Listesini Gör
       </a>
-      <a href="/events/{{ event.id }}/accommodations" class="btn btn-secondary" style="justify-content:flex-start;">
+      <a href="{{ base_url }}/events/{{ event.id }}/accommodations" class="btn btn-secondary" style="justify-content:flex-start;">
         🏨 Konaklama Listesini Gör
       </a>
-      <a href="/events/{{ event.id }}/transfers" class="btn btn-secondary" style="justify-content:flex-start;">
+      <a href="{{ base_url }}/events/{{ event.id }}/transfers" class="btn btn-secondary" style="justify-content:flex-start;">
         🚌 Transfer Listesini Gör
       </a>
-      <a href="/events/{{ event.id }}/notifications" class="btn btn-secondary" style="justify-content:flex-start;">
+      <a href="{{ base_url }}/events/{{ event.id }}/notifications" class="btn btn-secondary" style="justify-content:flex-start;">
         🔔 Bildirimler
       </a>
     </div>

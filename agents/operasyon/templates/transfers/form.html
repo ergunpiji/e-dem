@@ -9,7 +9,7 @@
 </div>
 
 <div class="card">
-  <form method="post" action="/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new">
+  <form method="post" action="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}/transfers/new">
     <input type="hidden" name="direction" value="{{ direction }}">
 
     <div class="form-grid">
@@ -45,7 +45,7 @@
     <br>
     <div class="btn-group">
       <button type="submit" class="btn btn-primary">Kaydet</button>
-      <a href="/events/{{ event.id }}/participants/{{ participant.id }}" class="btn btn-secondary">İptal</a>
+      <a href="{{ base_url }}/events/{{ event.id }}/participants/{{ participant.id }}" class="btn btn-secondary">İptal</a>
     </div>
   </form>
 </div>
