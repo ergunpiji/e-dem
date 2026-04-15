@@ -110,6 +110,10 @@ async def activate_operasyon(
     db.add(module)
     db.commit()
 
+    # Aktivasyon başarılıysa doğrudan operasyon yönetici paneline yönlendir
+    manager_url = data.get("manager_url")
+    if manager_url:
+        return RedirectResponse(url=manager_url, status_code=303)
     return RedirectResponse(url=f"/requests/{request_id}#operasyon-module", status_code=303)
 
 
