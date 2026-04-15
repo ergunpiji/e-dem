@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, Request, Form, Query, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from templates_config import templates
@@ -8,6 +9,16 @@ from config import url
 from database import get_db
 from models import Event, UserToken
 from services import edem_bridge
+
+
+def _public_base(request: Request) -> str:
+    """
+    Tedarikçi / müşteri linklerinde kullanılacak tam URL prefix.
+    Örn: https://e-dem.up.railway.app/operasyon
+    """
+    oa_prefix = os.getenv("OA_URL_PREFIX", "")
+    host = str(request.base_url).rstrip("/")
+    return f"{host}{oa_prefix}"
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -124,10 +135,32 @@ async def event_dashboard(
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
         return RedirectResponse(url=url("/events"))
+
+    # Tüm token'ları getir — link kutuları için
+    tokens = {
+        t.role: t
+        for t in db.query(UserToken).filter(
+            UserToken.event_id == event.id,
+            UserToken.active == True,
+        ).all()
+    }
+
+    base = _public_base(request)
+
+    links = {
+        "manager":       f"{base}/access/{tokens['manager'].token}"      if "manager"      in tokens else None,
+        "coordinator":   f"{base}/access/{tokens['coordinator'].token}"   if "coordinator"  in tokens else None,
+        "transfers":     f"{base}/supplier/{event.supplier_token}/transfers"     if event.supplier_token else None,
+        "accommodations":f"{base}/supplier/{event.supplier_token}/accommodations" if event.supplier_token else None,
+        "tasks":         f"{base}/supplier/{event.supplier_token}/tasks"          if event.supplier_token else None,
+        "client":        f"{base}/client/{tokens['client'].token}"        if "client"       in tokens else None,
+    }
+
     return templates.TemplateResponse("events/dashboard.html", {
         "request": request,
         "event": event,
         "current_user": auth,
+        "links": links,
         "active": "dashboard"
     })
 

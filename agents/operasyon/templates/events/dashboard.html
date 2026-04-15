@@ -110,37 +110,59 @@
       </a>
     </div>
 
-    {% if event.supplier_token %}
-    <div style="margin-top:16px; padding:12px; background:#f0fdf4; border-radius:8px; border:1px solid #bbf7d0;">
-      <div style="font-size:12px; color:#166534; font-weight:600; margin-bottom:8px;">🔗 Tedarikçi Bağlantıları</div>
+    {% if links %}
+    <div style="margin-top:16px;">
+      <div style="font-size:12px; color:#64748b; font-weight:700; text-transform:uppercase;
+                  letter-spacing:.05em; margin-bottom:8px;">🔗 Paylaşım Linkleri</div>
 
-      <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:4px;">🚌 Transfer</div>
-      <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
-        <input type="text" id="link-transfers"
-               value="{{ request.base_url }}supplier/{{ event.supplier_token }}/transfers"
-               readonly style="flex:1; font-size:11px; padding:4px 8px; border:1px solid #bbf7d0; border-radius:4px; background:#fff;">
-        <button class="btn btn-sm btn-secondary"
-                onclick="navigator.clipboard.writeText(document.getElementById('link-transfers').value).then(()=>this.textContent='✅').catch(()=>{});setTimeout(()=>this.textContent='Kopyala',2000)">
-          Kopyala
-        </button>
+      {% set link_defs = [
+        ("manager",        "👔", "Yönetici Paneli",       "#dbeafe", "#1d4ed8"),
+        ("coordinator",    "🎯", "Koordinatör Paneli",    "#dbeafe", "#1d4ed8"),
+        ("transfers",      "🚌", "Transfer Tedarikçisi",  "#dcfce7", "#166534"),
+        ("accommodations", "🏨", "Konaklama Tedarikçisi", "#dcfce7", "#166534"),
+        ("tasks",          "🔧", "Görev Portalı",         "#fef3c7", "#92400e"),
+        ("client",         "👥", "Müşteri Portalı",       "#f3e8ff", "#7e22ce"),
+      ] %}
+
+      {% for key, icon, label, bg, fg in link_defs %}
+      {% if links[key] %}
+      <div style="margin-bottom:6px;">
+        <div style="font-size:10px; font-weight:700; color:{{ fg }}; margin-bottom:3px;
+                    background:{{ bg }}; display:inline-block; padding:1px 8px; border-radius:20px;">
+          {{ icon }} {{ label }}
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <input type="text" id="link-{{ key }}"
+                 value="{{ links[key] }}"
+                 readonly
+                 style="flex:1; font-size:11px; padding:4px 8px;
+                        border:1px solid #e2e8f0; border-radius:4px; background:#f8fafc;
+                        color:#374151; font-family:monospace;">
+          <button class="btn btn-sm btn-secondary"
+                  onclick="copyLink('{{ key }}', this)"
+                  style="white-space:nowrap; flex-shrink:0;">
+            Kopyala
+          </button>
+        </div>
       </div>
+      {% endif %}
+      {% endfor %}
 
-      <div style="font-size:11px; color:#374151; font-weight:600; margin-bottom:4px;">🏨 Konaklama</div>
-      <div style="display:flex; gap:6px; align-items:center;">
-        <input type="text" id="link-accommodations"
-               value="{{ request.base_url }}supplier/{{ event.supplier_token }}/accommodations"
-               readonly style="flex:1; font-size:11px; padding:4px 8px; border:1px solid #bbf7d0; border-radius:4px; background:#fff;">
-        <button class="btn btn-sm btn-secondary"
-                onclick="navigator.clipboard.writeText(document.getElementById('link-accommodations').value).then(()=>this.textContent='✅').catch(()=>{});setTimeout(()=>this.textContent='Kopyala',2000)">
-          Kopyala
-        </button>
-      </div>
-
-      <div style="font-size:11px; color:#64748b; margin-top:6px;">
-        Bu linkler sadece check-in / biniş işlemi için — düzenleme yapılamaz.
+      <div style="font-size:11px; color:#94a3b8; margin-top:8px;">
+        Login gerektirmez — linki alana iletebilirsiniz.
       </div>
     </div>
     {% endif %}
   </div>
 </div>
+
+<script>
+function copyLink(key, btn) {
+  const input = document.getElementById('link-' + key);
+  if (!input) return;
+  navigator.clipboard.writeText(input.value)
+    .then(() => { btn.textContent = '✅'; setTimeout(() => btn.textContent = 'Kopyala', 2000); })
+    .catch(() => { input.select(); document.execCommand('copy'); });
+}
+</script>
 {% endblock %}
