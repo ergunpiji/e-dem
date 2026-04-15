@@ -3,6 +3,12 @@
 {% block page_title_block %}{{ page_title }}{% endblock %}
 
 {% block topbar_actions %}
+<a href="/services/template" class="btn btn-outline-success btn-sm">
+  <i class="bi bi-download me-1"></i> Şablon İndir
+</a>
+<button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#importServicesModal">
+  <i class="bi bi-upload me-1"></i> Excel ile Aktar
+</button>
 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#newCatModal">
   <i class="bi bi-tag me-1"></i> Yeni Kategori
 </button>
@@ -260,6 +266,41 @@
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
           <button type="submit" class="btn btn-primary">
             <i class="bi bi-check-lg me-1"></i>Kaydet
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ─── Excel İçe Aktar Modal ─── #}
+<div class="modal fade" id="importServicesModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="/services/import" enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Excel ile Hizmet Aktar</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          {% if request.query_params.get('import_msg') %}
+          <div class="alert alert-info py-2" style="font-size:13px;">
+            {{ request.query_params.get('import_msg') }}
+          </div>
+          {% endif %}
+          <p class="text-muted" style="font-size:13px;">
+            Önce <a href="/services/template" class="text-primary">şablonu indirin</a>, doldurun ve buradan yükleyin.
+            Aynı kategori + isim kombinasyonu varsa atlanır.
+          </p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px;">Excel Dosyası (.xlsx)</label>
+            <input type="file" name="file" class="form-control" accept=".xlsx" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload me-1"></i>Aktar
           </button>
         </div>
       </form>

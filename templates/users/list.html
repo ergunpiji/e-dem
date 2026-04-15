@@ -3,9 +3,15 @@
 {% block page_title_block %}Kullanıcı Yönetimi{% endblock %}
 
 {% block topbar_actions %}
-<a href="/users/org-titles" class="btn btn-outline-secondary btn-sm me-2">
+<a href="/users/org-titles" class="btn btn-outline-secondary btn-sm">
   <i class="bi bi-diagram-3 me-1"></i> Org Yapısı
 </a>
+<a href="/users/template" class="btn btn-outline-success btn-sm">
+  <i class="bi bi-download me-1"></i> Şablon İndir
+</a>
+<button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#importUsersModal">
+  <i class="bi bi-upload me-1"></i> Excel ile Aktar
+</button>
 <a href="/users/new" class="btn btn-primary btn-sm">
   <i class="bi bi-person-plus me-1"></i> Yeni Kullanıcı
 </a>
@@ -136,4 +142,40 @@
 })();
 </script>
 {% endif %}
+
+{# ─── Excel İçe Aktar Modal ─── #}
+<div class="modal fade" id="importUsersModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="/users/import" enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Excel ile Kullanıcı Aktar</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          {% if request.query_params.get('import_msg') %}
+          <div class="alert alert-info py-2" style="font-size:13px;">
+            {{ request.query_params.get('import_msg') }}
+          </div>
+          {% endif %}
+          <p class="text-muted" style="font-size:13px;">
+            Önce <a href="/users/template" class="text-primary">şablonu indirin</a>, doldurun ve buradan yükleyin.
+            Aynı e-posta adresi varsa atlanır.
+          </p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px;">Excel Dosyası (.xlsx)</label>
+            <input type="file" name="file" class="form-control" accept=".xlsx" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload me-1"></i>Aktar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

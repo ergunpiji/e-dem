@@ -10,8 +10,10 @@ GET    /users/org-titles         → Organizasyon unvanları yönetimi
 POST   /users/org-titles/{id}    → Unvan bütçe limiti güncelle
 """
 
-from fastapi import APIRouter, Depends, Form, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+import io
+
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from auth import hash_password, require_admin
@@ -275,6 +277,138 @@ async def users_update(
 
     db.commit()
     return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Excel şablon indir + toplu içe aktar
+# ---------------------------------------------------------------------------
+
+@router.get("/template", name="users_template")
+async def users_template(current_user: User = Depends(require_admin)):
+    """Kullanıcı listesi Excel şablonu indir."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Kullanıcılar"
+
+    headers = ["Ad", "Soyad", "E-posta", "Şifre", "Rol", "Telefon", "Aktif (E/H)"]
+    header_fill = PatternFill("solid", fgColor="1e3a5f")
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    widths = [15, 15, 30, 20, 20, 15, 15]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # Rol dropdown
+    valid_roles = ",".join([r["value"] for r in USER_ROLES])
+    dv_role = DataValidation(type="list", formula1=f'"{valid_roles}"', allow_blank=False)
+    ws.add_data_validation(dv_role)
+    dv_role.sqref = "E2:E1000"
+
+    # Aktif dropdown
+    dv_active = DataValidation(type="list", formula1='"E,H"', allow_blank=False)
+    ws.add_data_validation(dv_active)
+    dv_active.sqref = "G2:G1000"
+
+    # Örnek satır
+    ws.cell(row=2, column=1, value="Ahmet")
+    ws.cell(row=2, column=2, value="Yılmaz")
+    ws.cell(row=2, column=3, value="ahmet@sirket.com")
+    ws.cell(row=2, column=4, value="Sifre123!")
+    ws.cell(row=2, column=5, value="asistan")
+    ws.cell(row=2, column=6, value="0532 000 0000")
+    ws.cell(row=2, column=7, value="E")
+
+    # Rol referans sekmesi
+    ws2 = wb.create_sheet("Roller")
+    ws2.cell(row=1, column=1, value="Rol ID").font = Font(bold=True)
+    ws2.cell(row=1, column=2, value="Açıklama").font = Font(bold=True)
+    for r, role in enumerate(USER_ROLES, 2):
+        ws2.cell(row=r, column=1, value=role["value"])
+        ws2.cell(row=r, column=2, value=role["label"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=kullanici_sablonu.xlsx"},
+    )
+
+
+@router.post("/import", name="users_import")
+async def users_import(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Excel'den kullanıcı toplu içe aktar."""
+    import openpyxl
+
+    content = await file.read()
+    wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    ws = wb.active
+
+    valid_role_ids = {r["value"] for r in USER_ROLES}
+    added = skipped = 0
+    errors = []
+
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if not any(row):
+            continue
+        name, surname, email, password, role, phone, active_str = (row + (None,) * 7)[:7]
+        name     = str(name or "").strip()
+        surname  = str(surname or "").strip()
+        email    = str(email or "").strip().lower()
+        password = str(password or "").strip()
+        role     = str(role or "").strip()
+        phone    = str(phone or "").strip()
+        active   = str(active_str or "E").strip().upper() != "H"
+
+        if not email:
+            errors.append(f"Satır {row_idx}: E-posta boş")
+            skipped += 1
+            continue
+        if not password:
+            errors.append(f"Satır {row_idx}: Şifre boş")
+            skipped += 1
+            continue
+        if role not in valid_role_ids:
+            errors.append(f"Satır {row_idx}: Geçersiz rol '{role}'")
+            skipped += 1
+            continue
+
+        # Aynı e-posta varsa atla
+        if db.query(User).filter(User.email == email).first():
+            skipped += 1
+            continue
+
+        db.add(User(
+            id=_uuid(), email=email,
+            password_hash=hash_password(password),
+            name=name, surname=surname,
+            role=role, phone=phone,
+            active=active, created_at=_now(),
+        ))
+        added += 1
+
+    db.commit()
+
+    msg = f"{added} kullanıcı eklendi"
+    if skipped:
+        msg += f", {skipped} atlandı"
+    if errors:
+        msg += f". Hatalar: " + " | ".join(errors[:5])
+
+    return RedirectResponse(url=f"/users?import_msg={msg}", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{user_id}/delete", name="users_delete")
