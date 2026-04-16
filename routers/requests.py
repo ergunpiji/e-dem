@@ -203,7 +203,7 @@ async def requests_new(
     customers   = db.query(Customer).order_by(Customer.name).all()
     venues      = db.query(Venue).filter(Venue.active == True).order_by(Venue.name).all()
     event_types = db.query(EventType).filter(EventType.active == True).order_by(EventType.sort_order).all()
-    services    = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    services    = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     # Group services by category
     services_by_cat: dict = {}
     for svc in services:
@@ -749,7 +749,7 @@ async def requests_edit(
     customers   = db.query(Customer).order_by(Customer.name).all()
     venues      = db.query(Venue).filter(Venue.active == True).order_by(Venue.name).all()
     event_types = db.query(EventType).filter(EventType.active == True).order_by(EventType.sort_order).all()
-    services    = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    services    = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     services_by_cat: dict = {}
     for svc in services:
         services_by_cat.setdefault(svc.category, []).append(svc.to_dict())

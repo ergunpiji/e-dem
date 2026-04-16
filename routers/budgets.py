@@ -226,7 +226,7 @@ async def budgets_new(
     if not _can_create_budget(current_user):
         raise HTTPException(403)
     req = db.query(ReqModel).filter(ReqModel.id == req_id).first() if req_id else None
-    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     grouped_services: dict = {}
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
@@ -416,7 +416,7 @@ async def budgets_edit(
     if not _can_edem_edit(budget) and current_user.role not in ("admin", "asistan"):
         return RedirectResponse(url=f"/budgets/{budget_id}", status_code=status.HTTP_302_FOUND)
     req = db.query(ReqModel).filter(ReqModel.id == budget.request_id).first()
-    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     grouped_services: dict = {}
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
@@ -600,7 +600,7 @@ async def budgets_price(
     for row in budget.rows:
         sec = row.get("section", "other")
         rows_by_section.setdefault(sec, []).append(row)
-    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     grouped_services: dict = {}
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
@@ -1086,7 +1086,7 @@ async def budgets_revise_price(
     for row in budget.rows:
         sec = row.get("section", "other")
         rows_by_section.setdefault(sec, []).append(row)
-    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     grouped_services: dict = {}
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
@@ -1188,7 +1188,7 @@ async def budgets_statement_editor(
     for row in budget.rows:
         sec = row.get("section", "other")
         rows_by_section.setdefault(sec, []).append(row)
-    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.name).all()
+    services = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     grouped_services: dict = {}
     for svc in services:
         grouped_services.setdefault(svc.category, []).append(svc.to_dict())
