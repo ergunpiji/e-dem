@@ -208,11 +208,67 @@ def _extract_vendor_name(text: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 def _extract_lines(text: str, tables: list) -> list:
-    """Tablolardan, başarısız olursa metinden kalem satırlarını çıkar."""
+    """Tablolardan, başarısız olursa metinden kalem satırlarını çıkar.
+    Her iki durumda da konaklama vergisini ayrı satır olarak ekler."""
     lines = _extract_lines_from_tables(tables)
-    if lines:
-        return lines
-    return _extract_lines_from_text(text)
+    if not lines:
+        lines = _extract_lines_from_text(text)
+    # Konaklama vergisini ekle (tabloda "Diğer Vergiler" sütununda veya özet satırında)
+    _append_accommodation_tax(lines, text, tables)
+    return lines
+
+
+def _append_accommodation_tax(lines: list, text: str, tables: list) -> None:
+    """
+    Konaklama Vergisi'ni bulup lines listesine KDV %0 olarak ekler.
+    Önce tablonun 'Diğer Vergiler' sütununa bakar, sonra özet metne.
+    Zaten eklenmişse tekrar eklemez.
+    """
+    # Zaten var mı?
+    if any("KONAKLAMA VERGİ" in l.get("description", "").upper() for l in lines):
+        return
+
+    # 1. Tabloda "Diğer Vergiler" sütunundan çıkar
+    for tbl in tables:
+        if not tbl or len(tbl) < 2:
+            continue
+        header = [_clean(c).upper() for c in (tbl[0] or [])]
+        other_col = _find_col(header, ["DİĞER VERGİLER", "DIGER VERGILER"])
+        if other_col is None:
+            continue
+        for row in tbl[1:]:
+            if not row or other_col >= len(row):
+                continue
+            cell = _clean(row[other_col])
+            if "KONAKLAMA" not in cell.upper():
+                continue
+            # "KONAKLAMA VERGİSİ (%2,00)\n=2.454,08TL" gibi metinden tutarı çek
+            m = re.search(r'=\s*([0-9.,]+)\s*TL', cell, re.IGNORECASE)
+            if not m:
+                m = re.search(r'([0-9.,]+)\s*TL', cell, re.IGNORECASE)
+            if m:
+                amount = _tr_float(m.group(1))
+                if amount and amount > 0:
+                    lines.append({
+                        "description": "Konaklama Vergisi",
+                        "amount":      round(amount, 2),
+                        "vat_rate":    0,
+                    })
+                    return
+
+    # 2. Özet metinden çıkar: "Hesaplanan KONAKLAMA VERGİSİ(%2) 2.454,08TL"
+    m = re.search(
+        r'(?:Hesaplanan\s+)?KONAKLAMA\s+VERGİSİ\s*\(%?\d+[,.]?\d*\)\s*([0-9.,]+)\s*TL',
+        text, re.IGNORECASE,
+    )
+    if m:
+        amount = _tr_float(m.group(1))
+        if amount and amount > 0:
+            lines.append({
+                "description": "Konaklama Vergisi",
+                "amount":      round(amount, 2),
+                "vat_rate":    0,
+            })
 
 
 def _extract_lines_from_tables(tables: list) -> list:
