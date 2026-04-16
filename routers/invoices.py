@@ -713,22 +713,26 @@ async def invoices_reassign(
 # GET /invoices/unlinked  — Referans bekleyen faturalar (herkese görünür)
 # ---------------------------------------------------------------------------
 
+_PM_ROLES = {"yonetici", "asistan"}  # sadece kendi referanslarını görür
+
 @router.get("/unlinked", response_class=HTMLResponse, name="invoices_unlinked")
 async def invoices_unlinked(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from sqlalchemy import or_
     invoices = (
         db.query(Invoice)
         .filter(Invoice.request_id == None, Invoice.status != "cancelled")
         .order_by(Invoice.created_at.desc())
         .all()
     )
-    all_requests = db.query(ReqModel).filter(
+    req_q = db.query(ReqModel).filter(
         ReqModel.status.notin_(["cancelled", "closing", "closed"])
-    ).order_by(ReqModel.created_at.desc()).all()
+    )
+    if current_user.role in _PM_ROLES:
+        req_q = req_q.filter(ReqModel.created_by == current_user.id)
+    all_requests = req_q.order_by(ReqModel.created_at.desc()).all()
     return templates.TemplateResponse("invoices/unlinked.html", {
         "request":      request,
         "current_user": current_user,
@@ -758,6 +762,8 @@ async def invoices_assign_request(
     new_req = db.query(ReqModel).filter(ReqModel.id == new_request_id).first()
     if not new_req:
         raise HTTPException(status_code=404, detail="Hedef referans bulunamadı.")
+    if current_user.role in _PM_ROLES and new_req.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Bu referansa atama yetkiniz yok.")
 
     inv.request_id = new_request_id
     inv.updated_at = _now()
