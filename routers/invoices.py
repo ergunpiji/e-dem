@@ -530,11 +530,18 @@ async def invoices_parse_pdf(
         return JSONResponse({"error": "Dosya 10 MB'ı aşıyor."}, status_code=400)
 
     try:
-        from agents.invoice_parser import parse_invoice
+        from agents.invoice_parser import parse_invoice, _debug_extract
+        debug = _debug_extract(file_bytes)
+        print("[PARSE-PDF DEBUG] Tables:", len(debug.get("tables", [])), flush=True)
+        for i, t in enumerate(debug.get("tables", [])):
+            print(f"  Table {i}: {len(t)} rows, header={t[0] if t else 'empty'}", flush=True)
+            for row in t[1:4]:
+                print(f"    row: {row}", flush=True)
         data = parse_invoice(file_bytes, file.filename or "invoice.pdf")
         return JSONResponse({"ok": True, "data": data})
     except Exception as e:
-        print(f"[PARSE-PDF] Hata: {e}", flush=True)
+        import traceback
+        print(f"[PARSE-PDF] Hata: {e}\n{traceback.format_exc()}", flush=True)
         return JSONResponse({"error": "PDF okunamadı. Dosyayı kontrol edin."}, status_code=400)
 
 

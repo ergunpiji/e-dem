@@ -62,6 +62,26 @@ def _clean(s) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Debug yardımcısı
+# ---------------------------------------------------------------------------
+
+def _debug_extract(file_bytes: bytes) -> dict:
+    """Ham pdfplumber çıktısını döndür — Railway loglarında görülür."""
+    try:
+        import pdfplumber
+    except ImportError:
+        return {}
+    text = ""
+    tables = []
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            text += (page.extract_text(x_tolerance=2, y_tolerance=2) or "") + "\n"
+            for tbl in (page.extract_tables() or []):
+                tables.append(tbl)
+    return {"text": text[:3000], "tables": tables}
+
+
+# ---------------------------------------------------------------------------
 # Ana parser
 # ---------------------------------------------------------------------------
 
@@ -315,31 +335,41 @@ def _extract_lines_from_tables(tables: list) -> list:
                          _norm(desc)):
                 continue
 
-            # ── Tutar (Mal Hizmet Tutarı — son sütun) ──────────────────────
+            # ── Tutar: önce amt_col, sonra row'daki en büyük sayısal değer ──
+            # En büyük TL değeri = Mal Hizmet Tutarı (iskonto/kdv miktarlarından büyük)
             amount = None
             if amt_col < len(row):
                 amount = _tr_float(row[amt_col])
-            # amt_col'dan alınamazsa en sağdan geri doğru sayısal hücre ara
-            # (ama "Diğer Vergiler" hücresini atla)
             if not amount:
-                for i in range(len(row) - 1, -1, -1):
+                # Tüm hücrelerden sayısal değerleri topla (Diğer Vergiler hariç)
+                candidates = []
+                for i, cell in enumerate(row):
                     if other_col is not None and i == other_col:
                         continue
-                    v = _tr_float(row[i])
+                    v = _tr_float(cell)
                     if v and v > 0:
-                        amount = v
-                        break
+                        candidates.append(v)
+                if candidates:
+                    amount = max(candidates)  # en büyük = Mal Hizmet Tutarı
 
-            # ── KDV Oranı ──────────────────────────────────────────────────
+            # ── KDV Oranı: kdv_col'dan al, yoksa satırdaki geçerli % oranı ──
             vat_rate = 20  # varsayılan
             if kdv_col is not None and kdv_col < len(row):
                 raw = _clean(row[kdv_col])
-                # "%10,00" veya "10" veya "%10" formatları
                 raw_clean = re.sub(r'[^0-9,.]', '', raw).replace(',', '.')
                 try:
                     vat_rate = int(float(raw_clean))
                 except (ValueError, TypeError):
                     pass
+            if vat_rate == 20 and kdv_col is None:
+                # Tüm satırı birleştir, % değerlerini tara
+                row_text = ' '.join(_clean(c) for c in row)
+                pcts = [int(p.split(',')[0])
+                        for p in re.findall(r'%\s*(\d{1,2}[,.]?\d*)', row_text)]
+                for p in pcts:
+                    if p in _VALID_VAT and p != 0:
+                        vat_rate = p
+                        break
 
             if desc and amount and amount > 0:
                 lines.append({
@@ -365,69 +395,81 @@ def _col(header_norm: list, candidates: list) -> Optional[int]:
 # Metin tabanlı kalem çıkarma (tablo başarısız olursa fallback)
 # ---------------------------------------------------------------------------
 
+# Geçerli KDV oranları — Konaklama Vergisi (%2) burada YOK
+_VALID_VAT = {0, 1, 8, 10, 18, 20}
+
+
 def _extract_lines_from_text(text: str) -> list:
     """
-    Türk e-fatura satır formatından regex ile kalem çıkar.
+    Türk e-fatura metninden kalem satırlarını çıkar.
 
-    Tipik satır:
+    Yaklaşım: satır numarası (1, 2, 3...) ile başlayan blokları bul,
+    her bloktan açıklama + KDV oranı + tutar çıkar.
+
+    Tipik satır (tek veya çok satır olabilir):
       1 KONAKLAMA 1Adet 122.704,15TL %0,00 0,00TL %10,00 12.270,42TL ... 122.704,15TL
-      2 TOPLANTI BEDELİ 1Adet 147.581,01TL %0,00 0,00TL %20,00 29.516,20TL 147.581,01TL
-
-    Strateji:
-    - Satır no + açıklama + birim + birimFiyatTL → açıklamayı yakala
-    - %XX[,XX] → KDV oranını yakala (iskonto %0'dan sonra gelen)
-    - Satırdaki son NNNN,NNTL → Mal Hizmet Tutarı
+      2 TOPLANTI BEDELİ 1Adet 147.581,01TL ...
     """
     lines = []
 
-    # Her satırı normalize et (çok satırlı hücreleri birleştir için önce satır tabanlı çalış)
-    # Sıra no ile başlayan satırları bul
-    pattern = re.compile(
-        r'^(\d{1,3})\s+'                              # 1. grup: sıra no
-        r'([A-ZÇĞİÖŞÜa-zçğışöü][^\n\d]{1,60?}?)\s+' # 2. grup: açıklama (önce harf)
-        r'\d[\d.]*\s*(?:Adet|adet|KG|Kg|Saat|saat|Gün|gün|Kişi|kişi|m2|M2)?\s*'  # miktar+birim
-        r'[0-9.,]+\s*TL\s*'                           # birim fiyat
-        r'%[0-9,]+\s+[0-9.,]+\s*TL\s*'               # iskonto oran + tutar
-        r'%([0-9,]+)',                                 # 3. grup: KDV oranı
-        re.MULTILINE,
-    )
+    # Tüm metni normalize et: birden fazla boşluğu tek boşluğa indir
+    flat = re.sub(r'[ \t]+', ' ', text)
 
-    # Son TL tutarını satırdan çeken yardımcı
-    def last_tl_amount(line: str) -> Optional[float]:
-        matches = re.findall(r'([0-9.,]+)\s*TL', line)
-        for raw in reversed(matches):
-            v = _tr_float(raw)
-            if v and v > 100:  # 100 TL'den küçük değerler birim/vergi olabilir
-                return v
-        # 100 TL eşiği tutmazsa hepsine bak
-        for raw in reversed(matches):
-            v = _tr_float(raw)
-            if v and v > 0:
-                return v
-        return None
+    # Satır numarasıyla başlayan blokları böl
+    # Blok: "1 KONAKLAMA ..." → bir sonraki "2 " ya da toplam satırına kadar
+    block_splits = list(re.finditer(r'(?:^|\n)\s*(\d{1,3})\s+([A-ZÇĞİÖŞÜ])', flat))
 
-    for m in pattern.finditer(text):
-        desc = _clean(m.group(2))
-        vat_raw = re.sub(r'[^0-9]', '', m.group(3).split(',')[0])
-        try:
-            vat_rate = int(vat_raw)
-        except ValueError:
-            vat_rate = 20
+    # Toplam bölümünün başlangıcını bul (bloğun bitişini sınırla)
+    total_start = len(flat)
+    for marker in ['Mal Hizmet Toplam', 'MAL HIZMET TOPLAM', 'Toplam İskonto', 'GENEL TOPLAM']:
+        idx = flat.find(marker)
+        if 0 < idx < total_start:
+            total_start = idx
 
-        # Satırın tamamını al (pattern başlangıcından satır sonuna kadar)
-        line_start = m.start()
-        line_end   = text.find('\n', m.end())
-        full_line  = text[line_start: line_end if line_end > 0 else m.end() + 200]
+    for k, bm in enumerate(block_splits):
+        block_end = block_splits[k + 1].start() if k + 1 < len(block_splits) else total_start
+        block = flat[bm.start():block_end].strip()
 
-        amount = last_tl_amount(full_line)
+        sira = int(bm.group(1))
+        if sira > 50:  # Makul olmayan sıra numarası
+            continue
 
-        if desc and amount and amount > 0:
-            # Toplam/başlık satırı değil mi?
-            if not re.search(r'TOPLAM|GENEL|ISKONTO', _norm(desc)):
-                lines.append({
-                    "description": desc,
-                    "amount":      round(amount, 2),
-                    "vat_rate":    vat_rate,
-                })
+        # ── Açıklama: satır numarasından sonra gelen büyük harfli kelimeler ──
+        desc_m = re.match(
+            r'^\s*\d{1,3}\s+'
+            r'([A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜa-zçğışöü\s/&\-]{1,60?}?)'
+            r'(?:\s+\d|\s+%)',
+            block,
+        )
+        desc = _clean(desc_m.group(1)) if desc_m else ""
+        if not desc:
+            # Fallback: sıra numarasından sonraki ilk kelime(ler)
+            desc_m2 = re.match(r'^\s*\d{1,3}\s+(.+?)(?=\s+\d[\d.]*\s*(?:Adet|KG|adet|m2)?)', block)
+            desc = _clean(desc_m2.group(1)) if desc_m2 else ""
+
+        if not desc or re.search(r'TOPLAM|GENEL|ISKONTO|YALNIZ', _norm(desc)):
+            continue
+
+        # ── KDV Oranı: blokta geçen tüm % değerlerini bul, geçerli KDV oranını seç ──
+        pcts = [int(p.split(',')[0]) for p in re.findall(r'%\s*(\d{1,2}[,.]?\d*)', block)]
+        vat_rate = 20  # varsayılan
+        # İskonto genellikle %0 — onu geç, ilk geçerli KDV oranını al
+        for p in pcts:
+            if p in _VALID_VAT and p != 0:
+                vat_rate = p
+                break
+
+        # ── Tutar: bloktaki en büyük TL değeri = Mal Hizmet Tutarı ──
+        tl_values = [_tr_float(v) for v in re.findall(r'([0-9.,]+)\s*TL', block)]
+        tl_values = [v for v in tl_values if v and v > 0]
+        if not tl_values:
+            continue
+        amount = max(tl_values)
+
+        lines.append({
+            "description": desc,
+            "amount":      round(amount, 2),
+            "vat_rate":    vat_rate,
+        })
 
     return lines
