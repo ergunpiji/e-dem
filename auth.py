@@ -266,14 +266,18 @@ def can_approve_closure_final(user: User) -> bool:
 
 def has_permission(user: User, permission_key: str, db: Session) -> bool:
     """Kullanıcının belirli bir izne sahip olup olmadığını DB'den kontrol eder.
-    Admin her zaman izinlidir."""
+    Admin her zaman izinlidir. DB'de satır yoksa DEFAULT_ROLE_PERMISSIONS'a fallback yapar."""
     if user.role == "admin":
         return True
     rp = db.query(RolePermission).filter(
         RolePermission.role == user.role,
         RolePermission.permission == permission_key,
     ).first()
-    return bool(rp and rp.allowed)
+    if rp is not None:
+        return bool(rp.allowed)
+    # DB'de kayıt yoksa varsayılan izin tablosuna bak
+    from models import DEFAULT_ROLE_PERMISSIONS
+    return permission_key in DEFAULT_ROLE_PERMISSIONS.get(user.role, [])
 
 
 def require_permission(permission_key: str):
