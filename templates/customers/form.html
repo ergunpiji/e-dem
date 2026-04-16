@@ -103,6 +103,23 @@
             </div>
 
             <div class="col-md-6">
+              <label class="form-label fw-semibold" style="font-size:13px;">
+                Takım
+                <span class="text-muted fw-normal" style="font-size:11px;">(opsiyonel)</span>
+              </label>
+              <select name="team_id" class="form-select">
+                <option value="">— Takım seçin —</option>
+                {% for team in teams | default([]) %}
+                <option value="{{ team.id }}"
+                        {% if customer and customer.team_id == team.id %}selected{% endif %}>
+                  {{ team.name }}
+                </option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Seçilirse bu müşteriye ait yeni talepler otomatik bu takıma atanır.</div>
+            </div>
+
+            <div class="col-md-6">
               <label class="form-label fw-semibold" style="font-size:13px;">Notlar</label>
               <textarea name="notes" class="form-control" rows="2">{{ customer.notes if customer else '' }}</textarea>
             </div>

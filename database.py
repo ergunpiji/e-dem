@@ -965,6 +965,32 @@ def migrate_db():
         _safe_add_column(conn, "users", "manager_id", "TEXT")
         _safe_add_column(conn, "settings", "invoice_mudur_limit", "REAL")
 
+        # Takım tabanlı erişim: customers ve requests tablolarına team_id ekle
+        _safe_add_column(conn, "customers", "team_id", "TEXT")
+        _safe_add_column(conn, "requests",  "team_id", "TEXT")
+        # Backfill: mevcut requests için created_by → user.team_id
+        if not _is_sqlite:
+            try:
+                conn.execute(text(
+                    "UPDATE requests SET team_id = ("
+                    "  SELECT u.team_id FROM users u WHERE u.id = requests.created_by"
+                    ") WHERE team_id IS NULL"
+                ))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"[DB] requests.team_id backfill hatası: {e}", flush=True)
+        else:
+            try:
+                conn.execute(text(
+                    "UPDATE requests SET team_id = ("
+                    "  SELECT u.team_id FROM users u WHERE u.id = requests.created_by"
+                    ") WHERE team_id IS NULL"
+                ))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+
         # invoices.request_id → nullable (referanssız fatura desteği)
         # information_schema'dan kontrol edip sadece gerektiğinde ALTER çalıştır
         if not _is_sqlite:

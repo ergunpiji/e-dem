@@ -456,6 +456,7 @@ class Customer(Base):
     contacts_json       = Column(Text, default="[]")         # list[Contact] JSON
     payment_term        = Column(String(100), default="")    # ödeme vadesi
     docs_json           = Column(Text, default="[]")         # list[{name, path}] yüklü belgeler
+    team_id             = Column(String(36), ForeignKey("teams.id"), nullable=True)
     created_at          = Column(DateTime, default=_now, nullable=False)
     excel_template_path = Column(String(500), default="")   # yüklenen template dosya yolu
     excel_template_b64  = Column(Text, default="")          # template içeriği base64 (Railway kalıcılığı)
@@ -463,6 +464,7 @@ class Customer(Base):
 
     # İlişkiler
     requests = relationship("Request", back_populates="customer")
+    team     = relationship("Team", foreign_keys="Customer.team_id")
 
     @property
     def contacts(self) -> list:
@@ -540,6 +542,7 @@ class Request(Base):
     confirmed_budget_id   = Column(String(36), nullable=True)  # onaylanan bütçe id
     cancellation_reason   = Column(Text, default="")
     revision_count        = Column(Integer, default=0)
+    team_id          = Column(String(36), ForeignKey("teams.id"), nullable=True)
     created_by       = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at       = Column(DateTime, default=_now, nullable=False)
     updated_at       = Column(DateTime, default=_now, onupdate=_now, nullable=False)
@@ -547,6 +550,7 @@ class Request(Base):
     # İlişkiler
     customer = relationship("Customer", back_populates="requests")
     creator  = relationship("User", back_populates="created_requests", foreign_keys=[created_by])
+    team     = relationship("Team", foreign_keys="Request.team_id")
     budgets              = relationship("Budget", back_populates="request", cascade="all, delete-orphan")
     invoices             = relationship("Invoice", back_populates="request", order_by="Invoice.invoice_date",
                                         cascade="all, delete-orphan")

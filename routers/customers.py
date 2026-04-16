@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin
 from database import get_db
-from models import Customer, User, _uuid, _now
+from models import Customer, Team, User, _uuid, _now
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 from templates_config import templates
@@ -54,7 +54,9 @@ async def customers_autocomplete(
 async def customers_new(
     request: Request,
     current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
+    teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all()
     return templates.TemplateResponse(
         "customers/form.html",
         {
@@ -63,6 +65,7 @@ async def customers_new(
             "customer":     None,
             "page_title":   "Yeni Müşteri",
             "error":        None,
+            "teams":        teams,
         },
     )
 
@@ -80,6 +83,7 @@ async def customers_create(
     notes:         str = Form(""),
     contacts_json: str = Form("[]"),
     payment_term:  str = Form(""),
+    team_id:       str = Form(""),
     request: Request = None,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -88,6 +92,7 @@ async def customers_create(
 
     existing = db.query(Customer).filter(Customer.code == code_clean).first()
     if existing:
+        teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all()
         return templates.TemplateResponse(
             "customers/form.html",
             {
@@ -96,6 +101,7 @@ async def customers_create(
                 "customer":     None,
                 "page_title":   "Yeni Müşteri",
                 "error":        f"'{code_clean}' kodu zaten kullanılıyor.",
+                "teams":        teams,
             },
             status_code=400,
         )
@@ -113,6 +119,7 @@ async def customers_create(
         notes=notes.strip(),
         contacts_json=contacts_json,
         payment_term=payment_term.strip(),
+        team_id=team_id.strip() or None,
         created_at=_now(),
     )
     db.add(customer)
@@ -130,6 +137,7 @@ async def customers_edit(
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
+    teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all()
     return templates.TemplateResponse(
         "customers/form.html",
         {
@@ -138,6 +146,7 @@ async def customers_edit(
             "customer":     customer,
             "page_title":   f"{customer.name} — Düzenle",
             "error":        None,
+            "teams":        teams,
         },
     )
 
@@ -157,6 +166,7 @@ async def customers_update(
     notes:         str = Form(""),
     contacts_json: str = Form("[]"),
     payment_term:  str = Form(""),
+    team_id:       str = Form(""),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -169,6 +179,7 @@ async def customers_update(
         Customer.code == code_clean, Customer.id != customer_id
     ).first()
     if conflict:
+        teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all()
         return templates.TemplateResponse(
             "customers/form.html",
             {
@@ -177,6 +188,7 @@ async def customers_update(
                 "customer":     customer,
                 "page_title":   f"{customer.name} — Düzenle",
                 "error":        f"'{code_clean}' kodu başka müşteriye ait.",
+                "teams":        teams,
             },
             status_code=400,
         )
@@ -192,6 +204,7 @@ async def customers_update(
     customer.notes         = notes.strip()
     customer.contacts_json = contacts_json
     customer.payment_term  = payment_term.strip()
+    customer.team_id       = team_id.strip() or None
     db.commit()
     return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
 

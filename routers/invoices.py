@@ -105,10 +105,8 @@ async def invoices_list(
 
     # Birim müdürü: sadece takımının referanslarının faturaları
     if current_user.role == "mudur" and current_user.team_id:
-        from models import Request as ReqModel, User as UserModel
-        _team_ids = [u.id for u in db.query(UserModel).filter(
-            UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
-        query = query.filter(ReqModel.created_by.in_(_team_ids))
+        from models import Request as ReqModel
+        query = query.filter(ReqModel.team_id == current_user.team_id)
     # PM sadece kendi referanslarının faturalarını görür
     elif current_user.role in ("yonetici", "asistan"):
         from models import Request as ReqModel
@@ -139,10 +137,8 @@ async def invoices_list(
         from models import Request as ReqModel
         _count_base = _count_base.filter(ReqModel.created_by == current_user.id)
     elif current_user.role == "mudur" and current_user.team_id:
-        from models import Request as ReqModel, User as UserModel
-        _team_ids = [u.id for u in db.query(UserModel).filter(
-            UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
-        _count_base = _count_base.filter(ReqModel.created_by.in_(_team_ids))
+        from models import Request as ReqModel
+        _count_base = _count_base.filter(ReqModel.team_id == current_user.team_id)
 
     pending_count        = _count_base.filter(Invoice.status == "pending").count()
     mudur_approved_count = _count_base.filter(Invoice.status == "mudur_approved").count()
@@ -196,9 +192,14 @@ async def invoices_new_form(
         req = db.query(ReqModel).filter(ReqModel.id == request_id).first()
         if not req:
             raise HTTPException(status_code=404, detail="Referans bulunamadı.")
-    all_requests = db.query(ReqModel).filter(
+    _req_q = db.query(ReqModel).filter(
         ReqModel.status.notin_(["cancelled", "closing", "closed"])
-    ).order_by(ReqModel.created_at.desc()).all()
+    )
+    if current_user.role == "mudur" and current_user.team_id:
+        _req_q = _req_q.filter(ReqModel.team_id == current_user.team_id)
+    elif current_user.role in ("yonetici", "asistan"):
+        _req_q = _req_q.filter(ReqModel.created_by == current_user.id)
+    all_requests = _req_q.order_by(ReqModel.created_at.desc()).all()
     undoc_entries = req.undocumented_entries if req else []
 
     # Hesap dökümünden ön doldurma
@@ -713,8 +714,6 @@ async def invoices_reassign(
 # GET /invoices/unlinked  — Referans bekleyen faturalar (herkese görünür)
 # ---------------------------------------------------------------------------
 
-_PM_ROLES = {"mudur", "yonetici", "asistan"}  # sadece kendi referanslarını görür
-
 @router.get("/unlinked", response_class=HTMLResponse, name="invoices_unlinked")
 async def invoices_unlinked(
     request: Request,
@@ -730,8 +729,13 @@ async def invoices_unlinked(
     req_q = db.query(ReqModel).filter(
         ReqModel.status.notin_(["cancelled", "closing", "closed"])
     )
-    if current_user.role in _PM_ROLES:
+    # mudur: kendi takımının tüm referansları
+    if current_user.role == "mudur" and current_user.team_id:
+        req_q = req_q.filter(ReqModel.team_id == current_user.team_id)
+    # yonetici/asistan: sadece kendi referansları
+    elif current_user.role in ("yonetici", "asistan"):
         req_q = req_q.filter(ReqModel.created_by == current_user.id)
+    # admin/muhasebe: filtre yok
     all_requests = req_q.order_by(ReqModel.created_at.desc()).all()
     return templates.TemplateResponse("invoices/unlinked.html", {
         "request":      request,
@@ -762,8 +766,12 @@ async def invoices_assign_request(
     new_req = db.query(ReqModel).filter(ReqModel.id == new_request_id).first()
     if not new_req:
         raise HTTPException(status_code=404, detail="Hedef referans bulunamadı.")
-    if current_user.role in _PM_ROLES and new_req.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Bu referansa atama yetkiniz yok.")
+    if current_user.role == "mudur" and current_user.team_id:
+        if new_req.team_id != current_user.team_id:
+            raise HTTPException(status_code=403, detail="Bu referans takımınıza ait değil.")
+    elif current_user.role in ("yonetici", "asistan"):
+        if new_req.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="Bu referansa atama yetkiniz yok.")
 
     inv.request_id = new_request_id
     inv.updated_at = _now()

@@ -124,12 +124,10 @@ async def budgets_list(
     if current_user.role == "e_dem":
         query = query.filter(Budget.created_by == current_user.id)
     elif current_user.role == "mudur" and current_user.team_id:
-        # Birim müdürü: sadece takımının üyelerinin talep bütçeleri
-        _team_ids = [u.id for u in db.query(User).filter(
-            User.team_id == current_user.team_id, User.active == True).all()]
-        _team_req_ids = [r.id for r in db.query(ReqModel).filter(
-            ReqModel.created_by.in_(_team_ids)).all()]
-        query = query.filter(Budget.request_id.in_(_team_req_ids))
+        # Birim müdürü: sadece takımının talep bütçeleri (request.team_id üzerinden)
+        query = query.join(ReqModel, Budget.request_id == ReqModel.id).filter(
+            ReqModel.team_id == current_user.team_id
+        )
     elif current_user.role in ("yonetici", "asistan"):
         my_req_ids = [
             r.id for r in db.query(ReqModel)

@@ -82,11 +82,9 @@ async def requests_list(
     query = db.query(ReqModel)
 
     # ── ADIM 1: Rol bazlı BASE SCOPE — tüm view filtreleri bunun üstüne eklenir ──
-    # Birim müdürü (takımlı mudur): sadece kendi takımının üyeleri
+    # Birim müdürü (takımlı mudur): sadece kendi takımının talepleri
     if current_user.role == "mudur" and current_user.team_id:
-        _team_ids = [u.id for u in db.query(User).filter(
-            User.team_id == current_user.team_id, User.active == True).all()]
-        query = query.filter(ReqModel.created_by.in_(_team_ids))
+        query = query.filter(ReqModel.team_id == current_user.team_id)
     elif current_user.role == "yonetici":
         sub_ids = _get_subtree_ids(current_user.id, db)
         query = query.filter(ReqModel.created_by.in_([current_user.id] + sub_ids))
@@ -261,12 +259,15 @@ async def requests_create(
 ):
     _check_pm_or_admin(current_user, db)
 
-    # Müşteri kodu
+    # Müşteri kodu + takım tespiti
     customer_code = "xxx"
+    _team_id = current_user.team_id  # varsayılan: creator'ın takımı
     if customer_id:
         cust = db.query(Customer).filter(Customer.id == customer_id).first()
         if cust:
             customer_code = cust.code
+            if cust.team_id:
+                _team_id = cust.team_id  # müşterinin takımı öncelikli
 
     # Resolve event_type_code
     event_type_code = event_type  # already a code like 'yi'
@@ -308,6 +309,7 @@ async def requests_create(
         preferred_venues_json=preferred_venues_json,
         selected_venues_json="[]",
         contact_person_json=contact_person_json,
+        team_id=_team_id,
         created_by=current_user.id,
         created_at=_now(),
         updated_at=_now(),
@@ -343,9 +345,7 @@ async def requests_detail(
 
     # Birim müdürü (takımlı mudur) sadece kendi takımının referanslarını görebilir
     if current_user.role == "mudur" and current_user.team_id:
-        _team_ids = [u.id for u in db.query(User).filter(
-            User.team_id == current_user.team_id, User.active == True).all()]
-        if req.created_by not in _team_ids:
+        if req.team_id != current_user.team_id:
             raise HTTPException(403, "Bu referans takımınıza ait değil.")
 
     venues      = db.query(Venue).filter(Venue.active == True).all()
@@ -813,6 +813,15 @@ async def requests_update(
 
     req.client_name           = client_name.strip()
     req.customer_id           = customer_id or None
+    # Müşteri değiştiğinde team_id güncelle
+    if customer_id:
+        _upd_cust = db.query(Customer).filter(Customer.id == customer_id).first()
+        if _upd_cust and _upd_cust.team_id:
+            req.team_id = _upd_cust.team_id
+        elif not req.team_id:
+            req.team_id = current_user.team_id
+    elif not req.team_id:
+        req.team_id = current_user.team_id
     req.event_name            = event_name.strip()
     req.event_type            = event_type
     req.cities_json           = cities_json
