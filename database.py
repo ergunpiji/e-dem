@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from models import (
     Base, User, Venue, Customer, Service, CustomCategory, Request, Budget,
     EventType, Settings, OrgTitle, Invoice, EmailTemplate,
-    ExpenseReport, ExpenseItem, UndocumentedEntry,
+    ExpenseReport, ExpenseItem, UndocumentedEntry, FinancialVendor,
     _EMAIL_TEMPLATE_DEFAULTS, _uuid, _now,
 )
 
@@ -1008,6 +1008,56 @@ def migrate_db():
             except Exception as e:
                 conn.rollback()
                 print(f"[DB] invoices.request_id migration hatası: {e}", flush=True)
+
+        # ── FinancialVendor tablosu — yoksa oluştur ──
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS financial_vendors (
+                    id           TEXT PRIMARY KEY,
+                    name         TEXT NOT NULL,
+                    tax_number   TEXT DEFAULT '',
+                    tax_office   TEXT DEFAULT '',
+                    address      TEXT DEFAULT '',
+                    email        TEXT DEFAULT '',
+                    phone        TEXT DEFAULT '',
+                    payment_term INTEGER DEFAULT 30,
+                    notes        TEXT DEFAULT '',
+                    is_active    INTEGER DEFAULT 1,
+                    created_by   TEXT REFERENCES users(id),
+                    created_at   TIMESTAMP,
+                    updated_at   TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_financial_vendors_name ON financial_vendors(name)"
+            ))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS financial_vendors (
+                    id           VARCHAR(36) PRIMARY KEY,
+                    name         VARCHAR(255) NOT NULL,
+                    tax_number   VARCHAR(30) DEFAULT '',
+                    tax_office   VARCHAR(100) DEFAULT '',
+                    address      TEXT DEFAULT '',
+                    email        VARCHAR(255) DEFAULT '',
+                    phone        VARCHAR(30) DEFAULT '',
+                    payment_term INTEGER DEFAULT 30,
+                    notes        TEXT DEFAULT '',
+                    is_active    BOOLEAN DEFAULT TRUE,
+                    created_by   VARCHAR(36) REFERENCES users(id),
+                    created_at   TIMESTAMP,
+                    updated_at   TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_financial_vendors_name ON financial_vendors(name)"
+            ))
+        conn.commit()
+
+        # ── Invoice — yeni sütunlar (vendor_id, payment_status, paid_at) ──
+        _safe_add_column(conn, "invoices", "vendor_id",      "TEXT")
+        _safe_add_column(conn, "invoices", "payment_status", "TEXT", "'unpaid'")
+        _safe_add_column(conn, "invoices", "paid_at",        "TEXT")
 
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()

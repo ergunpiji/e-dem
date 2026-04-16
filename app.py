@@ -207,6 +207,7 @@ from routers import notifications as notifications_router
 from routers import exchange_rates as exchange_rates_router
 from routers import closure as closure_router
 from routers import teams as teams_router
+from routers import vendors as vendors_router
 from routers import library as library_router
 from routers import modules as modules_router
 from routers import permissions as permissions_router
@@ -231,6 +232,7 @@ app.include_router(notifications_router.router)
 app.include_router(exchange_rates_router.router)
 app.include_router(closure_router.router)
 app.include_router(teams_router.router)
+app.include_router(vendors_router.router)
 app.include_router(library_router.router)
 app.include_router(modules_router.router)
 app.include_router(permissions_router.router)

@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block page_title %}Nakit Akışı{% endblock %}
+{% block page_title_block %}Nakit Akışı{% endblock %}
+
+{% block extra_head %}
+<style>
+  .week-card { border-radius:10px; border:1px solid #e2e8f0; }
+  .week-card .week-header { background:#f8fafc; border-radius:10px 10px 0 0; padding:10px 14px;
+                            border-bottom:1px solid #e2e8f0; }
+  .cf-label { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#64748b; }
+  .cf-row { font-size:12px; }
+  .net-positive { color:#16a34a; font-weight:700; }
+  .net-negative { color:#dc2626; font-weight:700; }
+  .weeks-btn.active { background:#1e3a5f; color:#fff; border-color:#1e3a5f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# Hafta sayısı seçimi #}
+  <div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
+    <span class="text-muted" style="font-size:12px;">Görünüm:</span>
+    {% for w, lbl in [(4,'4 Hafta'),(8,'8 Hafta'),(12,'12 Hafta')] %}
+    <a href="/vendors/cash-flow/view?weeks={{ w }}"
+       class="btn btn-outline-secondary btn-sm weeks-btn {% if weeks == w %}active{% endif %}">{{ lbl }}</a>
+    {% endfor %}
+    <a href="/vendors" class="btn btn-outline-secondary btn-sm ms-auto">
+      <i class="bi bi-building me-1"></i>Tedarikçiler
+    </a>
+  </div>
+
+  {# Vadesi geçmiş uyarı #}
+  {% if overdue %}
+  <div class="alert alert-danger d-flex align-items-start gap-3 mb-3" role="alert">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+    <div>
+      <strong>Vadesi Geçmiş Ödemeler:</strong>
+      {{ overdue|length }} adet fatura, toplam ₺{{ '{:,.0f}'.format(total_overdue) }} gecikmiş.
+      <div class="mt-1" style="font-size:12px;">
+        {% for inv in overdue[:5] %}
+        <span class="me-2">
+          <a href="{% if inv.vendor %}{{ '/vendors/' + inv.vendor.id }}{% else %}#{% endif %}"
+             class="text-danger text-decoration-none">
+            {{ inv.vendor.name if inv.vendor else inv.vendor_name or '—' }}
+          </a>
+          — ₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}
+          (vade: {{ inv.due_date }})
+        </span>
+        {% endfor %}
+        {% if overdue|length > 5 %}
+        <span class="text-muted">+{{ overdue|length - 5 }} daha...</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Haftalık tablo özeti #}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead style="background:#f8fafc;">
+            <tr>
+              <th class="ps-4" style="font-size:11px;color:#64748b;text-transform:uppercase;">Hafta</th>
+              <th class="text-end" style="font-size:11px;color:#64748b;text-transform:uppercase;">Gelir (Alacak)</th>
+              <th class="text-end" style="font-size:11px;color:#64748b;text-transform:uppercase;">Gider (Borç)</th>
+              <th class="text-end pe-4" style="font-size:11px;color:#64748b;text-transform:uppercase;">Net</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(cumulative=0) %}
+            {% for w in weeks_data %}
+            {% set net = w.total_in - w.total_out %}
+            {% set ns.cumulative = ns.cumulative + net %}
+            <tr>
+              <td class="ps-4">
+                <span class="fw-semibold">{{ w.label }}</span>
+                <span class="text-muted ms-2" style="font-size:11px;">{{ w.start }} – {{ w.end }}</span>
+              </td>
+              <td class="text-end">
+                {% if w.total_in > 0 %}
+                <span style="color:#16a34a;">+₺{{ '{:,.0f}'.format(w.total_in) }}</span>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if w.total_out > 0 %}
+                <span style="color:#dc2626;">-₺{{ '{:,.0f}'.format(w.total_out) }}</span>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end pe-4">
+                {% if net > 0 %}
+                <span class="net-positive">+₺{{ '{:,.0f}'.format(net) }}</span>
+                {% elif net < 0 %}
+                <span class="net-negative">-₺{{ '{:,.0f}'.format(net|abs) }}</span>
+                {% else %}
+                <span class="text-muted">₺0</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# Haftalık detay kartları #}
+  <div class="row g-3">
+    {% for w in weeks_data %}
+    {% if w.incoming or w.outgoing %}
+    <div class="col-12 col-md-6 col-xl-4">
+      <div class="week-card">
+        <div class="week-header d-flex align-items-center justify-content-between">
+          <span class="fw-semibold" style="font-size:13px;">{{ w.label }}: {{ w.start }} – {{ w.end }}</span>
+          {% set net = w.total_in - w.total_out %}
+          {% if net > 0 %}
+          <span class="badge" style="background:#dcfce7;color:#16a34a;">+₺{{ '{:,.0f}'.format(net) }}</span>
+          {% elif net < 0 %}
+          <span class="badge" style="background:#fee2e2;color:#dc2626;">-₺{{ '{:,.0f}'.format(net|abs) }}</span>
+          {% endif %}
+        </div>
+        <div class="p-3">
+          {# Gelirler #}
+          {% if w.incoming %}
+          <div class="cf-label mb-2">Alacaklar (Gelir)</div>
+          {% for inv in w.incoming %}
+          <div class="cf-row d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div>
+              <span class="fw-semibold" style="color:#16a34a;">{{ inv.vendor_name or '—' }}</span>
+              {% if inv.request %}
+              <span class="text-muted ms-1" style="font-size:11px;">{{ inv.request.request_no }}</span>
+              {% endif %}
+              <div class="text-muted" style="font-size:11px;">Vade: {{ inv.due_date }}</div>
+            </div>
+            <span style="color:#16a34a;font-weight:600;">₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}</span>
+          </div>
+          {% endfor %}
+          {% endif %}
+
+          {# Giderler #}
+          {% if w.outgoing %}
+          <div class="cf-label mb-2 {% if w.incoming %}mt-3{% endif %}">Borçlar (Gider)</div>
+          {% for inv in w.outgoing %}
+          <div class="cf-row d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div>
+              <a href="/vendors/{{ inv.vendor.id }}" class="fw-semibold text-decoration-none"
+                 style="color:#dc2626;">
+                {{ inv.vendor.name if inv.vendor else inv.vendor_name or '—' }}
+              </a>
+              {% if inv.request %}
+              <span class="text-muted ms-1" style="font-size:11px;">{{ inv.request.request_no }}</span>
+              {% endif %}
+              <div class="text-muted" style="font-size:11px;">Vade: {{ inv.due_date }}</div>
+            </div>
+            <span style="color:#dc2626;font-weight:600;">₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}</span>
+          </div>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  {% set _has_data = namespace(v=false) %}
+  {% for w in weeks_data %}{% if w.incoming or w.outgoing %}{% set _has_data.v = true %}{% endif %}{% endfor %}
+  {% if not _has_data.v %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-graph-up" style="font-size:3rem;opacity:.3;"></i>
+    <p class="mt-3">Önümüzdeki {{ weeks }} haftada vadesi gelen fatura bulunmuyor.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

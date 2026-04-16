@@ -196,9 +196,21 @@
             </div>
             <div class="col-md-4" id="colVendorName">
               <label class="form-label fw-semibold">Tedarikçi / Müşteri</label>
-              <input type="text" name="vendor_name" id="fVendorName" class="form-control"
-                     value="{{ invoice.vendor_name if invoice else '' }}"
-                     placeholder="Firma adı">
+              <input type="hidden" name="vendor_id" id="fVendorId"
+                     value="{{ invoice.vendor_id if invoice and invoice.vendor_id else '' }}">
+              <div style="position:relative;">
+                <input type="text" name="vendor_name" id="fVendorName" class="form-control"
+                       value="{{ invoice.vendor_name if invoice else '' }}"
+                       placeholder="Firma adı"
+                       autocomplete="off"
+                       oninput="vendorSearch(this.value)"
+                       onblur="setTimeout(hideVendorDrop, 200)">
+                <div id="vendorDropdown"
+                     style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:200px;
+                            overflow-y:auto; z-index:1000; background:#fff; border:1px solid #e2e8f0;
+                            border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.1); font-size:13px;"></div>
+              </div>
+              <div style="font-size:11px;color:#64748b;margin-top:3px;">Tedarikçi seçilirse vade otomatik dolar.</div>
             </div>
           </div>
 
@@ -206,7 +218,8 @@
             <div class="col-md-4">
               <label class="form-label fw-semibold">Fatura Tarihi</label>
               <input type="date" name="invoice_date" id="fInvoiceDate" class="form-control"
-                     value="{{ invoice.invoice_date if invoice else '' }}">
+                     value="{{ invoice.invoice_date if invoice else '' }}"
+                     onchange="autoFillDueDate()">
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold">Vade Tarihi</label>
@@ -382,6 +395,52 @@ function clearReqSelection() {
   document.getElementById('reqSearchInput').focus();
   // tüm dropdown itemları tekrar göster
   document.querySelectorAll('.req-drop-item').forEach(el => el.style.display = '');
+}
+
+// ── Tedarikçi autocomplete ───────────────────────────────────────────────────
+let _vendorPaymentTerm = null;
+let _vendorSearchTimer = null;
+function vendorSearch(q) {
+  clearTimeout(_vendorSearchTimer);
+  const dd = document.getElementById('vendorDropdown');
+  if (!q.trim()) { dd.style.display = 'none'; document.getElementById('fVendorId').value = ''; return; }
+  _vendorSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/vendors/autocomplete?q=' + encodeURIComponent(q));
+      const data = await res.json();
+      if (!data.length) { dd.style.display = 'none'; return; }
+      dd.innerHTML = data.map(v =>
+        `<div class="px-3 py-2 border-bottom" style="cursor:pointer;"
+              onmousedown="selectVendor('${v.id}','${v.name.replace(/'/g,"\\'")}',${v.payment_term})"
+              onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background=''">
+          <span class="fw-semibold">${v.name}</span>
+          <span class="text-muted ms-2" style="font-size:11px;">${v.payment_term} gün vade</span>
+         </div>`
+      ).join('');
+      dd.style.display = '';
+    } catch(e) {}
+  }, 200);
+}
+function selectVendor(id, name, paymentTerm) {
+  document.getElementById('fVendorId').value = id;
+  document.getElementById('fVendorName').value = name;
+  document.getElementById('vendorDropdown').style.display = 'none';
+  _vendorPaymentTerm = paymentTerm;
+  autoFillDueDate();
+}
+function hideVendorDrop() {
+  const dd = document.getElementById('vendorDropdown');
+  if (dd) dd.style.display = 'none';
+}
+function autoFillDueDate() {
+  if (!_vendorPaymentTerm) return;
+  const dateVal = document.getElementById('fInvoiceDate').value;
+  if (!dateVal) return;
+  const due = document.getElementById('fDueDate');
+  if (due.value) return;  // kullanıcı zaten doldurmuşsa dokunma
+  const d = new Date(dateVal);
+  d.setDate(d.getDate() + _vendorPaymentTerm);
+  due.value = d.toISOString().split('T')[0];
 }
 
 // ── Başlangıç verileri ───────────────────────────────────────────────────────

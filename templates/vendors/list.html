@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block page_title %}Finansal Tedarikçiler{% endblock %}
+{% block page_title_block %}Finansal Tedarikçiler{% endblock %}
+
+{% block topbar_actions %}
+{% if can_edit %}
+<a href="/vendors/new" class="btn btn-primary btn-sm">
+  <i class="bi bi-plus-lg me-1"></i> Yeni Tedarikçi
+</a>
+{% endif %}
+<a href="/vendors/cash-flow/view" class="btn btn-outline-secondary btn-sm ms-2">
+  <i class="bi bi-graph-up me-1"></i> Nakit Akışı
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# Arama #}
+  <form method="get" class="mb-3">
+    <div class="input-group" style="max-width:360px;">
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+             placeholder="Tedarikçi adı ara…">
+      <button class="btn btn-outline-secondary btn-sm" type="submit">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </form>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th class="ps-4" style="font-size:11px;color:#64748b;text-transform:uppercase;">Tedarikçi</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Vergi No</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">İletişim</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Vade</th>
+              <th class="text-end" style="font-size:11px;color:#64748b;text-transform:uppercase;">Ödenmemiş</th>
+              <th class="text-end pe-4" style="font-size:11px;color:#64748b;text-transform:uppercase;">Gecikmiş</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in vendors %}
+            <tr>
+              <td class="ps-4">
+                <a href="/vendors/{{ v.id }}" class="fw-semibold text-decoration-none text-dark">{{ v.name }}</a>
+                {% if v.tax_office %}
+                <div class="text-muted" style="font-size:11px;">{{ v.tax_office }}</div>
+                {% endif %}
+              </td>
+              <td class="text-muted">{{ v.tax_number or '—' }}</td>
+              <td>
+                {% if v.email %}
+                <div><a href="mailto:{{ v.email }}" class="text-decoration-none" style="font-size:12px;">{{ v.email }}</a></div>
+                {% endif %}
+                {% if v.phone %}
+                <div class="text-muted" style="font-size:11px;">{{ v.phone }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge bg-light text-dark border">{{ v.payment_term }} gün</span>
+              </td>
+              <td class="text-end">
+                {% set amt = unpaid_map.get(v.id, 0) %}
+                {% if amt > 0 %}
+                <span class="fw-semibold text-warning">₺{{ '{:,.0f}'.format(amt) }}</span>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end pe-4">
+                {% set ov = overdue_map.get(v.id, 0) %}
+                {% if ov > 0 %}
+                <span class="fw-semibold text-danger">₺{{ '{:,.0f}'.format(ov) }}</span>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6" class="text-center py-5 text-muted">
+                <i class="bi bi-building" style="font-size:3rem;opacity:.3;"></i>
+                <p class="mt-2 mb-0">Henüz finansal tedarikçi tanımlanmamış.</p>
+                {% if can_edit %}
+                <a href="/vendors/new" class="btn btn-primary btn-sm mt-3">
+                  <i class="bi bi-plus-lg me-1"></i> İlk Tedarikçiyi Ekle
+                </a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

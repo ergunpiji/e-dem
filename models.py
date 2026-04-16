@@ -1021,17 +1021,63 @@ _EMAIL_TEMPLATE_DEFAULTS = [
 ]
 
 
+class FinancialVendor(Base):
+    """Mali Tedarikçi — faturalardan bağımsız kayıt, ödeme takibi için"""
+    __tablename__ = "financial_vendors"
+
+    id           = Column(String(36), primary_key=True, default=_uuid)
+    name         = Column(String(255), nullable=False, index=True)
+    tax_number   = Column(String(30), default="")
+    tax_office   = Column(String(100), default="")
+    address      = Column(Text, default="")
+    email        = Column(String(255), default="")
+    phone        = Column(String(30), default="")
+    payment_term = Column(Integer, default=30)   # vade (gün)
+    notes        = Column(Text, default="")
+    is_active    = Column(Boolean, default=True)
+    created_by   = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at   = Column(DateTime, default=_now, nullable=False)
+    updated_at   = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    invoices = relationship("Invoice", back_populates="vendor",
+                            foreign_keys="Invoice.vendor_id")
+    creator  = relationship("User", foreign_keys=[created_by])
+
+    @property
+    def total_invoiced(self) -> float:
+        return sum(inv.total_amount or 0 for inv in self.invoices
+                   if inv.status not in ("rejected", "cancelled"))
+
+    @property
+    def total_unpaid(self) -> float:
+        return sum(inv.total_amount or 0 for inv in self.invoices
+                   if inv.payment_status == "unpaid"
+                   and inv.status not in ("rejected", "cancelled"))
+
+    def to_dict(self) -> dict:
+        return {
+            "id":           self.id,
+            "name":         self.name,
+            "tax_number":   self.tax_number,
+            "tax_office":   self.tax_office,
+            "payment_term": self.payment_term,
+            "email":        self.email,
+            "phone":        self.phone,
+        }
+
+
 class Invoice(Base):
     """Fatura modeli — kesilen/gelen/komisyon/iade"""
     __tablename__ = "invoices"
 
     id            = Column(String(36), primary_key=True, default=_uuid)
     request_id    = Column(String(36), ForeignKey("requests.id"), nullable=True, index=True)
+    vendor_id     = Column(String(36), ForeignKey("financial_vendors.id"), nullable=True, index=True)
     invoice_type  = Column(String(32), nullable=False)   # kesilen|gelen|komisyon|iade_kesilen|iade_gelen
     invoice_no    = Column(String(100), default="")
     invoice_date  = Column(String(10), nullable=True)    # YYYY-MM-DD string
     due_date      = Column(String(10), nullable=True)    # YYYY-MM-DD string
-    vendor_name   = Column(String(255), default="")      # tedarikçi/müşteri adı
+    vendor_name   = Column(String(255), default="")      # tedarikçi/müşteri adı (serbest metin — geriye uyumluluk)
     description   = Column(Text, default="")
     amount        = Column(Float, default=0.0)           # KDV hariç toplam, TRY (lines'dan hesaplanır)
     vat_rate      = Column(Float, default=20.0)          # geriye uyumluluk için (artık lines'da)
@@ -1041,6 +1087,8 @@ class Invoice(Base):
     document_path    = Column(String(500), nullable=True)   # disk path (relative)
     document_name    = Column(String(255), nullable=True)   # orijinal dosya adı
     status           = Column(String(20), default="pending") # pending|mudur_approved|gm_approved|approved|rejected|cancelled
+    payment_status   = Column(String(20), default="unpaid")  # unpaid|paid|partial
+    paid_at          = Column(String(10), nullable=True)      # YYYY-MM-DD
     rejection_note   = Column(String(300), default="")
     approved_by      = Column(String(36), ForeignKey("users.id"), nullable=True)
     approved_at      = Column(DateTime, nullable=True)
@@ -1049,6 +1097,7 @@ class Invoice(Base):
     updated_at       = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
     request  = relationship("Request", back_populates="invoices")
+    vendor   = relationship("FinancialVendor", back_populates="invoices", foreign_keys=[vendor_id])
     creator  = relationship("User", foreign_keys=[created_by])
     approver = relationship("User", foreign_keys=[approved_by])
 

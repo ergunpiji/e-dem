@@ -351,6 +351,14 @@
             <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
             {{ nb(nc.inv_unlinked) }}
           </a>
+          <a href="/vendors"
+             class="sidebar-link {% if cp.startswith('/vendors') %}active{% endif %}">
+            <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
+          </a>
+          <a href="/vendors/cash-flow/view"
+             class="sidebar-link {% if 'cash-flow' in cp %}active{% endif %}">
+            <i class="bi bi-graph-up-arrow nav-icon"></i> Nakit Akışı
+          </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
             <i class="bi bi-graph-up nav-icon"></i> Finansal Rapor
@@ -545,6 +553,14 @@
              class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
             <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
             {{ nb(nc.inv_unlinked) }}
+          </a>
+          <a href="/vendors"
+             class="sidebar-link {% if cp.startswith('/vendors') %}active{% endif %}">
+            <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
+          </a>
+          <a href="/vendors/cash-flow/view"
+             class="sidebar-link {% if 'cash-flow' in cp %}active{% endif %}">
+            <i class="bi bi-graph-up-arrow nav-icon"></i> Nakit Akışı
           </a>
           <a href="/expenses/new"
              class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
@@ -851,6 +867,14 @@
              class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
             <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
             {{ nb(nc.inv_unlinked) }}
+          </a>
+          <a href="/vendors"
+             class="sidebar-link {% if cp.startswith('/vendors') %}active{% endif %}">
+            <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
+          </a>
+          <a href="/vendors/cash-flow/view"
+             class="sidebar-link {% if 'cash-flow' in cp %}active{% endif %}">
+            <i class="bi bi-graph-up-arrow nav-icon"></i> Nakit Akışı
           </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">

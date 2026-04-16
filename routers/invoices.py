@@ -317,6 +317,7 @@ async def invoices_create(
     invoice_no:          str = Form(""),
     invoice_date:        str = Form(""),
     due_date:            str = Form(""),
+    vendor_id:           str = Form(""),
     vendor_name:         str = Form(""),
     description:         str = Form(""),
     lines_json:          str = Form("[]"),
@@ -379,6 +380,7 @@ async def invoices_create(
         invoice_no   = invoice_no.strip(),
         invoice_date = invoice_date or None,
         due_date     = due_date or None,
+        vendor_id    = vendor_id.strip() or None,
         vendor_name  = vendor_name.strip(),
         description  = description.strip(),
         lines_json   = json.dumps(lines, ensure_ascii=False),
@@ -496,6 +498,7 @@ async def invoices_update(
     invoice_no:   str = Form(""),
     invoice_date: str = Form(""),
     due_date:     str = Form(""),
+    vendor_id:    str = Form(""),
     vendor_name:  str = Form(""),
     description:  str = Form(""),
     lines_json:   str = Form("[]"),
@@ -521,6 +524,7 @@ async def invoices_update(
     inv.invoice_no   = invoice_no.strip()
     inv.invoice_date = invoice_date or None
     inv.due_date     = due_date or None
+    inv.vendor_id    = vendor_id.strip() or None
     inv.vendor_name  = vendor_name.strip()
     inv.description  = description.strip()
     inv.lines_json   = json.dumps(lines, ensure_ascii=False)
