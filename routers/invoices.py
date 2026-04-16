@@ -311,7 +311,7 @@ async def invoices_create(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    req_id:              str = Form(...),
+    req_id:              str = Form(""),
     invoice_type:        str = Form(...),
     invoice_no:          str = Form(""),
     invoice_date:        str = Form(""),
@@ -331,12 +331,16 @@ async def invoices_create(
             raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
     else:
         _require_finance(current_user)
-    req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
-    if not req:
-        raise HTTPException(status_code=404, detail="Referans bulunamadı.")
+    req = None
+    if req_id:
+        req = db.query(ReqModel).filter(ReqModel.id == req_id).first()
+        if not req:
+            raise HTTPException(status_code=404, detail="Referans bulunamadı.")
 
     # ── Belgesiz Gelir / Gider → UndocumentedEntry kaydet ──
     if invoice_type in BELGESIZ_TYPES:
+        if not req:
+            raise HTTPException(status_code=400, detail="Belgesiz giriş için referans seçilmesi zorunludur.")
         entry_type = "gelir" if invoice_type == "belgesiz_gelir" else "gider"
         entry = UndocumentedEntry(
             id          = _uuid(),
@@ -369,7 +373,7 @@ async def invoices_create(
 
     inv = Invoice(
         id           = _uuid(),
-        request_id   = req_id,
+        request_id   = req_id or None,
         invoice_type = invoice_type,
         invoice_no   = invoice_no.strip(),
         invoice_date = invoice_date or None,
@@ -397,16 +401,17 @@ async def invoices_create(
 
     # Kütüphane: fatura girişi logu
     from models import INVOICE_TYPE_LABELS as _ITL
-    log_activity(
-        db, req_id, "invoice_created",
-        f"Fatura eklendi — {_ITL.get(inv.invoice_type, inv.invoice_type)}: {inv.vendor_name or inv.invoice_no or '—'}",
-        detail=f"Tutar: ₺{inv.amount:,.0f}",
-        user_id=current_user.id,
-    )
+    if req_id:
+        log_activity(
+            db, req_id, "invoice_created",
+            f"Fatura eklendi — {_ITL.get(inv.invoice_type, inv.invoice_type)}: {inv.vendor_name or inv.invoice_no or '—'}",
+            detail=f"Tutar: ₺{inv.amount:,.0f}",
+            user_id=current_user.id,
+        )
     db.commit()
 
-    # Bildirim: PM onayı bekleniyor
-    if req.created_by:
+    # Bildirim: PM onayı bekleniyor (sadece referanslı faturalar için)
+    if req and req.created_by:
         from utils.notifications import create_notification
         vendor = inv.vendor_name or inv.invoice_no or "—"
         create_notification(
@@ -420,7 +425,9 @@ async def invoices_create(
         )
         db.commit()
 
-    return RedirectResponse(url=f"/requests/{req_id}#tab-financial", status_code=303)
+    if req_id:
+        return RedirectResponse(url=f"/requests/{req_id}#tab-financial", status_code=303)
+    return RedirectResponse(url="/invoices/unlinked", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +518,9 @@ async def invoices_update(
         inv.document_name = doc_name
 
     db.commit()
-    return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+    if inv.request_id:
+        return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+    return RedirectResponse(url="/invoices/unlinked", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -667,7 +676,9 @@ async def invoices_reject(
     inv.approved_at    = None
     inv.updated_at     = _now()
     db.commit()
-    return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+    if inv.request_id:
+        return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+    return RedirectResponse(url="/invoices/unlinked", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -699,6 +710,70 @@ async def invoices_reassign(
 
 
 # ---------------------------------------------------------------------------
+# GET /invoices/unlinked  — Referans bekleyen faturalar (herkese görünür)
+# ---------------------------------------------------------------------------
+
+@router.get("/unlinked", response_class=HTMLResponse, name="invoices_unlinked")
+async def invoices_unlinked(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from sqlalchemy import or_
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.request_id == None, Invoice.status != "cancelled")
+        .order_by(Invoice.created_at.desc())
+        .all()
+    )
+    all_requests = db.query(ReqModel).filter(
+        ReqModel.status.notin_(["cancelled", "closing", "closed"])
+    ).order_by(ReqModel.created_at.desc()).all()
+    return templates.TemplateResponse("invoices/unlinked.html", {
+        "request":      request,
+        "current_user": current_user,
+        "page_title":   "Referans Bekleyen Faturalar",
+        "invoices":     invoices,
+        "all_requests": all_requests,
+        "invoice_types": INVOICE_TYPES,
+    })
+
+
+# ---------------------------------------------------------------------------
+# POST /invoices/{id}/assign-request  — Faturaya referans ata
+# ---------------------------------------------------------------------------
+
+@router.post("/{invoice_id}/assign-request", name="invoices_assign_request")
+async def invoices_assign_request(
+    invoice_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    new_request_id: str = Form(...),
+):
+    inv = _get_invoice_or_404(db, invoice_id)
+    if inv.request_id:
+        raise HTTPException(status_code=400, detail="Bu faturanın zaten bir referansı var.")
+
+    new_req = db.query(ReqModel).filter(ReqModel.id == new_request_id).first()
+    if not new_req:
+        raise HTTPException(status_code=404, detail="Hedef referans bulunamadı.")
+
+    inv.request_id = new_request_id
+    inv.updated_at = _now()
+
+    from models import INVOICE_TYPE_LABELS as _ITL
+    log_activity(
+        db, new_request_id, "invoice_assigned",
+        f"Fatura referansa atandı — {_ITL.get(inv.invoice_type, inv.invoice_type)}: {inv.vendor_name or inv.invoice_no or '—'}",
+        detail=f"Tutar: ₺{inv.amount:,.0f}",
+        user_id=current_user.id,
+    )
+    db.commit()
+    return RedirectResponse(url=f"/requests/{new_request_id}#tab-financial", status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # POST /invoices/{id}/delete
 # ---------------------------------------------------------------------------
 
@@ -715,7 +790,9 @@ async def invoices_delete(
     inv.status     = "cancelled"
     inv.updated_at = _now()
     db.commit()
-    return RedirectResponse(url=f"/requests/{req_id}#tab-financial", status_code=303)
+    if req_id:
+        return RedirectResponse(url=f"/requests/{req_id}#tab-financial", status_code=303)
+    return RedirectResponse(url="/invoices/unlinked", status_code=303)
 
 
 # ---------------------------------------------------------------------------

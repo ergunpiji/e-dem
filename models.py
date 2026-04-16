@@ -1022,7 +1022,7 @@ class Invoice(Base):
     __tablename__ = "invoices"
 
     id            = Column(String(36), primary_key=True, default=_uuid)
-    request_id    = Column(String(36), ForeignKey("requests.id"), nullable=False, index=True)
+    request_id    = Column(String(36), ForeignKey("requests.id"), nullable=True, index=True)
     invoice_type  = Column(String(32), nullable=False)   # kesilen|gelen|komisyon|iade_kesilen|iade_gelen
     invoice_no    = Column(String(100), default="")
     invoice_date  = Column(String(10), nullable=True)    # YYYY-MM-DD string

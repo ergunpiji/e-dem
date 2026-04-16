@@ -136,6 +136,10 @@ async def nav_counts_middleware(request: Request, call_next):
                     counts["inv_pending_mudur"] = db.execute(
                         _text("SELECT COUNT(*) FROM invoices WHERE status='mudur_approved'")
                     ).scalar() or 0
+                # Referans bekleyen faturalar — tüm roller için
+                counts["inv_unlinked"] = db.execute(
+                    _text("SELECT COUNT(*) FROM invoices WHERE request_id IS NULL AND status != 'cancelled'")
+                ).scalar() or 0
             except Exception:
                 pass
             finally:

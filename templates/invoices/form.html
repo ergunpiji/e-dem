@@ -4,9 +4,15 @@
 
 {% block topbar_actions %}
 {% if edit_mode and invoice %}
+{% if invoice.request_id %}
 <a href="/requests/{{ invoice.request_id }}#tab-financial" class="btn btn-outline-secondary btn-sm">
   <i class="bi bi-arrow-left me-1"></i> Geri
 </a>
+{% else %}
+<a href="/invoices/unlinked" class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-arrow-left me-1"></i> Geri
+</a>
+{% endif %}
 {% elif selected_req %}
 <a href="/requests/{{ selected_req.id }}#tab-financial" class="btn btn-outline-secondary btn-sm">
   <i class="bi bi-arrow-left me-1"></i> Geri
@@ -118,10 +124,9 @@
 
           {# ── Referans ── #}
           <div class="mb-3">
-            <label class="form-label fw-semibold">Referans <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold">Referans <span class="text-muted fw-normal" style="font-size:12px;">(opsiyonel — sonradan da atanabilir)</span></label>
             <input type="hidden" name="req_id" id="reqIdHidden"
-                   value="{{ invoice.request_id if edit_mode else (selected_req.id if selected_req else '') }}"
-                   required>
+                   value="{{ invoice.request_id if edit_mode else (selected_req.id if selected_req else '') }}">
             {# Seçili referans badge #}
             <div id="reqSelectedBadge"
                  style="{% if not edit_mode and not selected_req %}display:none;{% endif %} margin-bottom:6px;">
@@ -323,8 +328,12 @@
               {% if edit_mode %}Güncelle{% elif statement_prefill %}Talebi Gönder{% else %}Kaydet{% endif %}
             </button>
             {% if edit_mode and invoice %}
+            {% if invoice.request_id %}
             <a href="/requests/{{ invoice.request_id }}#tab-financial"
                class="btn btn-outline-secondary">İptal</a>
+            {% else %}
+            <a href="/invoices/unlinked" class="btn btn-outline-secondary">İptal</a>
+            {% endif %}
             {% elif selected_req %}
             <a href="/requests/{{ selected_req.id }}#tab-financial"
                class="btn btn-outline-secondary">İptal</a>

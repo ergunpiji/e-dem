@@ -346,6 +346,11 @@
             <i class="bi bi-receipt nav-icon"></i> Faturalar
             {{ nb(_inv_total) }}
           </a>
+          <a href="/invoices/unlinked"
+             class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
+            <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
+            {{ nb(nc.inv_unlinked) }}
+          </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
             <i class="bi bi-graph-up nav-icon"></i> Finansal Rapor
@@ -536,6 +541,11 @@
             <i class="bi bi-receipt nav-icon"></i> Faturalar
             {{ nb(_mudur_fin) }}
           </a>
+          <a href="/invoices/unlinked"
+             class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
+            <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
+            {{ nb(nc.inv_unlinked) }}
+          </a>
           <a href="/expenses/new"
              class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
             <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
@@ -637,6 +647,11 @@
           <a href="/invoices"
              class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
             <i class="bi bi-receipt nav-icon"></i> Faturalar
+          </a>
+          <a href="/invoices/unlinked"
+             class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
+            <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
+            {{ nb(nc.inv_unlinked) }}
           </a>
           <a href="/expenses/new"
              class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
@@ -826,6 +841,11 @@
              class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
             <i class="bi bi-receipt nav-icon"></i> Faturalar
             {{ nb(_muh_inv) }}
+          </a>
+          <a href="/invoices/unlinked"
+             class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
+            <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
+            {{ nb(nc.inv_unlinked) }}
           </a>
           <a href="/reports/financial"
              class="sidebar-link {% if '/reports/financial' in cp %}active{% endif %}">
