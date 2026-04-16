@@ -966,15 +966,22 @@ def migrate_db():
         _safe_add_column(conn, "settings", "invoice_mudur_limit", "REAL")
 
         # invoices.request_id → nullable (referanssız fatura desteği)
-        # PostgreSQL'de constraint düşür, SQLite'da zaten NULL kabul eder (column yeniden eklenmez)
+        # information_schema'dan kontrol edip sadece gerektiğinde ALTER çalıştır
         if not _is_sqlite:
             try:
-                conn.execute(text(
-                    "ALTER TABLE invoices ALTER COLUMN request_id DROP NOT NULL"
-                ))
-                conn.commit()
-            except Exception:
+                row = conn.execute(text(
+                    "SELECT is_nullable FROM information_schema.columns "
+                    "WHERE table_name='invoices' AND column_name='request_id'"
+                )).fetchone()
+                if row and row[0] == 'NO':
+                    conn.execute(text(
+                        "ALTER TABLE invoices ALTER COLUMN request_id DROP NOT NULL"
+                    ))
+                    conn.commit()
+                    print("[DB] invoices.request_id NOT NULL kısıtı kaldırıldı.", flush=True)
+            except Exception as e:
                 conn.rollback()
+                print(f"[DB] invoices.request_id migration hatası: {e}", flush=True)
 
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()
