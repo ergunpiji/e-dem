@@ -29,6 +29,13 @@
                font-size: 13px; padding: 3px 0; }
   .total-row.grand { font-size: 15px; font-weight: 700; color: #1e293b;
                      border-top: 1px solid #e2e8f0; margin-top: 6px; padding-top: 8px; }
+  .parse-zone { border: 2px dashed #0ea5e9; border-radius: 10px; padding: 14px 18px;
+               background: #f0f9ff; transition: border-color .2s, background .2s; }
+  .parse-zone.drag-over { border-color: #0284c7; background: #e0f2fe; }
+  .parse-btn { background: #0ea5e9; color: white; border: none; border-radius: 7px;
+               padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .parse-btn:hover { background: #0284c7; }
+  .parse-btn:disabled { opacity: .5; cursor: default; }
   .doc-drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 14px 16px;
               text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
               background: #f8fafc; }
@@ -46,6 +53,31 @@
   <div class="col-lg-9">
     <div class="card">
       <div class="card-body p-4">
+
+        {# ── PDF'den Otomatik Doldur ── #}
+        {% if not edit_mode %}
+        <div id="parseZone" class="parse-zone mb-4"
+             ondragover="parseDragOver(event)" ondragleave="parseDragLeave(event)" ondrop="parseDrop(event)">
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <i class="bi bi-file-earmark-arrow-up fs-4" style="color:#0ea5e9;"></i>
+            <div>
+              <div class="fw-semibold" style="font-size:13px; color:#0c4a6e;">PDF'den Otomatik Doldur</div>
+              <div style="font-size:12px; color:#64748b;" id="parseFileName">Fatura PDF'ini buraya sürükleyin veya seçin</div>
+            </div>
+            <label class="parse-btn ms-auto mb-0" style="cursor:pointer;">
+              Dosya Seç
+              <input type="file" accept=".pdf" style="display:none;" onchange="handleParseFile(this)">
+            </label>
+            <button type="button" class="parse-btn" id="parseRunBtn" style="display:none;" onclick="runParsePdf()">
+              <i class="bi bi-magic"></i> Doldur
+            </button>
+            <span id="parseLoading" style="display:none; font-size:12px; color:#0ea5e9;">
+              <span class="spinner-border spinner-border-sm me-1"></span> Okunuyor…
+            </span>
+          </div>
+          <div id="parseError" style="display:none; font-size:12px; color:#dc2626; margin-top:6px;"></div>
+        </div>
+        {% endif %}
 
         <form method="post"
               action="{% if edit_mode %}/invoices/{{ invoice.id }}/edit{% else %}/invoices/new{% endif %}"
@@ -496,6 +528,101 @@ function prepareSave() {
     ln.vat_amount = Math.round((parseFloat(ln.amount)||0) * (parseFloat(ln.vat_rate)||0) / 100 * 100) / 100;
   });
   document.getElementById('linesJson').value = JSON.stringify(lines);
+}
+
+// ── PDF Parse ────────────────────────────────────────────────────────────────
+let _parseFile = null;
+
+function handleParseFile(input) {
+  _parseFile = input.files[0];
+  if (!_parseFile) return;
+  document.getElementById('parseFileName').textContent = _parseFile.name;
+  document.getElementById('parseRunBtn').style.display = '';
+  document.getElementById('parseError').style.display  = 'none';
+}
+function parseDragOver(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('parseZone').classList.add('drag-over');
+}
+function parseDragLeave(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('parseZone').classList.remove('drag-over');
+}
+function parseDrop(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('parseZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    document.getElementById('parseError').textContent = 'Sadece PDF dosyası desteklenir.';
+    document.getElementById('parseError').style.display = '';
+    return;
+  }
+  _parseFile = file;
+  document.getElementById('parseFileName').textContent = file.name;
+  document.getElementById('parseRunBtn').style.display = '';
+  document.getElementById('parseError').style.display  = 'none';
+}
+
+async function runParsePdf() {
+  if (!_parseFile) return;
+  document.getElementById('parseRunBtn').style.display  = 'none';
+  document.getElementById('parseLoading').style.display = '';
+  document.getElementById('parseError').style.display   = 'none';
+
+  const fd = new FormData();
+  fd.append('file', _parseFile);
+
+  let res, data;
+  try {
+    res  = await fetch('/invoices/parse-pdf', { method: 'POST', body: fd });
+    data = await res.json();
+  } catch(e) {
+    _parseError('Bağlantı hatası: ' + e);
+    return;
+  }
+
+  if (!data.ok) { _parseError(data.error || 'Okunamadı'); return; }
+
+  const d = data.data;
+  if (d.invoice_no)   { const el = document.getElementById('fInvoiceNo');   if (el) el.value = d.invoice_no; }
+  if (d.invoice_date) { const el = document.getElementById('fInvoiceDate'); if (el) el.value = d.invoice_date; }
+  if (d.due_date)     { const el = document.getElementById('fDueDate');     if (el) el.value = d.due_date; }
+  if (d.vendor_name)  { const el = document.getElementById('fVendorName');  if (el) el.value = d.vendor_name; }
+  if (d.description)  { const el = document.getElementById('fDescription'); if (el) el.value = d.description; }
+
+  if (d.lines && d.lines.length > 0) {
+    lines = d.lines.map(l => ({
+      description: l.description || '',
+      amount:      parseFloat(l.amount) || 0,
+      vat_rate:    snapVat(parseInt(l.vat_rate) || 20),
+      vat_amount:  0,
+    }));
+    renderLines();
+  }
+
+  // Faturayı belge olarak da ekle
+  try {
+    const docInput = document.getElementById('docFileInput');
+    if (docInput) {
+      const dt = new DataTransfer();
+      dt.items.add(_parseFile);
+      docInput.files = dt.files;
+      docChosen(docInput);
+    }
+  } catch(_) {}
+
+  document.getElementById('parseLoading').style.display = 'none';
+  document.getElementById('parseRunBtn').style.display  = '';
+  document.getElementById('parseFileName').textContent  = '✓ ' + _parseFile.name + ' — dolduruldu';
+}
+
+function _parseError(msg) {
+  document.getElementById('parseLoading').style.display = 'none';
+  document.getElementById('parseRunBtn').style.display  = '';
+  const el = document.getElementById('parseError');
+  el.textContent = msg;
+  el.style.display = '';
 }
 
 // Belge drop zone

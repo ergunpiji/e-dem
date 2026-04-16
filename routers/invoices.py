@@ -515,6 +515,30 @@ async def invoices_update(
 
 
 # ---------------------------------------------------------------------------
+# POST /invoices/parse-pdf  — PDF'den otomatik fatura doldurma (AI'sız)
+# ---------------------------------------------------------------------------
+
+@router.post("/parse-pdf", name="invoices_parse_pdf")
+async def invoices_parse_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    _require_finance(current_user)
+
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return JSONResponse({"error": "Dosya 10 MB'ı aşıyor."}, status_code=400)
+
+    try:
+        from agents.invoice_parser import parse_invoice
+        data = parse_invoice(file_bytes, file.filename or "invoice.pdf")
+        return JSONResponse({"ok": True, "data": data})
+    except Exception as e:
+        print(f"[PARSE-PDF] Hata: {e}", flush=True)
+        return JSONResponse({"error": "PDF okunamadı. Dosyayı kontrol edin."}, status_code=400)
+
+
+# ---------------------------------------------------------------------------
 # POST /invoices/{id}/approve  — referans sahibi (PM) veya admin onaylar
 # ---------------------------------------------------------------------------
 # POST /invoices/{id}/cut  — Muhasebe faturayı keser (detayları doldurur + onaylar)
