@@ -75,7 +75,7 @@
               <td class="text-end fw-semibold text-success">₺{{ "{:,.0f}".format(inv.total_amount or 0) }}</td>
               <td class="text-nowrap">{{ inv.invoice_date or '—' }}</td>
               <td class="text-muted text-nowrap" style="font-size:12px;">
-                {{ inv.created_at[:10] if inv.created_at else '—' }}
+                {{ inv.created_at.strftime('%d.%m.%Y') if inv.created_at else '—' }}
               </td>
               <td>
                 {% if inv.status == 'pending' %}
