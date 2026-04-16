@@ -411,19 +411,40 @@ async def invoices_create(
         )
     db.commit()
 
-    # Bildirim: PM onayı bekleniyor (sadece referanslı faturalar için)
-    if req and req.created_by:
+    # Bildirim: ilgili taraflara fatura onay bildirimi gönder
+    if req:
         from utils.notifications import create_notification
+        from models import Team as _Team
         vendor = inv.vendor_name or inv.invoice_no or "—"
-        create_notification(
-            db,
-            user_id    = req.created_by,
-            notif_type = "invoice_pending",
-            title      = f"Fatura onayı bekleniyor — {vendor}",
-            message    = f"{req.request_no} referansına ait fatura onayınızı bekliyor.",
-            link       = f"/requests/{req_id}#tab-financial",
-            ref_id     = inv.id,
-        )
+
+        # Takımın müdürüne bildirim (onay yetkisi olan kişi)
+        _notified_ids = set()
+        if req.team_id:
+            _team = db.query(_Team).filter(_Team.id == req.team_id).first()
+            _team_mudur = _team.mudur if _team else None
+            if _team_mudur and _team_mudur.id != current_user.id:
+                create_notification(
+                    db,
+                    user_id    = _team_mudur.id,
+                    notif_type = "invoice_pending",
+                    title      = f"Fatura onayı bekleniyor — {vendor}",
+                    message    = f"{req.request_no} referansına ait fatura onayınızı bekliyor.",
+                    link       = f"/requests/{req_id}#tab-financial",
+                    ref_id     = inv.id,
+                )
+                _notified_ids.add(_team_mudur.id)
+
+        # Talebi oluşturan PM'e bildirim (müdür değilse + kendisi değilse)
+        if req.created_by and req.created_by not in _notified_ids and req.created_by != current_user.id:
+            create_notification(
+                db,
+                user_id    = req.created_by,
+                notif_type = "invoice_pending",
+                title      = f"Fatura eklendi — {vendor}",
+                message    = f"{req.request_no} referansına fatura eklendi.",
+                link       = f"/requests/{req_id}#tab-financial",
+                ref_id     = inv.id,
+            )
         db.commit()
 
     if req_id:

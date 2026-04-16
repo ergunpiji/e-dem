@@ -209,24 +209,23 @@ async def reports_financial(
     if current_user.role in ("yonetici", "asistan"):
         manager_id = current_user.id
 
-    # Birim müdürü: sadece kendi takımının üyeleri
-    scoped_user_ids: list[str] | None = None
-    if is_birim_mgr and current_user.team_id:
-        team_members = db.query(User).filter(
-            User.team_id == current_user.team_id, User.active == True
-        ).all()
-        scoped_user_ids = [u.id for u in team_members]
-        team_id = current_user.team_id  # filtre override
-
     # Takım listesi (GM için filtre dropdown)
     all_teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all() if is_gm_user else []
 
-    # GM takım filtresi
-    if is_gm_user and team_id:
-        team_members_gm = db.query(User).filter(
-            User.team_id == team_id, User.active == True
-        ).all()
-        scoped_user_ids = [u.id for u in team_members_gm]
+    # Takım bazlı kapsam: birim müdürü veya GM takım filtresi
+    scoped_team_id: str | None = None
+    if is_birim_mgr and current_user.team_id:
+        scoped_team_id = current_user.team_id
+        team_id = current_user.team_id  # dropdown override
+    elif is_gm_user and team_id:
+        scoped_team_id = team_id
+
+    # Eski user-id bazlı kapsam (manager_id filtresi için hâlâ gerekli)
+    scoped_user_ids: list[str] | None = None
+    if scoped_team_id and not manager_id:
+        pass  # request.team_id üzerinden filtrelenecek
+    elif is_gm_user and team_id and manager_id:
+        pass  # hem takım hem PM filtresi: user-id üzerinden
 
     # PM filtresi (sadece GM/admin/muhasebe için)
     pm_users = []
@@ -242,8 +241,15 @@ async def reports_financial(
         ReqModel.check_in <= d_to.isoformat(),
     )
 
-    if scoped_user_ids is not None:
-        req_date_q = req_date_q.filter(ReqModel.created_by.in_(scoped_user_ids))
+    if scoped_team_id and not manager_id:
+        # Takım filtresi: request.team_id üzerinden (doğrudan, kullanıcı listesi gerekmez)
+        req_date_q = req_date_q.filter(ReqModel.team_id == scoped_team_id)
+    elif scoped_team_id and manager_id:
+        # Hem takım hem PM filtresi
+        req_date_q = req_date_q.filter(
+            ReqModel.team_id == scoped_team_id,
+            ReqModel.created_by == manager_id,
+        )
     elif current_user.role in ("yonetici", "asistan"):
         req_date_q = req_date_q.filter(ReqModel.created_by == current_user.id)
     elif manager_id:
@@ -276,13 +282,10 @@ async def reports_financial(
     reqs = {r.id: r for r in db.query(ReqModel)
             .filter(ReqModel.id.in_(req_ids_with_inv)).all()} if req_ids_with_inv else {}
 
-    # Kullanıcı → takım haritası (GM için takım breakdown)
-    user_team_map: dict[str, str] = {}  # user_id → team_name
+    # Takım adı haritası (GM için takım breakdown — request.team_id üzerinden)
+    team_name_map: dict[str, str] = {}
     if is_gm_user:
-        all_users_in_teams = db.query(User).filter(User.team_id.isnot(None)).all()
         team_name_map = {t.id: t.name for t in db.query(Team).all()}
-        for u in all_users_in_teams:
-            user_team_map[u.id] = team_name_map.get(u.team_id, "Takımsız")
 
     # Tablo satırları
     rows = []
@@ -293,7 +296,7 @@ async def reports_financial(
         ciro    = round(fin["ciro"], 2)
         maliyet = round(fin["maliyet"], 2)
         kar     = round(ciro - maliyet, 2)
-        team_name = user_team_map.get(req.created_by, "Takımsız") if is_gm_user else ""
+        team_name = team_name_map.get(req.team_id, "Takımsız") if is_gm_user else ""
         rows.append({
             "req":          req,
             "manager_name": req.creator.full_name if req.creator else "—",

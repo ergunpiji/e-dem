@@ -19,6 +19,7 @@
           <tr>
             <th class="ps-4">Firma Adı</th>
             <th>Kod</th>
+            <th>Takım</th>
             <th>Sektör</th>
             <th>Kontak Kişi</th>
             <th>E-posta</th>
@@ -39,6 +40,15 @@
               <span class="badge bg-secondary bg-opacity-10 text-secondary fw-semibold" style="font-size:12px; letter-spacing:.5px;">
                 {{ customer.code | upper }}
               </span>
+            </td>
+            <td style="font-size:13px;">
+              {% if customer.team %}
+              <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:600; font-size:11px;">
+                {{ customer.team.name }}
+              </span>
+              {% else %}
+              <span class="text-muted" style="font-size:12px;">—</span>
+              {% endif %}
             </td>
             <td style="font-size:13px; color:#64748b;">{{ customer.sector or '—' }}</td>
             <td style="font-size:13px;">
@@ -70,7 +80,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="7" class="text-center py-5 text-muted">
+            <td colspan="8" class="text-center py-5 text-muted">
               <i class="bi bi-building" style="font-size:3rem; opacity:.3;"></i>
               <p class="mt-2 mb-0">Henüz müşteri bulunmuyor.</p>
               {% if current_user.role == 'admin' %}
