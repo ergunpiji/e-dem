@@ -29,17 +29,6 @@
                font-size: 13px; padding: 3px 0; }
   .total-row.grand { font-size: 15px; font-weight: 700; color: #1e293b;
                      border-top: 1px solid #e2e8f0; margin-top: 6px; padding-top: 8px; }
-  .ai-zone { border: 2px dashed #6366f1; border-radius: 10px; padding: 16px 20px;
-             background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
-             transition: border-color .2s, background .2s; }
-  .ai-zone.drag-over { border-color: #4f46e5; background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); }
-  .ai-btn { background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            color: white; border: none; border-radius: 8px; padding: 8px 18px;
-            font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
-  .ai-btn:hover { opacity: .85; }
-  .ai-btn:disabled { opacity: .5; cursor: default; }
-  .ai-loading { display: none; font-size: 13px; color: #6366f1; }
-  #aiFileInput { font-size: 13px; }
   .doc-drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 14px 16px;
               text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
               background: #f8fafc; }
@@ -94,38 +83,6 @@
             </div>
           </div>
           {% endif %}
-
-          {# ── AI ile Doldur ── #}
-          <div class="ai-zone mb-4" id="aiZone"
-               ondragover="aiDragOver(event)" ondragleave="aiDragLeave(event)" ondrop="aiDrop(event)">
-            <div class="d-flex align-items-start gap-3">
-              <div style="font-size:28px;">🤖</div>
-              <div class="flex-grow-1">
-                <div class="fw-bold mb-1" style="font-size:14px; color:#4f46e5;">
-                  PDF'den Otomatik Doldur
-                </div>
-                <div class="text-muted mb-2" style="font-size:12px;">
-                  Dosyayı seçin veya buraya sürükleyip bırakın — AI tüm alanları otomatik dolduracak.
-                </div>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                  <label class="ai-btn mb-0" style="cursor:pointer;">
-                    <i class="bi bi-upload me-1"></i> Dosya Seç
-                    <input type="file" id="aiFileInput" accept=".pdf,.jpg,.jpeg,.png"
-                           style="display:none" onchange="handleAiFile(this)">
-                  </label>
-                  <span id="aiFileName" class="text-muted" style="font-size:12px;"></span>
-                  <button type="button" class="ai-btn" id="aiRunBtn" style="display:none"
-                          onclick="runAiParse()">
-                    <i class="bi bi-stars me-1"></i> AI ile Analiz Et
-                  </button>
-                  <span class="ai-loading" id="aiLoading">
-                    <span class="spinner-border spinner-border-sm me-1"></span> Analiz ediliyor…
-                  </span>
-                </div>
-                <div id="aiError" class="text-danger mt-2" style="font-size:12px; display:none;"></div>
-              </div>
-            </div>
-          </div>
 
           {# ── Referans ── #}
           <div class="mb-3">
@@ -541,41 +498,6 @@ function prepareSave() {
   document.getElementById('linesJson').value = JSON.stringify(lines);
 }
 
-// ── AI Parse ─────────────────────────────────────────────────────────────────
-let aiFile = null;
-
-function handleAiFile(input) {
-  aiFile = input.files[0];
-  if (!aiFile) return;
-  document.getElementById('aiFileName').textContent = aiFile.name;
-  document.getElementById('aiRunBtn').style.display = '';
-  document.getElementById('aiError').style.display  = 'none';
-}
-
-// AI zone drag-and-drop
-function aiDragOver(e) {
-  e.preventDefault(); e.stopPropagation();
-  document.getElementById('aiZone').classList.add('drag-over');
-}
-function aiDragLeave(e) {
-  e.preventDefault(); e.stopPropagation();
-  document.getElementById('aiZone').classList.remove('drag-over');
-}
-function aiDrop(e) {
-  e.preventDefault(); e.stopPropagation();
-  document.getElementById('aiZone').classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (!file) return;
-  const ext = file.name.split('.').pop().toLowerCase();
-  if (!['pdf','jpg','jpeg','png'].includes(ext)) {
-    showAiError('Desteklenmeyen dosya türü. PDF, JPG veya PNG yükleyin.'); return;
-  }
-  aiFile = file;
-  document.getElementById('aiFileName').textContent = file.name;
-  document.getElementById('aiRunBtn').style.display = '';
-  document.getElementById('aiError').style.display  = 'none';
-}
-
 // Belge drop zone
 function docDragOver(e) {
   e.preventDefault(); e.stopPropagation();
@@ -603,75 +525,9 @@ function docChosen(input) {
   else   { el.style.display = 'none'; }
 }
 
-async function runAiParse() {
-  if (!aiFile) return;
-  document.getElementById('aiRunBtn').style.display    = 'none';
-  document.getElementById('aiLoading').style.display   = '';
-  document.getElementById('aiError').style.display     = 'none';
-
-  const fd = new FormData();
-  fd.append('file', aiFile);
-
-  let res, text;
-  try {
-    res  = await fetch('/invoices/parse-pdf', { method: 'POST', body: fd });
-    text = await res.text();
-  } catch(e) {
-    showAiError('Bağlantı hatası: ' + e);
-    return;
-  }
-
-  let data;
-  try { data = JSON.parse(text); } catch(e) {
-    showAiError('Sunucu hatası (' + res.status + '): ' + text.slice(0, 300));
-    return;
-  }
-
-  if (!data.ok) { showAiError(data.error || 'Bilinmeyen hata'); return; }
-
-  // Formu doldur
-  const d = data.data;
-  if (d.invoice_no)   document.getElementById('fInvoiceNo').value   = d.invoice_no;
-  if (d.invoice_date) document.getElementById('fInvoiceDate').value = d.invoice_date;
-  if (d.due_date)     document.getElementById('fDueDate').value     = d.due_date;
-  if (d.vendor_name)  document.getElementById('fVendorName').value  = d.vendor_name;
-  if (d.description)  document.getElementById('fDescription').value = d.description;
-
-  if (d.lines && d.lines.length > 0) {
-    lines = d.lines.map(l => ({
-      description: l.description || '',
-      amount:      parseFloat(l.amount) || 0,
-      vat_rate:    snapVat(parseInt(l.vat_rate) || 20),
-      vat_amount:  0,
-    }));
-    renderLines();
-  }
-
-  // Dosyayı fatura belgesi olarak da ata
-  try {
-    const docInput = document.getElementById('docFileInput');
-    const dt2 = new DataTransfer();
-    dt2.items.add(aiFile);
-    docInput.files = dt2.files;
-    docChosen(docInput);
-  } catch(_) { /* DataTransfer bazı tarayıcılarda çalışmayabilir */ }
-
-  document.getElementById('aiLoading').style.display = 'none';
-  document.getElementById('aiRunBtn').style.display  = '';
-  document.getElementById('aiFileName').textContent  = '✓ ' + aiFile.name + ' — dolduruldu';
-}
-
-function showAiError(msg) {
-  document.getElementById('aiLoading').style.display = 'none';
-  document.getElementById('aiRunBtn').style.display  = '';
-  const el = document.getElementById('aiError');
-  el.textContent = msg;
-  el.style.display = '';
-}
-
 // ── Fatura Tipi Değişince ─────────────────────────────────────────────────────
 const BELGESIZ_TYPES = new Set(['belgesiz_gelir', 'belgesiz_gider']);
-const INVOICE_SECTIONS = ['colInvoiceNo','colVendorName','rowDates','linesSection','totalsSection','docSection','aiZone'];
+const INVOICE_SECTIONS = ['colInvoiceNo','colVendorName','rowDates','linesSection','totalsSection','docSection'];
 
 function onInvoiceTypeChange(val) {
   const isBelgesiz = BELGESIZ_TYPES.has(val);

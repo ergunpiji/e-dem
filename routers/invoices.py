@@ -515,41 +515,6 @@ async def invoices_update(
 
 
 # ---------------------------------------------------------------------------
-# POST /invoices/parse-pdf  — Claude API ile PDF'den otomatik doldur
-# ---------------------------------------------------------------------------
-
-@router.post("/parse-pdf", name="invoices_parse_pdf")
-async def invoices_parse_pdf(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-):
-    _require_finance(current_user)
-
-    file_bytes = await file.read()
-    if len(file_bytes) > MAX_FILE_SIZE:
-        return JSONResponse({"error": "Dosya 10 MB'ı aşıyor."}, status_code=400)
-
-    # ── Tüm formatlar → AI ile analiz ──────────────────────────────────────
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        return JSONResponse(
-            {"error": "ANTHROPIC_API_KEY sunucuda tanımlı değil. Railway ortam değişkenlerine ekleyin."},
-            status_code=500,
-        )
-
-    try:
-        from agents.invoice_reader import parse_invoice
-        data = parse_invoice(file_bytes, file.filename or "invoice.jpg", api_key)
-        return JSONResponse({"ok": True, "data": data})
-    except ValueError as e:
-        print(f"[AI PARSE] ValueError: {e}", flush=True)
-        return JSONResponse({"error": "Fatura okunamadı. Dosyayı kontrol edin."}, status_code=400)
-    except Exception as e:
-        print(f"[AI PARSE] Unexpected error: {e}", flush=True)
-        return JSONResponse({"error": "AI işlemi başarısız. Lütfen tekrar deneyin."}, status_code=500)
-
-
-# ---------------------------------------------------------------------------
 # POST /invoices/{id}/approve  — referans sahibi (PM) veya admin onaylar
 # ---------------------------------------------------------------------------
 # POST /invoices/{id}/cut  — Muhasebe faturayı keser (detayları doldurur + onaylar)
