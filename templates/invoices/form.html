@@ -595,7 +595,7 @@ async function runParsePdf() {
     lines = d.lines.map(l => ({
       description: l.description || '',
       amount:      parseFloat(l.amount) || 0,
-      vat_rate:    snapVat(parseInt(l.vat_rate) || 20),
+      vat_rate:    snapVat(l.vat_rate != null ? parseInt(l.vat_rate) : 20),
       vat_amount:  0,
     }));
     renderLines();
