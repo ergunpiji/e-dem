@@ -205,6 +205,7 @@ from routers import closure as closure_router
 from routers import teams as teams_router
 from routers import library as library_router
 from routers import modules as modules_router
+from routers import permissions as permissions_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -228,6 +229,7 @@ app.include_router(closure_router.router)
 app.include_router(teams_router.router)
 app.include_router(library_router.router)
 app.include_router(modules_router.router)
+app.include_router(permissions_router.router)
 
 # ---------------------------------------------------------------------------
 # Operasyon Ajanı — sub-app olarak mount et (/operasyon/...)

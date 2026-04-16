@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
-from auth import get_current_user
+from auth import get_current_user, has_permission
 from database import generate_ref_no, get_db
 from models import (
     Budget, Customer, CustomCategory, EmailTemplate, EventType, REQUEST_STATUSES, REQUEST_TABS,
@@ -37,8 +37,12 @@ def _get_oa_module(request_id: str, db: Session):
     ).first()
 
 
-def _check_pm_or_admin(current_user: User):
-    if current_user.role not in ("admin", "mudur", "yonetici", "asistan", "project_manager"):
+def _check_pm_or_admin(current_user: User, db: Session = None):
+    if current_user.role == "admin":
+        return
+    if db is not None and not has_permission(current_user, "request_create", db):
+        raise HTTPException(status_code=403, detail="Talep oluşturma yetkiniz bulunmuyor.")
+    elif db is None and current_user.role not in ("mudur", "yonetici", "asistan", "project_manager"):
         raise HTTPException(status_code=403, detail="Bu sayfa Proje Yöneticilerine özeldir.")
 
 
@@ -195,7 +199,7 @@ async def requests_new(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _check_pm_or_admin(current_user)
+    _check_pm_or_admin(current_user, db)
     customers   = db.query(Customer).order_by(Customer.name).all()
     venues      = db.query(Venue).filter(Venue.active == True).order_by(Venue.name).all()
     event_types = db.query(EventType).filter(EventType.active == True).order_by(EventType.sort_order).all()
@@ -255,7 +259,7 @@ async def requests_create(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _check_pm_or_admin(current_user)
+    _check_pm_or_admin(current_user, db)
 
     # Müşteri kodu
     customer_code = "xxx"

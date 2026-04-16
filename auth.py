@@ -16,7 +16,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User
+from models import User, RolePermission
 
 # ---------------------------------------------------------------------------
 # Yapılandırma
@@ -258,3 +258,34 @@ def can_approve_closure_l1(user: User) -> bool:
 def can_approve_closure_final(user: User) -> bool:
     """Kapama final onayı: admin, muhasebe_muduru."""
     return user.role in ("admin", "muhasebe_muduru")
+
+
+# ---------------------------------------------------------------------------
+# DB tabanlı izin kontrolü
+# ---------------------------------------------------------------------------
+
+def has_permission(user: User, permission_key: str, db: Session) -> bool:
+    """Kullanıcının belirli bir izne sahip olup olmadığını DB'den kontrol eder.
+    Admin her zaman izinlidir."""
+    if user.role == "admin":
+        return True
+    rp = db.query(RolePermission).filter(
+        RolePermission.role == user.role,
+        RolePermission.permission == permission_key,
+    ).first()
+    return bool(rp and rp.allowed)
+
+
+def require_permission(permission_key: str):
+    """FastAPI Dependency factory — belirli izni olmayan kullanıcıyı engeller."""
+    def _check(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        if not has_permission(current_user, permission_key, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bu işlem için yetkiniz bulunmuyor.",
+            )
+        return current_user
+    return _check

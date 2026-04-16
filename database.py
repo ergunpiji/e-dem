@@ -545,6 +545,48 @@ def migrate_db():
         _safe_add_column(conn, "requests",  "contact_person_json", "TEXT", "'{}'")
         _safe_add_column(conn, "users",     "org_title_id",        "TEXT")
         _safe_add_column(conn, "services",  "sort_order",          "INTEGER", "0")
+
+        # role_permissions tablosu — yoksa oluştur
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS role_permissions (
+                    id         TEXT PRIMARY KEY,
+                    role       TEXT NOT NULL,
+                    permission TEXT NOT NULL,
+                    allowed    INTEGER NOT NULL DEFAULT 1,
+                    UNIQUE(role, permission)
+                )
+            """))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS role_permissions (
+                    id         VARCHAR(36) PRIMARY KEY,
+                    role       VARCHAR(32) NOT NULL,
+                    permission VARCHAR(64) NOT NULL,
+                    allowed    BOOLEAN NOT NULL DEFAULT TRUE,
+                    UNIQUE(role, permission)
+                )
+            """))
+        conn.commit()
+
+        # Varsayılan izinleri seed et (yoksa ekle)
+        from models import DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, _uuid as _u
+        all_keys = {p["key"] for p in PERMISSIONS}
+        for role, perms in DEFAULT_ROLE_PERMISSIONS.items():
+            for pkey in all_keys:
+                allowed = pkey in perms
+                try:
+                    if _is_sqlite:
+                        conn.execute(text(
+                            "INSERT OR IGNORE INTO role_permissions (id, role, permission, allowed) VALUES (:id, :role, :perm, :allowed)"
+                        ), {"id": _u(), "role": role, "perm": pkey, "allowed": 1 if allowed else 0})
+                    else:
+                        conn.execute(text(
+                            "INSERT INTO role_permissions (id, role, permission, allowed) VALUES (:id, :role, :perm, :allowed) ON CONFLICT (role, permission) DO NOTHING"
+                        ), {"id": _u(), "role": role, "perm": pkey, "allowed": allowed})
+                except Exception:
+                    pass
+        conn.commit()
         _safe_add_column(conn, "users",     "avatar_b64",          "TEXT", "''")
         _safe_add_column(conn, "invoices",  "lines_json",          "TEXT", "'[]'")
         _safe_add_column(conn, "invoices",  "approved_by",         "TEXT")

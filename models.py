@@ -1487,3 +1487,42 @@ class RequestModule(Base):
 
     request   = relationship("Request")
     activator = relationship("User", foreign_keys=[activated_by])
+
+
+# ---------------------------------------------------------------------------
+# Rol İzin Sistemi
+# ---------------------------------------------------------------------------
+
+PERMISSIONS = [
+    {"key": "request_create",  "label": "Talep Oluştur",          "group": "Talepler"},
+    {"key": "budget_view",     "label": "Bütçe Görüntüle",        "group": "Bütçeler"},
+    {"key": "budget_edit",     "label": "Bütçe Düzenle / Oluştur","group": "Bütçeler"},
+    {"key": "invoice_manage",  "label": "Fatura Yönet",           "group": "Finans"},
+    {"key": "report_view",     "label": "Rapor Görüntüle",        "group": "Finans"},
+    {"key": "venue_edit",      "label": "Tedarikçi Ekle / Düzenle","group": "Katalog"},
+]
+
+# Varsayılan rol izinleri (seed için)
+DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
+    "admin":           ["request_create", "budget_view", "budget_edit", "invoice_manage", "report_view", "venue_edit"],
+    "mudur":           ["request_create", "budget_view", "report_view"],
+    "yonetici":        ["request_create", "budget_view"],
+    "asistan":         ["request_create", "budget_view"],
+    "e_dem":           ["budget_edit", "invoice_manage", "venue_edit"],
+    "muhasebe_muduru": ["invoice_manage", "report_view"],
+    "muhasebe":        ["invoice_manage", "report_view"],
+}
+
+
+class RolePermission(Base):
+    """Rol bazlı izin tablosu — admin panelinden toggle edilir."""
+    __tablename__ = "role_permissions"
+
+    id         = Column(String(36), primary_key=True, default=_uuid)
+    role       = Column(String(32), nullable=False, index=True)
+    permission = Column(String(64), nullable=False)
+    allowed    = Column(Boolean, default=True, nullable=False)
+
+    __table_args__ = (
+        __import__("sqlalchemy").UniqueConstraint("role", "permission", name="uq_role_permission"),
+    )
