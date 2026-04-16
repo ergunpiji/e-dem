@@ -713,7 +713,7 @@ async def invoices_reassign(
 # GET /invoices/unlinked  — Referans bekleyen faturalar (herkese görünür)
 # ---------------------------------------------------------------------------
 
-_PM_ROLES = {"yonetici", "asistan"}  # sadece kendi referanslarını görür
+_PM_ROLES = {"mudur", "yonetici", "asistan"}  # sadece kendi referanslarını görür
 
 @router.get("/unlinked", response_class=HTMLResponse, name="invoices_unlinked")
 async def invoices_unlinked(
