@@ -100,37 +100,143 @@
 </div>
 {% endif %}
 
-{# ══════════════════ HIZLI ERİŞİM ══════════════════ #}
+{# ══════════════════ HIZLI ERİŞİM — role özel kısa yollar ══════════════════ #}
+{% set nc = request.state.nav_counts %}
 <div class="mb-4 d-flex flex-wrap gap-2">
-  {% if current_user.role in ('yonetici', 'asistan') %}
+
+  {# ── ADMIN / GM ── #}
+  {% if current_user.role == 'admin' or current_user.is_gm %}
+  <a href="/requests" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list-ul me-1"></i> Tüm Referanslar
+  </a>
+  <a href="/requests?view=awaiting" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-hourglass-split me-1"></i> Referans Onaylama
+    {% if nc.budgets_pending_all %}<span class="badge bg-warning text-dark ms-1">{{ nc.budgets_pending_all }}</span>{% endif %}
+  </a>
+  <a href="/requests?view=closing" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-folder-check me-1"></i> Kapama Onayında
+    {% set _cl = (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) + (nc.closure_pending_finance or 0) %}
+    {% if _cl > 0 %}<span class="badge bg-primary ms-1">{{ _cl }}</span>{% endif %}
+  </a>
+  <a href="/invoices?status_filter=pending" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-receipt me-1"></i> Onay Bekleyen Faturalar
+    {% if nc.inv_pending_gm %}<span class="badge bg-warning text-dark ms-1">{{ nc.inv_pending_gm }}</span>{% endif %}
+  </a>
+  <a href="/requests/fund-pools/new" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-piggy-bank me-1"></i> Yeni Fon Havuzu
+  </a>
+  <a href="/users/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-person-plus me-1"></i> Yeni Kullanıcı
+  </a>
+
+  {# ── BİRİM MÜDÜRÜ (mudur, GM değil) ── #}
+  {% elif current_user.role == 'mudur' %}
+  <a href="/requests/new" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i> Yeni Talep
+  </a>
+  <a href="/requests" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list-ul me-1"></i> Tüm Referanslar
+  </a>
+  <a href="/requests?view=closing" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-folder-check me-1"></i> Kapama Onayında
+    {% set _mcl = (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) %}
+    {% if _mcl > 0 %}<span class="badge bg-primary ms-1">{{ _mcl }}</span>{% endif %}
+  </a>
+  <a href="/invoices" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-receipt me-1"></i> Faturalar
+    {% if nc.inv_pending_gm %}<span class="badge bg-warning text-dark ms-1">{{ nc.inv_pending_gm }}</span>{% endif %}
+  </a>
+  <a href="/expenses/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-clipboard-plus me-1"></i> HBF Oluştur
+  </a>
+
+  {# ── YÖNETİCİ (PM) ── #}
+  {% elif current_user.role == 'yonetici' %}
   <a href="/requests/new" class="btn btn-primary btn-sm">
     <i class="bi bi-plus-circle me-1"></i> Yeni Talep
   </a>
   <a href="/requests" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-list-ul me-1"></i> Referanslarım
   </a>
-  <a href="/requests?view=ongoing" class="btn btn-outline-success btn-sm">
-    <i class="bi bi-activity me-1"></i> Devam Eden İşler
+  <a href="/requests?view=awaiting" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-clock-history me-1"></i> Karar Bekleyenler
+    {% if nc.budgets_pending %}<span class="badge bg-warning text-dark ms-1">{{ nc.budgets_pending }}</span>{% endif %}
   </a>
+  <a href="/requests?view=ongoing" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-activity me-1"></i> Aktif Referanslar
+  </a>
+  <a href="/expenses/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-clipboard-plus me-1"></i> HBF Oluştur
+  </a>
+  <a href="/prepayment-requests/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-up-circle me-1"></i> Ön Ödeme Talebi
+  </a>
+
+  {# ── ASİSTAN ── #}
+  {% elif current_user.role == 'asistan' %}
+  <a href="/requests/new" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i> Yeni Talep
+  </a>
+  <a href="/requests" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list-ul me-1"></i> Referanslarım
+  </a>
+  <a href="/expenses/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-clipboard-plus me-1"></i> HBF Oluştur
+  </a>
+  <a href="/prepayment-requests/new" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-up-circle me-1"></i> Ön Ödeme Talebi
+  </a>
+
+  {# ── E-DEM ── #}
   {% elif current_user.role == 'e_dem' %}
-  <a href="/requests" class="btn btn-primary btn-sm">
-    <i class="bi bi-inbox me-1"></i> Gelen Referanslar
+  <a href="/requests?view=pending_work" class="btn btn-primary btn-sm">
+    <i class="bi bi-inbox me-1"></i> Yeni & İşlemdekiler
+    {% if nc.requests_pending %}<span class="badge bg-light text-primary ms-1">{{ nc.requests_pending }}</span>{% endif %}
   </a>
   <a href="/budgets/new" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-plus-circle me-1"></i> Yeni Bütçe
   </a>
   <a href="/requests?view=ongoing" class="btn btn-outline-success btn-sm">
-    <i class="bi bi-activity me-1"></i> Devam Eden İşler
+    <i class="bi bi-activity me-1"></i> Aktif Referanslar
   </a>
-  {% elif current_user.role == 'admin' %}
-  <a href="/requests" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-list-ul me-1"></i> Tüm Referanslar
+  <a href="/budgets" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-calculator me-1"></i> Bütçe Yönetimi
   </a>
-  <a href="/users/new" class="btn btn-outline-primary btn-sm">
-    <i class="bi bi-person-plus me-1"></i> Yeni Kullanıcı
+
+  {# ── MUHASEBE MÜDÜRÜ ── #}
+  {% elif current_user.role == 'muhasebe_muduru' %}
+  <a href="/invoices?status_filter=pending" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-receipt me-1"></i> Onay Bekleyen Faturalar
+    {% if nc.inv_pending_gm %}<span class="badge bg-warning text-dark ms-1">{{ nc.inv_pending_gm }}</span>{% endif %}
   </a>
-  <a href="/venues/new" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-building-add me-1"></i> Yeni Tedarikçi
+  <a href="/closure" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-folder-check me-1"></i> Kapama Onayları
+    {% if nc.closure_pending_finance %}<span class="badge bg-primary ms-1">{{ nc.closure_pending_finance }}</span>{% endif %}
+  </a>
+  <a href="/vendors/cash-flow/view" class="btn btn-outline-info btn-sm">
+    <i class="bi bi-graph-up-arrow me-1"></i> Nakit Akışı
+  </a>
+  <a href="/reports/financial" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-graph-up me-1"></i> Finansal Rapor
+  </a>
+  <a href="/requests/fund-pools/new" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-piggy-bank me-1"></i> Yeni Fon Havuzu
+  </a>
+
+  {# ── MUHASEBE ── #}
+  {% elif current_user.role == 'muhasebe' %}
+  <a href="/invoices/new" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i> Fatura Kes
+  </a>
+  <a href="/invoices?status_filter=gm_approved" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-scissors me-1"></i> Kesilecek Faturalar
+    {% if nc.inv_pending_cut %}<span class="badge bg-warning text-dark ms-1">{{ nc.inv_pending_cut }}</span>{% endif %}
+  </a>
+  <a href="/vendors" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-building-check me-1"></i> Tedarikçiler
+  </a>
+  <a href="/vendors/cash-flow/view" class="btn btn-outline-info btn-sm">
+    <i class="bi bi-graph-up-arrow me-1"></i> Nakit Akışı
   </a>
   {% endif %}
 </div>
