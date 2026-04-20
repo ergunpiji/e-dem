@@ -551,7 +551,8 @@ async def cash_flow(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _require_view(current_user)
+    # Nakit Akışı sadece finans tarafına: admin / GM / muhasebe / muhasebe_muduru
+    _require_finance(current_user)
 
     today = date.today()
     end_date = today + timedelta(weeks=weeks)
