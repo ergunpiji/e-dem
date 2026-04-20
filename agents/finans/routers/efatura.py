@@ -54,9 +54,9 @@ async def efatura_list(
     invoices = query.all()
 
     return templates.TemplateResponse(
+        request,
         "efatura/list.html",
         {
-            "request": request,
             "active": "efatura",
             "invoices": invoices,
             "type_filter": type_filter,
@@ -77,9 +77,9 @@ async def efatura_list(
 async def efatura_new(request: Request, invoice_type: str = "satis", db: Session = Depends(get_db)):
     suggested_no = _next_invoice_no(db, invoice_type)
     return templates.TemplateResponse(
+        request,
         "efatura/form.html",
         {
-            "request": request,
             "active": "efatura",
             "invoice": None,
             "suggested_no": suggested_no,
@@ -177,9 +177,9 @@ async def efatura_detail(invoice_id: str, request: Request, db: Session = Depend
     if not invoice:
         raise HTTPException(status_code=404, detail="Fatura bulunamadı.")
     return templates.TemplateResponse(
+        request,
         "efatura/detail.html",
         {
-            "request": request,
             "active": "efatura",
             "invoice": invoice,
             "type_labels": EFATURA_TYPE_LABELS,

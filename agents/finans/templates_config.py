@@ -1,11 +1,20 @@
 """
 Finans Ajanı — Jinja2 şablon yapılandırması.
 Tüm router'lar buradan import eder.
+
+Not: cache_size=0 — Python 3.14 ile Jinja2'nin weakref tabanlı
+     LRU cache'i uyumsuz olduğu için devre dışı bırakıldı.
 """
 from datetime import date, datetime
+import jinja2
 from fastapi.templating import Jinja2Templates
 
-templates = Jinja2Templates(directory="templates")
+_env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader("templates"),
+    autoescape=True,
+    cache_size=0,
+)
+templates = Jinja2Templates(env=_env)
 
 
 def _fmt_currency(value) -> str:

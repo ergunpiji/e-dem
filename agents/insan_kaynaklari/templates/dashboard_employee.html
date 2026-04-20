@@ -48,6 +48,40 @@
   {% endif %}
 </div>
 
+<!-- Avans talepleri -->
+{% if my_advances %}
+<div class="card" style="margin-bottom:20px">
+  <div class="card-header">
+    <span class="card-title">💸 Avans Taleplerim</span>
+    <a href="/advances/new?advance_type=maas" class="btn btn-sm btn-primary">+ Yeni Avans</a>
+  </div>
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Tür</th><th class="text-right">Tutar</th><th>Talep Tarihi</th><th>Durum</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for adv in my_advances %}
+          <tr>
+            <td><span class="badge badge-{% if adv.advance_type == 'maas' %}primary{% else %}info{% endif %}">{{ adv.advance_type_label }}</span></td>
+            <td class="text-right font-mono">{{ adv.amount | currency }}</td>
+            <td class="nowrap">{{ adv.request_date | fmtdate }}</td>
+            <td>
+              <span class="badge badge-{% if adv.status == 'kapandi' %}success{% elif adv.status == 'odendi' %}info{% elif adv.status == 'onaylandi' %}primary{% elif adv.status == 'reddedildi' %}danger{% elif adv.status == 'iptal' %}neutral{% else %}warning{% endif %}">
+                {{ adv.status_label }}
+              </span>
+            </td>
+            <td><a href="/advances/{{ adv.id }}" class="btn btn-xs btn-outline">Detay</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Son izin talepleri -->
 <div class="card">
   <div class="card-header">

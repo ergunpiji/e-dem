@@ -22,9 +22,9 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 async def suppliers_list(request: Request, db: Session = Depends(get_db)):
     suppliers = db.query(SupplierAccount).order_by(SupplierAccount.name).all()
     return templates.TemplateResponse(
+        request,
         "suppliers/list.html",
         {
-            "request": request,
             "active": "suppliers",
             "suppliers": suppliers,
         },
@@ -37,9 +37,9 @@ async def suppliers_list(request: Request, db: Session = Depends(get_db)):
 @router.get("/new", response_class=HTMLResponse, name="supplier_new")
 async def supplier_new(request: Request):
     return templates.TemplateResponse(
+        request,
         "suppliers/form.html",
         {
-            "request": request,
             "active": "suppliers",
             "supplier": None,
             "statuses": SUPPLIER_STATUSES,
@@ -102,9 +102,9 @@ async def supplier_detail(supplier_id: str, request: Request, db: Session = Depe
     )
 
     return templates.TemplateResponse(
+        request,
         "suppliers/detail.html",
         {
-            "request": request,
             "active": "suppliers",
             "supplier": supplier,
             "payments": payments,
@@ -124,9 +124,9 @@ async def supplier_edit(supplier_id: str, request: Request, db: Session = Depend
     if not supplier:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(
+        request,
         "suppliers/form.html",
         {
-            "request": request,
             "active": "suppliers",
             "supplier": supplier,
             "statuses": SUPPLIER_STATUSES,

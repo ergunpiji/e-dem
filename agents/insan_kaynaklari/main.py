@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from database import SessionLocal, init_db
 import templates_config  # noqa: F401 — filtreler burada kayıtlı
 
-from routers import auth, employees, assets, leaves, notifications, payroll, benefits, dashboard
+from routers import auth, employees, assets, leaves, notifications, payroll, benefits, dashboard, advances
 
 
 @asynccontextmanager
@@ -54,6 +54,7 @@ app.include_router(leaves.router)
 app.include_router(notifications.router)
 app.include_router(payroll.router)
 app.include_router(benefits.router)
+app.include_router(advances.router)
 
 
 @app.get("/")

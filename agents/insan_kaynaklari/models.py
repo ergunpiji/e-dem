@@ -14,6 +14,7 @@ Modüller:
   FlexibleBenefit   — Esnek yan hak havuzu
   BenefitSpending   — Esnek yan hak harcaması
   Notification      — In-app bildirim
+  AdvanceRequest    — Maaş / İş avansı talebi
 """
 
 import uuid
@@ -130,7 +131,26 @@ NOTIFICATION_TYPES = [
     {"value": "overtime_onay",  "label": "Overtime Kararı"},
     {"value": "zimmet",         "label": "Zimmet Bildirimi"},
     {"value": "bordro",         "label": "Bordro Hazır"},
+    {"value": "avans_talebi",   "label": "Yeni Avans Talebi"},
+    {"value": "avans_onay",     "label": "Avans Kararı"},
+    {"value": "avans_odendi",   "label": "Avans Ödendi"},
 ]
+
+ADVANCE_TYPES = [
+    {"value": "maas", "label": "Maaş Avansı"},
+    {"value": "is",   "label": "İş Avansı"},
+]
+
+ADVANCE_STATUSES = [
+    {"value": "beklemede", "label": "Beklemede"},
+    {"value": "onaylandi", "label": "Onaylandı"},
+    {"value": "reddedildi","label": "Reddedildi"},
+    {"value": "odendi",    "label": "Ödendi"},
+    {"value": "kapandi",   "label": "Kapatıldı"},
+    {"value": "iptal",     "label": "İptal"},
+]
+
+SALARY_ADVANCE_LIMIT_RATE = 0.30   # Brüt maaşın %30'u
 
 # Label lookup'ları
 ROLE_LABELS          = {r["value"]: r["label"] for r in ROLES}
@@ -141,8 +161,10 @@ ASSET_TYPE_LABELS    = {a["value"]: a["label"] for a in ASSET_TYPES}
 ASSET_COND_LABELS    = {c["value"]: c["label"] for c in ASSET_CONDITIONS}
 LEAVE_TYPE_LABELS    = {l["value"]: l["label"] for l in LEAVE_TYPES}
 LEAVE_STATUS_LABELS  = {s["value"]: s["label"] for s in LEAVE_STATUSES}
-PAYROLL_STATUS_LABELS= {s["value"]: s["label"] for s in PAYROLL_STATUSES}
-BENEFIT_CAT_LABELS   = {c["value"]: c["label"] for c in BENEFIT_CATEGORIES}
+PAYROLL_STATUS_LABELS  = {s["value"]: s["label"] for s in PAYROLL_STATUSES}
+BENEFIT_CAT_LABELS     = {c["value"]: c["label"] for c in BENEFIT_CATEGORIES}
+ADVANCE_TYPE_LABELS    = {t["value"]: t["label"] for t in ADVANCE_TYPES}
+ADVANCE_STATUS_LABELS  = {s["value"]: s["label"] for s in ADVANCE_STATUSES}
 
 
 # ===========================================================================
@@ -213,6 +235,7 @@ class Employee(Base):
     payroll_records: Mapped[list["PayrollRecord"]]   = relationship(back_populates="employee", cascade="all, delete-orphan")
     meal_cards: Mapped[list["MealCard"]]             = relationship(back_populates="employee", cascade="all, delete-orphan")
     flexible_benefits: Mapped[list["FlexibleBenefit"]] = relationship(back_populates="employee", cascade="all, delete-orphan")
+    advance_requests: Mapped[list["AdvanceRequest"]]   = relationship(back_populates="employee", cascade="all, delete-orphan")
 
     @property
     def full_name(self) -> str:
@@ -379,16 +402,28 @@ class PayrollRecord(Base):
     employee_id: Mapped[str]               = mapped_column(ForeignKey("employees.id"), nullable=False)
     period_year: Mapped[int]               = mapped_column(Integer, nullable=False)
     period_month: Mapped[int]              = mapped_column(Integer, nullable=False)
-    gross_salary: Mapped[float]            = mapped_column(Float, default=0.0)
-    sgk_employee: Mapped[float]            = mapped_column(Float, default=0.0)   # %14
-    sgk_employer: Mapped[float]            = mapped_column(Float, default=0.0)   # %20.5
+    gross_salary: Mapped[float]            = mapped_column(Float, default=0.0)   # Baz Ücret (Brüt)
+    # Ek ödemeler
+    overtime_pay: Mapped[float]            = mapped_column(Float, default=0.0)
+    meal_allowance: Mapped[float]          = mapped_column(Float, default=0.0)   # Nakit yemek (SGK dahil)
+    meal_allowance_ayni: Mapped[float]     = mapped_column(Float, default=0.0)   # Ayni yemek (SGK hariç)
+    other_additions: Mapped[float]         = mapped_column(Float, default=0.0)   # Diğer ekler (dil, vs.)
+    other_deductions: Mapped[float]        = mapped_column(Float, default=0.0)   # Özel kesintiler
+    # Hesaplanan ara değerler
+    total_gross: Mapped[float]             = mapped_column(Float, default=0.0)   # Tüm Gelirler Toplamı
+    sgk_monthly_base: Mapped[float]        = mapped_column(Float, default=0.0)   # SGK Aylık Matrahı
+    gv_monthly_base: Mapped[float]         = mapped_column(Float, default=0.0)   # GV Aylık Matrahı
+    cumulative_gv_base: Mapped[float]      = mapped_column(Float, default=0.0)   # Kümülatif GV Matrahı (bu ay dahil)
+    asgari_ucret_istisnasi_gv: Mapped[float] = mapped_column(Float, default=0.0)
+    asgari_ucret_istisnasi_dv: Mapped[float] = mapped_column(Float, default=0.0)
+    # Kesintiler
+    sgk_employee: Mapped[float]            = mapped_column(Float, default=0.0)   # Çalışan SGK %7.5
+    sgk_employer: Mapped[float]            = mapped_column(Float, default=0.0)   # İşveren SGK %24.75
     income_tax: Mapped[float]              = mapped_column(Float, default=0.0)
     stamp_tax: Mapped[float]               = mapped_column(Float, default=0.0)
-    overtime_pay: Mapped[float]            = mapped_column(Float, default=0.0)
-    meal_allowance: Mapped[float]          = mapped_column(Float, default=0.0)
-    other_additions: Mapped[float]         = mapped_column(Float, default=0.0)
-    other_deductions: Mapped[float]        = mapped_column(Float, default=0.0)
-    net_salary: Mapped[float]              = mapped_column(Float, default=0.0)
+    # Sonuçlar
+    ele_gecen_ucret: Mapped[float]         = mapped_column(Float, default=0.0)   # Ele Geçen Ücret
+    net_salary: Mapped[float]              = mapped_column(Float, default=0.0)   # Aylık Maaş (Net)
     payment_date: Mapped[Optional[date]]   = mapped_column(Date)
     status: Mapped[str]                    = mapped_column(String, default="taslak")
     notes: Mapped[Optional[str]]           = mapped_column(Text)
@@ -408,12 +443,16 @@ class PayrollRecord(Base):
         return f"{months[self.period_month]} {self.period_year}"
 
     @property
+    def tesvikli_maliyet(self) -> float:
+        return round(self.total_gross + self.sgk_employer, 2)
+
+    @property
     def total_deductions(self) -> float:
         return self.sgk_employee + self.income_tax + self.stamp_tax + self.other_deductions
 
     @property
     def total_additions(self) -> float:
-        return self.gross_salary + self.overtime_pay + self.meal_allowance + self.other_additions
+        return self.gross_salary + self.overtime_pay + self.meal_allowance + self.meal_allowance_ayni + self.other_additions
 
 
 # ===========================================================================
@@ -510,3 +549,73 @@ class Notification(Base):
     ref_id: Mapped[Optional[str]]   = mapped_column(String)
     is_read: Mapped[bool]       = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+# ===========================================================================
+# 13. Avans Talebi (Maaş Avansı / İş Avansı)
+# ===========================================================================
+class AdvanceRequest(Base):
+    __tablename__ = "advance_requests"
+
+    id: Mapped[str]                        = mapped_column(String, primary_key=True, default=_uuid)
+    employee_id: Mapped[str]               = mapped_column(ForeignKey("employees.id"), nullable=False)
+    advance_type: Mapped[str]              = mapped_column(String, nullable=False)   # 'maas' | 'is'
+    amount: Mapped[float]                  = mapped_column(Float, nullable=False)
+    reason: Mapped[Optional[str]]          = mapped_column(Text)
+    request_date: Mapped[date]             = mapped_column(Date, nullable=False)
+    needed_by: Mapped[Optional[date]]      = mapped_column(Date)                     # ne zaman gerekiyor
+
+    # Onay
+    status: Mapped[str]                    = mapped_column(String, default="beklemede")
+    reviewed_by: Mapped[Optional[str]]     = mapped_column(ForeignKey("hr_users.id"))
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    reviewer_note: Mapped[Optional[str]]   = mapped_column(Text)
+
+    # Ödeme
+    payment_date: Mapped[Optional[date]]   = mapped_column(Date)
+    paid_by: Mapped[Optional[str]]         = mapped_column(ForeignKey("hr_users.id"))
+
+    # Maaş avansı — geri ödeme planı (bordrodan kesinti)
+    repayment_months: Mapped[Optional[int]]      = mapped_column(Integer)   # kaç ayda
+    repayment_start_year: Mapped[Optional[int]]  = mapped_column(Integer)
+    repayment_start_month: Mapped[Optional[int]] = mapped_column(Integer)
+    repaid_amount: Mapped[float]                 = mapped_column(Float, default=0.0)
+
+    # İş avansı — kapatma (harcama belgesiyle)
+    closed_at: Mapped[Optional[datetime]]  = mapped_column(DateTime)
+    closing_notes: Mapped[Optional[str]]   = mapped_column(Text)
+    remaining_amount: Mapped[float]        = mapped_column(Float, default=0.0)  # iade/fark
+
+    created_at: Mapped[datetime]           = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime]           = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    employee: Mapped["Employee"] = relationship(back_populates="advance_requests")
+
+    @property
+    def advance_type_label(self) -> str:
+        return ADVANCE_TYPE_LABELS.get(self.advance_type, self.advance_type)
+
+    @property
+    def status_label(self) -> str:
+        return ADVANCE_STATUS_LABELS.get(self.status, self.status)
+
+    @property
+    def repayment_monthly(self) -> float:
+        """Aylık bordro kesinti tutarı."""
+        if self.advance_type != "maas" or not self.repayment_months:
+            return 0.0
+        return round(self.amount / self.repayment_months, 2)
+
+    @property
+    def remaining_repayment(self) -> float:
+        """Henüz geri ödenmemiş maaş avansı tutarı."""
+        return max(0.0, self.amount - self.repaid_amount)
+
+    @property
+    def repayment_label(self) -> str:
+        months = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+        if not self.repayment_start_year:
+            return "—"
+        m = months[self.repayment_start_month] if self.repayment_start_month else "?"
+        return f"{m} {self.repayment_start_year} ({self.repayment_months} ay)"

@@ -37,6 +37,11 @@
     <div class="stat-value {% if draft_payrolls > 0 %}warning{% endif %}">{{ draft_payrolls }}</div>
     <div class="stat-sub">Onaylanmayı bekliyor</div>
   </div>
+  <div class="stat-card">
+    <div class="stat-label">Bekleyen Avans</div>
+    <div class="stat-value {% if pending_advances > 0 %}warning{% endif %}">{{ pending_advances }}</div>
+    <div class="stat-sub">Onay bekliyor</div>
+  </div>
 </div>
 
 <div class="grid-2">
@@ -118,5 +123,35 @@
   </div>
 
 </div>
+
+<!-- Bekleyen avans talepleri -->
+{% if recent_advances %}
+<div class="card mt-4">
+  <div class="card-header">
+    <span class="card-title">💸 Bekleyen Avans Talepleri</span>
+    <a href="/advances?status=beklemede" class="btn btn-sm btn-outline">Tümü</a>
+  </div>
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Çalışan</th><th>Tür</th><th class="text-right">Tutar</th><th>Talep Tarihi</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for adv in recent_advances %}
+          <tr>
+            <td>{{ adv.employee.full_name if adv.employee else '—' }}</td>
+            <td><span class="badge badge-{% if adv.advance_type == 'maas' %}primary{% else %}info{% endif %}">{{ adv.advance_type_label }}</span></td>
+            <td class="text-right font-mono">{{ adv.amount | currency }}</td>
+            <td class="nowrap">{{ adv.request_date | fmtdate }}</td>
+            <td><a href="/advances/{{ adv.id }}" class="btn btn-xs btn-outline">İncele</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% endblock %}

@@ -45,9 +45,9 @@ async def credit_cards_list(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     return templates.TemplateResponse(
+        request,
         "credit_cards/list.html",
         {
-            "request": request,
             "active": "credit_cards",
             "cards": cards,
             "overdue_statements": overdue_statements,
@@ -62,8 +62,9 @@ async def credit_cards_list(request: Request, db: Session = Depends(get_db)):
 @router.get("/new", response_class=HTMLResponse, name="credit_card_new")
 async def credit_card_new(request: Request):
     return templates.TemplateResponse(
+        request,
         "credit_cards/form.html",
-        {"request": request, "active": "credit_cards", "card": None},
+        {"active": "credit_cards", "card": None},
     )
 
 
@@ -126,9 +127,9 @@ async def credit_card_detail(card_id: str, request: Request, db: Session = Depen
     open_total = sum(t.amount for t in open_txns if not t.is_refund)
 
     return templates.TemplateResponse(
+        request,
         "credit_cards/detail.html",
         {
-            "request": request,
             "active": "credit_cards",
             "card": card,
             "open_txns": open_txns,
@@ -151,8 +152,9 @@ async def credit_card_edit(card_id: str, request: Request, db: Session = Depends
     if not card:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(
+        request,
         "credit_cards/form.html",
-        {"request": request, "active": "credit_cards", "card": card},
+        {"active": "credit_cards", "card": card},
     )
 
 

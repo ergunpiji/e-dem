@@ -150,9 +150,9 @@ async def reports(
     ]
 
     return templates.TemplateResponse(
+        request,
         "reports/index.html",
         {
-            "request": request,
             "active": "reports",
             "year": year,
             "month": month,

@@ -22,9 +22,9 @@ router = APIRouter(prefix="/projects", tags=["budget_actual"])
 async def projects_list(request: Request, db: Session = Depends(get_db)):
     projects = db.query(Project).order_by(Project.created_at.desc()).all()
     return templates.TemplateResponse(
+        request,
         "budget_actual/list.html",
         {
-            "request": request,
             "active": "budget_actual",
             "projects": projects,
             "statuses": PROJECT_STATUSES,
@@ -38,9 +38,9 @@ async def projects_list(request: Request, db: Session = Depends(get_db)):
 @router.get("/new", response_class=HTMLResponse, name="project_new")
 async def project_new(request: Request):
     return templates.TemplateResponse(
+        request,
         "budget_actual/form.html",
         {
-            "request": request,
             "active": "budget_actual",
             "project": None,
             "statuses": PROJECT_STATUSES,
@@ -100,9 +100,9 @@ async def project_detail(project_id: str, request: Request, db: Session = Depend
     uncategorized = [bl for bl in project.budget_lines if bl.category not in BUDGET_CATEGORY_LABELS]
 
     return templates.TemplateResponse(
+        request,
         "budget_actual/detail.html",
         {
-            "request": request,
             "active": "budget_actual",
             "project": project,
             "grouped": grouped,
@@ -122,9 +122,9 @@ async def project_edit(project_id: str, request: Request, db: Session = Depends(
     if not project:
         raise HTTPException(status_code=404, detail="Proje bulunamadı.")
     return templates.TemplateResponse(
+        request,
         "budget_actual/form.html",
         {
-            "request": request,
             "active": "budget_actual",
             "project": project,
             "statuses": PROJECT_STATUSES,

@@ -74,9 +74,9 @@ async def cashbook_list(
     current_balance = last_report.closing_balance if last_report else 0.0
 
     return templates.TemplateResponse(
+        request,
         "cashbook/list.html",
         {
-            "request": request,
             "active": "cashbook",
             "entries": entries,
             "date_from": date_from,
@@ -168,9 +168,9 @@ async def day_reports_list(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     return templates.TemplateResponse(
+        request,
         "cashbook/day_reports.html",
         {
-            "request": request,
             "active": "cashbook",
             "reports": reports,
             "today": date.today(),
@@ -196,9 +196,9 @@ async def day_report_detail(report_date: str, request: Request, db: Session = De
     )
 
     return templates.TemplateResponse(
+        request,
         "cashbook/day_report.html",
         {
-            "request": request,
             "active": "cashbook",
             "report": report,
             "entries": entries,

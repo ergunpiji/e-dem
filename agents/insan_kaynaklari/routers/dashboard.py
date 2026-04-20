@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db
 from models import (
-    Employee, HRUser, LeaveRequest, Notification, OvertimeRecord, PayrollRecord,
+    AdvanceRequest, Employee, HRUser, LeaveRequest, Notification, OvertimeRecord, PayrollRecord,
 )
 from templates_config import templates
 
@@ -45,6 +45,11 @@ async def dashboard(
             .filter(OvertimeRecord.status == "beklemede")
             .scalar() or 0
         )
+        pending_advances = (
+            db.query(func.count(AdvanceRequest.id))
+            .filter(AdvanceRequest.status == "beklemede")
+            .scalar() or 0
+        )
 
         current_month = today.month
         current_year = today.year
@@ -56,6 +61,15 @@ async def dashboard(
                 PayrollRecord.status == "taslak",
             )
             .scalar() or 0
+        )
+
+        # Son bekleyen avans talepleri
+        recent_advances = (
+            db.query(AdvanceRequest)
+            .filter(AdvanceRequest.status == "beklemede")
+            .order_by(AdvanceRequest.request_date.desc())
+            .limit(5)
+            .all()
         )
 
         # Son bekleyen izin talepleri
@@ -87,15 +101,17 @@ async def dashboard(
                 "total_employees": total_employees,
                 "pending_leaves": pending_leaves,
                 "pending_overtime": pending_overtime,
+                "pending_advances": pending_advances,
                 "draft_payrolls": draft_payrolls,
                 "recent_leave_requests": recent_leave_requests,
                 "recent_overtime": recent_overtime,
+                "recent_advances": recent_advances,
             },
         )
     else:
         # Çalışan dashboard'u
         emp = current_user.employee
-        from models import LeaveBalance, MealCard, FlexibleBenefit
+        from models import LeaveBalance, MealCard, FlexibleBenefit, AdvanceRequest as AR
 
         leave_balance = None
         if emp:
@@ -127,6 +143,14 @@ async def dashboard(
             .first()
         ) if emp else None
 
+        my_advances = (
+            db.query(AR)
+            .filter(AR.employee_id == emp.id)
+            .order_by(AR.request_date.desc())
+            .limit(5)
+            .all()
+        ) if emp else []
+
         return templates.TemplateResponse(
             "dashboard_employee.html",
             {
@@ -140,5 +164,6 @@ async def dashboard(
                 "my_leave_requests": my_leave_requests,
                 "last_payroll": last_payroll,
                 "flex_benefit": flex_benefit,
+                "my_advances": my_advances,
             },
         )

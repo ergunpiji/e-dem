@@ -59,9 +59,9 @@ async def payments_list(
     suppliers = db.query(SupplierAccount).filter(SupplierAccount.status == "aktif").order_by(SupplierAccount.name).all()
 
     return templates.TemplateResponse(
+        request,
         "payments/list.html",
         {
-            "request": request,
             "active": "payments",
             "plans": plans,
             "status_filter": status,

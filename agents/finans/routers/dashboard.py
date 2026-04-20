@@ -91,9 +91,9 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     )
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "active": "dashboard",
             "today": today,
             "active_projects": active_projects,
