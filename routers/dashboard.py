@@ -498,6 +498,7 @@ async def dashboard(
                 "cost":   financial.get("chart_cost", []),
             }),
             "show_team_ytd":   show_team_ytd,
+            "team_ytd":        team_ytd,
             "team_ytd_json":   json.dumps({
                 "labels": [t["name"] for t in team_ytd],
                 "ciro":   [t["ciro"]  for t in team_ytd],

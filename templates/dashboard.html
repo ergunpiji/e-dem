@@ -150,17 +150,89 @@
     </div>
   </div>
 
-  {# TAKIM YTD (GM/admin) veya İŞ DURUMU (yonetici/asistan) #}
-  {% if show_team_ytd or current_user.role in ('yonetici', 'asistan') %}
+  {# MÜŞTERİ YTD — orta #}
+  {% if show_customer_ytd %}
   <div class="col-lg-4 col-md-6">
     <div class="chart-card h-100">
-      {% if show_team_ytd %}
+      <div class="chart-title">
+        <i class="bi bi-buildings text-success me-2"></i>Müşteri Bazlı
+        <span class="text-muted fw-normal ms-2" style="font-size:11px;">
+          YTD · İlk 10
+          {%- if current_user.is_gm or current_user.role == 'admin' %} · Tümü
+          {%- elif current_user.role == 'mudur' %} · Takım
+          {%- else %} · Kendi{% endif %}
+        </span>
+      </div>
+      <canvas id="customerYtdChart" style="max-height:240px;"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
+  {# TAKIM YTD (GM/admin) — sağda metin listesi; diğerleri için İŞ DURUMU #}
+  {% if show_team_ytd %}
+  <div class="col-lg-4 col-md-6">
+    <div class="chart-card h-100 team-ytd-card">
       <div class="chart-title">
         <i class="bi bi-diagram-3 text-primary me-2"></i>Takım Bazlı
         <span class="text-muted fw-normal ms-2" style="font-size:11px;">YTD</span>
       </div>
-      <canvas id="teamYtdChart" style="max-height:240px;"></canvas>
+      {% if team_ytd %}
+      <div class="team-list">
+        {% for t in team_ytd %}
+        <div class="team-row">
+          <div class="team-name">
+            <i class="bi bi-people-fill me-2 text-primary"></i>{{ t.name }}
+          </div>
+          <div class="team-metrics">
+            <div class="metric">
+              <span class="metric-label">Ciro</span>
+              <span class="metric-value ciro">₺{{ '{:,.0f}'.format(t.ciro).replace(',', '.') }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Kar</span>
+              <span class="metric-value kar {% if t.kar < 0 %}negative{% endif %}">
+                ₺{{ '{:,.0f}'.format(t.kar).replace(',', '.') }}
+              </span>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
       {% else %}
+      <div class="text-muted text-center py-4" style="font-size:12px;">
+        Henüz veri yok
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <style>
+    .team-ytd-card .team-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+    .team-row {
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      border: 1px solid #e2e8f0;
+      transition: transform .12s, box-shadow .12s;
+    }
+    .team-row:hover { transform: translateX(2px); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .team-name {
+      font-size: 13px; font-weight: 700; color: #1e293b;
+      margin-bottom: 6px;
+    }
+    .team-metrics { display: flex; gap: 18px; }
+    .metric { display: flex; flex-direction: column; flex: 1; }
+    .metric-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .5px; color: #94a3b8;
+    }
+    .metric-value { font-size: 15px; font-weight: 800; line-height: 1.2; }
+    .metric-value.ciro { color: #2563eb; }
+    .metric-value.kar  { color: #16a34a; }
+    .metric-value.kar.negative { color: #dc2626; }
+  </style>
+  {% elif current_user.role in ('yonetici', 'asistan') %}
+  <div class="col-lg-4 col-md-6">
+    <div class="chart-card h-100">
       <div class="chart-title">
         <i class="bi bi-speedometer2 text-warning me-2"></i>İş Durumu
       </div>
@@ -186,25 +258,6 @@
           <span class="fw-bold text-success">{{ stats.my_confirmed }}</span>
         </div>
       </div>
-      {% endif %}
-    </div>
-  </div>
-  {% endif %}
-
-  {# MÜŞTERİ YTD #}
-  {% if show_customer_ytd %}
-  <div class="col-lg-4 col-md-6">
-    <div class="chart-card h-100">
-      <div class="chart-title">
-        <i class="bi bi-buildings text-success me-2"></i>Müşteri Bazlı
-        <span class="text-muted fw-normal ms-2" style="font-size:11px;">
-          YTD · İlk 10
-          {%- if current_user.is_gm or current_user.role == 'admin' %} · Tümü
-          {%- elif current_user.role == 'mudur' %} · Takım
-          {%- else %} · Kendi{% endif %}
-        </span>
-      </div>
-      <canvas id="customerYtdChart" style="max-height:240px;"></canvas>
     </div>
   </div>
   {% endif %}
@@ -412,46 +465,5 @@
 </script>
 {% endif %}
 
-{% if show_team_ytd %}
-<script>
-(function() {
-  const team = {{ team_ytd_json | safe }};
-  const ctx = document.getElementById('teamYtdChart');
-  if (!ctx || !team.labels || !team.labels.length) return;
-
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: team.labels,
-      datasets: [
-        { label: 'Ciro', data: team.ciro, backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4 },
-        { label: 'Kar',  data: team.kar,  backgroundColor: 'rgba(22,163,74,0.8)',  borderRadius: 4 },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { position: 'bottom', labels: { font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: ctx => ` ${ctx.dataset.label}: ₺${new Intl.NumberFormat('tr-TR').format(Math.round(ctx.parsed.y))}`
-          }
-        }
-      },
-      scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 30 }, grid: { display: false } },
-        y: {
-          ticks: {
-            font: { size: 10 },
-            callback: v => '₺' + new Intl.NumberFormat('tr-TR', {notation:'compact'}).format(v)
-          }
-        }
-      }
-    }
-  });
-})();
-</script>
-{% endif %}
 {% endif %}
 {% endblock %}
