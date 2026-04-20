@@ -288,12 +288,14 @@
       </a>
       {% endif %}
 
-      {# Talepler: yeni & karar bekleyenler #}
+      {# ── DOSYA TAKİP — tek grup (Talepler + Aktif İşler + Arşiv birleşik) ── #}
       {% set _adm_talepler = (nc.budgets_pending_all or 0) %}
-      <div class="tree-group" id="grp-talepler">
-        <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-inbox tree-icon"></i> Talepler
-          {{ tb(_adm_talepler) }}
+      {% set _adm_closure = (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) + (nc.closure_pending_finance or 0) %}
+      {% set _adm_dosya_total = _adm_talepler + _adm_closure %}
+      <div class="tree-group" id="grp-dosya">
+        <div class="tree-header" onclick="toggleTree('grp-dosya')">
+          <i class="bi bi-folder2-open tree-icon"></i> Dosya Takip
+          {{ tb(_adm_dosya_total) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
@@ -303,63 +305,43 @@
             <i class="bi bi-plus-circle nav-icon"></i> Yeni Talep Oluştur
           </a>
           {% endif %}
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Referans Listesi
+          </a>
           <a href="/requests?view=pending_work"
              class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
           </a>
           <a href="/requests?view=awaiting"
              class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
             {{ nb(_adm_talepler) }}
           </a>
-          <a href="/requests"
-             class="sidebar-link {% if cp == '/requests' and 'view=' not in cq %}active{% endif %}">
-            <i class="bi bi-list-ul nav-icon"></i> Tüm Referanslar
-          </a>
-        </div>
-      </div>
-
-      {# Aktif İşler: yalnızca konfirme #}
-      <div class="tree-group" id="grp-aktif">
-        <div class="tree-header" onclick="toggleTree('grp-aktif')">
-          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
-          </a>
-          <a href="/requests?view=closing"
-             class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
-            <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
-            {{ nb((nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) + (nc.closure_pending_finance or 0)) }}
+            <i class="bi bi-play-circle nav-icon"></i> Aktif Referanslar
           </a>
           <a href="/budgets"
              class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
             <i class="bi bi-calculator nav-icon"></i> Bütçe Yönetimi
           </a>
-        </div>
-      </div>
-
-      {# Arşiv #}
-      <div class="tree-group" id="grp-arsiv">
-        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
-          <i class="bi bi-archive tree-icon"></i> Arşiv
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
+          <a href="/requests?view=closing"
+             class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
+            <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
+            {{ nb(_adm_closure) }}
+          </a>
           <a href="/requests?view=completed"
              class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
             <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
           </a>
           <a href="/requests?view=closed"
              class="sidebar-link {% if 'view=closed' in cq %}active{% endif %}">
-            <i class="bi bi-lock nav-icon"></i> Kapatılan Dosyalar
+            <i class="bi bi-lock nav-icon"></i> Kapalı Referanslar
           </a>
           <a href="/requests?view=cancelled"
              class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
-            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+            <i class="bi bi-x-circle nav-icon"></i> İptal Olan İşler
           </a>
         </div>
       </div>
@@ -494,10 +476,12 @@
     {# ── MÜDÜR (mudur) ── Tüm referanslar + kapama onayı + tüm PM yetkileri #}
     {% elif current_user.role == 'mudur' %}
 
-      {# Talepler #}
-      <div class="tree-group" id="grp-talepler">
-        <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-inbox tree-icon"></i> Talepler
+      {# ── DOSYA TAKİP — tek grup ── #}
+      {% set _mud_closure = (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) %}
+      <div class="tree-group" id="grp-dosya">
+        <div class="tree-header" onclick="toggleTree('grp-dosya')">
+          <i class="bi bi-folder2-open tree-icon"></i> Dosya Takip
+          {{ tb(_mud_closure) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
@@ -507,7 +491,7 @@
           </a>
           <a href="/requests"
              class="sidebar-link {% if cp == '/requests' and not cq %}active{% endif %}">
-            <i class="bi bi-list-ul nav-icon"></i> Tüm Referanslar
+            <i class="bi bi-list-ul nav-icon"></i> Referans Listesi
           </a>
           <a href="/requests?view=pending_work"
              class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
@@ -515,48 +499,28 @@
           </a>
           <a href="/requests?view=awaiting"
              class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
           </a>
-        </div>
-      </div>
-
-      {# Aktif İşler #}
-      <div class="tree-group" id="grp-aktif">
-        <div class="tree-header" onclick="toggleTree('grp-aktif')">
-          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
+            <i class="bi bi-play-circle nav-icon"></i> Aktif Referanslar
           </a>
           <a href="/requests?view=closing"
              class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
-            {{ nb((nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0)) }}
+            {{ nb(_mud_closure) }}
           </a>
-        </div>
-      </div>
-
-      {# Arşiv #}
-      <div class="tree-group" id="grp-arsiv">
-        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
-          <i class="bi bi-archive tree-icon"></i> Arşiv
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
           <a href="/requests?view=completed"
              class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
             <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
           </a>
           <a href="/requests?view=closed"
              class="sidebar-link {% if 'view=closed' in cq %}active{% endif %}">
-            <i class="bi bi-lock nav-icon"></i> Kapatılan Dosyalar
+            <i class="bi bi-lock nav-icon"></i> Kapalı Referanslar
           </a>
           <a href="/requests?view=cancelled"
              class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
-            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+            <i class="bi bi-x-circle nav-icon"></i> İptal Olan İşler
           </a>
         </div>
       </div>
@@ -639,11 +603,11 @@
     {# ── YÖNETİCİ (yonetici) ── Kendi referansları + teklif + bütçe onayı #}
     {% elif current_user.role == 'yonetici' %}
 
-      {# Talepler: yeni & karar bekleyenler #}
+      {# ── DOSYA TAKİP — tek grup ── #}
       {% set _pm_talepler = (nc.budgets_pending or 0) %}
-      <div class="tree-group" id="grp-talepler">
-        <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-inbox tree-icon"></i> Talepler
+      <div class="tree-group" id="grp-dosya">
+        <div class="tree-header" onclick="toggleTree('grp-dosya')">
+          <i class="bi bi-folder2-open tree-icon"></i> Dosya Takip
           {{ tb(_pm_talepler) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
@@ -652,54 +616,38 @@
              class="sidebar-link {% if cp == '/requests/new' %}active{% endif %}">
             <i class="bi bi-plus-circle nav-icon"></i> Yeni Talep Oluştur
           </a>
+          <a href="/requests"
+             class="sidebar-link {% if cp == '/requests' and not cq %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Referans Listesi
+          </a>
           <a href="/requests?view=pending_work"
              class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
           </a>
           <a href="/requests?view=awaiting"
              class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
             {{ nb(_pm_talepler) }}
           </a>
-        </div>
-      </div>
-
-      {# Aktif İşler: konfirme edilmiş #}
-      <div class="tree-group" id="grp-aktif">
-        <div class="tree-header" onclick="toggleTree('grp-aktif')">
-          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
+            <i class="bi bi-play-circle nav-icon"></i> Aktif Referanslar
           </a>
           <a href="/requests?view=closing"
              class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
           </a>
-        </div>
-      </div>
-
-      {# Arşiv #}
-      <div class="tree-group" id="grp-arsiv">
-        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
-          <i class="bi bi-archive tree-icon"></i> Arşiv
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
           <a href="/requests?view=completed"
              class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
             <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
           </a>
           <a href="/requests?view=closed"
              class="sidebar-link {% if 'view=closed' in cq %}active{% endif %}">
-            <i class="bi bi-lock nav-icon"></i> Kapatılan Dosyalar
+            <i class="bi bi-lock nav-icon"></i> Kapalı Referanslar
           </a>
           <a href="/requests?view=cancelled"
              class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
-            <i class="bi bi-x-circle nav-icon"></i> İptal İşler
+            <i class="bi bi-x-circle nav-icon"></i> İptal Olan İşler
           </a>
         </div>
       </div>
@@ -754,10 +702,10 @@
     {# ── ASİSTAN (asistan) ── Görüntüleme + HBF oluştur #}
     {% elif current_user.role == 'asistan' %}
 
-      {# Talepler: sadece kendi referansları #}
-      <div class="tree-group" id="grp-talepler">
-        <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-inbox tree-icon"></i> Referanslarım
+      {# ── DOSYA TAKİP — asistan sadece kendi referanslarını görür ── #}
+      <div class="tree-group" id="grp-dosya">
+        <div class="tree-header" onclick="toggleTree('grp-dosya')">
+          <i class="bi bi-folder2-open tree-icon"></i> Dosya Takip
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
@@ -767,7 +715,7 @@
           </a>
           <a href="/requests"
              class="sidebar-link {% if cp == '/requests' %}active{% endif %}">
-            <i class="bi bi-list-ul nav-icon"></i> Referanslarım
+            <i class="bi bi-list-ul nav-icon"></i> Referans Listesi
           </a>
         </div>
       </div>
@@ -818,11 +766,11 @@
     {# ── E-DEM ── #}
     {% elif current_user.role == 'e_dem' %}
 
-      {# Talepler: gelen & işlemdekiler #}
+      {# ── DOSYA TAKİP — tek grup ── #}
       {% set _edem_pending = (nc.requests_pending or 0) %}
-      <div class="tree-group" id="grp-talepler">
-        <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-inbox tree-icon"></i> Talepler
+      <div class="tree-group" id="grp-dosya">
+        <div class="tree-header" onclick="toggleTree('grp-dosya')">
+          <i class="bi bi-folder2-open tree-icon"></i> Dosya Takip
           {{ tb(_edem_pending) }}
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
@@ -834,47 +782,27 @@
           </a>
           <a href="/requests?view=awaiting"
              class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Karar Bekleyenler
+            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
           </a>
-        </div>
-      </div>
-
-      {# Aktif İşler: konfirme edilmiş #}
-      <div class="tree-group" id="grp-aktif">
-        <div class="tree-header" onclick="toggleTree('grp-aktif')">
-          <i class="bi bi-lightning-charge tree-icon"></i> Aktif İşler
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-play-circle nav-icon"></i> Onaylı & Devam Eden
-          </a>
-          <a href="/requests?view=closing"
-             class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
-            <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
+            <i class="bi bi-play-circle nav-icon"></i> Aktif Referanslar
           </a>
           <a href="/budgets"
              class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
             <i class="bi bi-calculator nav-icon"></i> Bütçe Yönetimi
           </a>
-        </div>
-      </div>
-
-      {# Arşiv #}
-      <div class="tree-group" id="grp-arsiv">
-        <div class="tree-header" onclick="toggleTree('grp-arsiv')">
-          <i class="bi bi-archive tree-icon"></i> Arşiv
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
+          <a href="/requests?view=closing"
+             class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
+            <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
+          </a>
           <a href="/requests?view=completed"
              class="sidebar-link {% if 'view=completed' in cq %}active{% endif %}">
             <i class="bi bi-check2-circle nav-icon"></i> Tamamlananlar
           </a>
           <a href="/requests?view=closed"
              class="sidebar-link {% if 'view=closed' in cq %}active{% endif %}">
-            <i class="bi bi-lock nav-icon"></i> Kapatılan Dosyalar
+            <i class="bi bi-lock nav-icon"></i> Kapalı Referanslar
           </a>
         </div>
       </div>
@@ -954,15 +882,15 @@
         </div>
       </div>
 
-      <div class="tree-group" id="grp-talepler">
-        <div class="tree-header" onclick="toggleTree('grp-talepler')">
-          <i class="bi bi-folder2 tree-icon"></i> Referanslar
+      <div class="tree-group" id="grp-dosya">
+        <div class="tree-header" onclick="toggleTree('grp-dosya')">
+          <i class="bi bi-folder2-open tree-icon"></i> Dosya Takip
           <i class="bi bi-chevron-right tree-arrow"></i>
         </div>
         <div class="tree-children">
           <a href="/requests"
              class="sidebar-link {% if cp == '/requests' %}active{% endif %}">
-            <i class="bi bi-list-ul nav-icon"></i> Tüm Referanslar
+            <i class="bi bi-list-ul nav-icon"></i> Referans Listesi
           </a>
         </div>
       </div>
