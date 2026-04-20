@@ -586,16 +586,38 @@ async def requests_detail(
 
     can_manage_invoices  = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
     can_manage_undoc     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    # Limit tabanlı zincirleme onay: current_approver_id eşleşen kullanıcı onaylayabilir
-    _pending_approver_ids = {
-        inv.current_approver_id
-        for inv in (req.invoices or [])
-        if inv.status == "pending" and inv.current_approver_id
+    # Limit tabanlı zincirleme onay: approver veya hiyerarşik üstü onaylayabilir
+    def _above_in_chain(candidate_id: str, subordinate_id: str) -> bool:
+        seen: set = set()
+        u = db.query(User).filter(User.id == subordinate_id).first()
+        depth = 0
+        while u and u.manager_id and depth < 10:
+            if u.manager_id in seen:
+                break
+            seen.add(u.manager_id)
+            if u.manager_id == candidate_id:
+                return True
+            u = db.query(User).filter(User.id == u.manager_id).first()
+            depth += 1
+        return False
+
+    def _can_approve_inv(inv) -> bool:
+        if current_user.role in ("admin", "muhasebe_muduru"):
+            return True
+        if inv.current_approver_id:
+            if current_user.id == inv.current_approver_id:
+                return True
+            return _above_in_chain(current_user.id, inv.current_approver_id)
+        # NULL fallback
+        if inv.request and inv.request.created_by == current_user.id:
+            return True
+        return current_user.role == "mudur"
+
+    approvable_invoice_ids = {
+        inv.id for inv in (req.invoices or [])
+        if inv.status == "pending" and _can_approve_inv(inv)
     }
-    can_approve_invoices = (
-        current_user.role in ("admin", "muhasebe_muduru") or
-        current_user.id in _pending_approver_ids
-    )
+    can_approve_invoices = bool(approvable_invoice_ids) or current_user.role in ("admin", "muhasebe_muduru")
     # Adım 2 — Muhasebe keser (approved → final)
     can_cut_invoices     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
 
@@ -710,9 +732,10 @@ async def requests_detail(
             "invoice_kar":           round(invoice_kar, 2),
             "budget_sale_excl":  budget_sale_excl,
             "budget_cost_excl":  budget_cost_excl,
-            "can_manage_invoices":   can_manage_invoices,
-            "can_approve_invoices":  can_approve_invoices,
-            "can_cut_invoices":      can_cut_invoices,
+            "can_manage_invoices":      can_manage_invoices,
+            "can_approve_invoices":     can_approve_invoices,
+            "approvable_invoice_ids":   approvable_invoice_ids,
+            "can_cut_invoices":         can_cut_invoices,
             "can_manage_undoc":      can_manage_undoc,
             "all_requests":          all_requests,
             "email_templates_json":  email_templates_json,

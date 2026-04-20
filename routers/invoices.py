@@ -40,19 +40,39 @@ def _is_gm(user: User) -> bool:
     return False
 
 
-def _require_approval_permission(current_user: User, inv):
+def _is_above_in_chain(db: Session, candidate_id: str, subordinate_id: str, max_depth: int = 10) -> bool:
+    """candidate_id, subordinate_id'nin hiyerarşik üstünde mi kontrol eder."""
+    seen: set = set()
+    user = db.query(User).filter(User.id == subordinate_id).first()
+    depth = 0
+    while user and user.manager_id and depth < max_depth:
+        if user.manager_id in seen:
+            break
+        seen.add(user.manager_id)
+        if user.manager_id == candidate_id:
+            return True
+        user = db.query(User).filter(User.id == user.manager_id).first()
+        depth += 1
+    return False
+
+
+def _require_approval_permission(current_user: User, inv, db: Session):
     """
     Onay/red için yetki:
     - admin / muhasebe_muduru → her zaman
     - current_approver_id eşleşiyorsa → onaylayabilir
-    - current_approver_id yoksa (eski/bağlantısız fatura) → mudur/GM legacy fallback
+    - current_approver_id'nin hiyerarşik üstündeyse → onaylayabilir (zinciri atlayarak)
+    - current_approver_id yoksa → req sahibi veya mudur/GM
     """
     if current_user.role in ("admin", "muhasebe_muduru"):
         return
-    if inv.current_approver_id and current_user.id == inv.current_approver_id:
-        return
-    # current_approver_id NULL: req sahibine izin ver (eski fatura veya backfill bekliyor)
-    if not inv.current_approver_id:
+    if inv.current_approver_id:
+        if current_user.id == inv.current_approver_id:
+            return
+        if _is_above_in_chain(db, current_user.id, inv.current_approver_id):
+            return
+    else:
+        # current_approver_id NULL: req sahibine izin ver (eski fatura / backfill bekliyor)
         if inv.request and inv.request.created_by == current_user.id:
             return
         if _is_gm(current_user) or current_user.role == "mudur":
@@ -62,11 +82,10 @@ def _require_approval_permission(current_user: User, inv):
 
 def _find_next_approver(db: Session, user_id: str):
     """Zincirde bir üst onaylayıcıyı (yöneticiyi) döner."""
-    from models import User as _User
-    user = db.query(_User).filter(_User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.manager_id:
         return None
-    return db.query(_User).filter(_User.id == user.manager_id).first()
+    return db.query(User).filter(User.id == user.manager_id).first()
 
 
 def _get_invoice_or_404(db: Session, invoice_id: str) -> Invoice:
@@ -688,7 +707,7 @@ async def invoices_approve(
     db: Session = Depends(get_db),
 ):
     inv = _get_invoice_or_404(db, invoice_id)
-    _require_approval_permission(current_user, inv)
+    _require_approval_permission(current_user, inv, db)
 
     if inv.status not in ("pending", "mudur_approved", "gm_approved"):
         raise HTTPException(status_code=400, detail="Bu fatura onay için uygun durumda değil.")
@@ -790,7 +809,7 @@ async def invoices_reject(
     rejection_note: str = Form(""),
 ):
     inv = _get_invoice_or_404(db, invoice_id)
-    _require_approval_permission(current_user, inv)
+    _require_approval_permission(current_user, inv, db)
 
     if inv.status not in ("pending", "mudur_approved", "approved"):
         raise HTTPException(status_code=400, detail="Bu fatura iptal edilmiş.")
