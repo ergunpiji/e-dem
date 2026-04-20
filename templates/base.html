@@ -327,6 +327,17 @@
              class="sidebar-link {% if 'view=funded' in cq %}active{% endif %}">
             <i class="bi bi-piggy-bank nav-icon"></i> Fon Referansları
           </a>
+          <a href="/requests?view=fund_pools"
+             class="sidebar-link {% if 'view=fund_pools' in cq %}active{% endif %}">
+            <i class="bi bi-bank2 nav-icon"></i> Fon Havuzları
+          </a>
+          {% if current_user.role in ('admin', 'muhasebe_muduru') or current_user.is_gm %}
+          <a href="/requests/fund-pools/new"
+             class="sidebar-link {% if cp == '/requests/fund-pools/new' %}active{% endif %}"
+             style="color: #a78bfa;">
+            <i class="bi bi-plus-circle nav-icon"></i> Fon Havuzu Aç
+          </a>
+          {% endif %}
           <a href="/budgets"
              class="sidebar-link {% if '/budgets' in cp %}active{% endif %}">
             <i class="bi bi-calculator nav-icon"></i> Bütçe Yönetimi
@@ -516,6 +527,10 @@
              class="sidebar-link {% if 'view=funded' in cq %}active{% endif %}">
             <i class="bi bi-piggy-bank nav-icon"></i> Fon Referansları
           </a>
+          <a href="/requests?view=fund_pools"
+             class="sidebar-link {% if 'view=fund_pools' in cq %}active{% endif %}">
+            <i class="bi bi-bank2 nav-icon"></i> Fon Havuzları
+          </a>
           <a href="/requests?view=awaiting_closure"
              class="sidebar-link {% if 'view=awaiting_closure' in cq %}active{% endif %}">
             <i class="bi bi-folder-symlink nav-icon"></i> Referans Kapatma
@@ -649,6 +664,10 @@
           <a href="/requests?view=funded"
              class="sidebar-link {% if 'view=funded' in cq %}active{% endif %}">
             <i class="bi bi-piggy-bank nav-icon"></i> Fon Referansları
+          </a>
+          <a href="/requests?view=fund_pools"
+             class="sidebar-link {% if 'view=fund_pools' in cq %}active{% endif %}">
+            <i class="bi bi-bank2 nav-icon"></i> Fon Havuzları
           </a>
           <a href="/requests?view=awaiting_closure"
              class="sidebar-link {% if 'view=awaiting_closure' in cq %}active{% endif %}">

@@ -626,6 +626,61 @@ def migrate_db():
         _bool_default = "0" if _is_sqlite else "FALSE"
         _safe_add_column(conn, "requests", "is_funded",      _bool_type, _bool_default)
         _safe_add_column(conn, "requests", "funding_source", "TEXT",     "''")
+        # Requests — Fon havuzu kolonları
+        _safe_add_column(conn, "requests", "is_fund_pool",           _bool_type, _bool_default)
+        _safe_add_column(conn, "requests", "parent_fund_request_id", "TEXT")
+        _safe_add_column(conn, "requests", "fund_currency",          "TEXT",  "'TRY'")
+        _safe_add_column(conn, "requests", "fund_initial_amount",    "REAL",  "0.0")
+        _safe_add_column(conn, "requests", "fund_initial_vat_rate",  "REAL",  "20.0")
+
+        # fund_transfers tablosu
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS fund_transfers (
+                    id                  TEXT PRIMARY KEY,
+                    fund_request_id     TEXT NOT NULL REFERENCES requests(id),
+                    related_request_id  TEXT NOT NULL REFERENCES requests(id),
+                    direction           TEXT NOT NULL,
+                    amount              REAL NOT NULL,
+                    vat_rate            REAL DEFAULT 20.0,
+                    currency            TEXT DEFAULT 'TRY',
+                    exchange_rate_try   REAL DEFAULT 1.0,
+                    description         TEXT DEFAULT '',
+                    transfer_date       TEXT NOT NULL,
+                    created_by          TEXT NOT NULL REFERENCES users(id),
+                    created_at          TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_fund ON fund_transfers(fund_request_id)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_related ON fund_transfers(related_request_id)"
+            ))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS fund_transfers (
+                    id                  VARCHAR(36) PRIMARY KEY,
+                    fund_request_id     VARCHAR(36) NOT NULL REFERENCES requests(id),
+                    related_request_id  VARCHAR(36) NOT NULL REFERENCES requests(id),
+                    direction           VARCHAR(10) NOT NULL,
+                    amount              DOUBLE PRECISION NOT NULL,
+                    vat_rate            DOUBLE PRECISION DEFAULT 20.0,
+                    currency            VARCHAR(3) DEFAULT 'TRY',
+                    exchange_rate_try   DOUBLE PRECISION DEFAULT 1.0,
+                    description         TEXT DEFAULT '',
+                    transfer_date       VARCHAR(10) NOT NULL,
+                    created_by          VARCHAR(36) NOT NULL REFERENCES users(id),
+                    created_at          TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_fund ON fund_transfers(fund_request_id)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_related ON fund_transfers(related_request_id)"
+            ))
+        conn.commit()
 
         # Customers
         _safe_add_column(conn, "customers", "excel_template_path", "TEXT", "''")

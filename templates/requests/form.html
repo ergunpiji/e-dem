@@ -250,19 +250,57 @@
           <div class="border rounded p-2 d-flex align-items-center gap-2" style="min-height:42px; background:white;">
             <input type="checkbox" class="form-check-input m-0" id="isFunded" name="is_funded" value="on"
                    {% if req and req.is_funded %}checked{% endif %}
-                   onchange="document.getElementById('fundingSourceWrap').style.display=this.checked?'':'none'">
+                   onchange="toggleFundingFields(this.checked)">
             <label for="isFunded" class="m-0" style="font-size:13px; cursor:pointer;">Fon destekli etkinlik</label>
           </div>
         </div>
-        <div class="col-md-6" id="fundingSourceWrap"
+        <div class="col-md-4" id="fundPoolWrap"
              style="{% if not (req and req.is_funded) %}display:none;{% endif %}">
           <label class="form-label fw-semibold" style="font-size:13px;">
-            Fon Kaynağı <span class="text-muted fw-normal" style="font-size:11px;">(opsiyonel)</span>
+            Fon Havuzu <span class="text-muted fw-normal" style="font-size:11px;">(müşteriye ait)</span>
+          </label>
+          <select name="parent_fund_request_id" id="fundPoolSelect" class="form-select">
+            <option value="">— Havuz seçin (opsiyonel) —</option>
+            {% if req and req.parent_fund_request_id %}
+            <option value="{{ req.parent_fund_request_id }}" selected>(mevcut seçim)</option>
+            {% endif %}
+          </select>
+          <div class="form-text" style="font-size:11px;">Müşteri seçilince otomatik doldurulur.</div>
+        </div>
+        <div class="col-md-5" id="fundingSourceWrap"
+             style="{% if not (req and req.is_funded) %}display:none;{% endif %}">
+          <label class="form-label fw-semibold" style="font-size:13px;">
+            Fon Kaynağı <span class="text-muted fw-normal" style="font-size:11px;">(opsiyonel — serbest metin)</span>
           </label>
           <input type="text" name="funding_source" class="form-control"
                  value="{{ req.funding_source if req else '' }}"
                  placeholder="Örn: TÜBİTAK / Sponsor firma adı / AB grant…">
         </div>
+        <script>
+          function toggleFundingFields(show) {
+            document.getElementById('fundPoolWrap').style.display = show ? '' : 'none';
+            document.getElementById('fundingSourceWrap').style.display = show ? '' : 'none';
+            if (show) loadFundPools();
+          }
+          async function loadFundPools() {
+            const custSelect = document.querySelector('select[name=customer_id]');
+            if (!custSelect || !custSelect.value) return;
+            const pSelect = document.getElementById('fundPoolSelect');
+            if (!pSelect) return;
+            const currentVal = pSelect.value;
+            try {
+              const r = await fetch('/requests/api/customer-fund-pools/' + custSelect.value);
+              const pools = await r.json();
+              pSelect.innerHTML = '<option value="">— Havuz seçin (opsiyonel) —</option>' +
+                pools.map(p => `<option value="${p.id}" ${p.id === currentVal ? 'selected' : ''}>${p.request_no} — ${p.event_name} (${p.currency})</option>`).join('');
+            } catch (e) {}
+          }
+          document.addEventListener('DOMContentLoaded', function() {
+            const cust = document.querySelector('select[name=customer_id]');
+            if (cust) cust.addEventListener('change', loadFundPools);
+            if (document.getElementById('isFunded')?.checked) loadFundPools();
+          });
+        </script>
 
         {# Şehirler #}
         <div class="col-md-6">

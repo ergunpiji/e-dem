@@ -252,10 +252,14 @@ async def reports_financial(
 
     in_range_req_ids = [r.id for r in req_date_q.all()]
 
+    from utils.funds import fund_pool_invoice_ids
+    _fund_inv_ids = fund_pool_invoice_ids(db)
     inv_query = db.query(Invoice).filter(
         Invoice.status.in_(["approved", "gm_approved", "mudur_approved", "active"]),
         Invoice.request_id.in_(in_range_req_ids),
     )
+    if _fund_inv_ids:
+        inv_query = inv_query.filter(~Invoice.id.in_(_fund_inv_ids))
 
     invoices = inv_query.all()
 
@@ -271,6 +275,15 @@ async def reports_financial(
             ref_fin[rid]["maliyet"] += inv.amount
         elif inv.invoice_type == "iade_gelen":
             ref_fin[rid]["maliyet"] -= inv.amount
+
+    # FundTransfer'ler — in_range referanslarına uygula (KDV hariç TRY)
+    from models import FundTransfer as _FT
+    for t in db.query(_FT).filter(_FT.related_request_id.in_(in_range_req_ids)).all():
+        v = t.amount_try_excl_vat
+        if t.direction == "out":
+            ref_fin[t.related_request_id]["ciro"] += v
+        elif t.direction == "in":
+            ref_fin[t.related_request_id]["ciro"] -= v
 
     # İlgili talepleri toplu çek
     req_ids_with_inv = list(ref_fin.keys())

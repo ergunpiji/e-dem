@@ -32,12 +32,22 @@ def _last_n_months(n: int = 6) -> list[str]:
 
 
 def _build_financial_stats(db: Session, req_id_filter=None):
-    """Onaylı faturalardan ciro/kar/aylık veri hesapla — sadece gerçek rakamlar."""
+    """Onaylı faturalardan ciro/kar/aylık veri hesapla — sadece gerçek rakamlar.
+
+    Fon havuzu ana referanslarının `kesilen` faturaları ciro'ya dahil EDİLMEZ
+    (çift sayma önlemi — gelir, alt referanslara yapılan transferlerde oluşur).
+    FundTransfer'ler KDV hariç TRY karşılığı ile ciroya/kara eklenir.
+    """
+    from utils.funds import fund_pool_invoice_ids
+    _fund_inv_ids = fund_pool_invoice_ids(db)
+
     inv_query = db.query(Invoice).filter(
         Invoice.status.in_(["approved", "gm_approved", "active"]),
     )
     if req_id_filter is not None:
         inv_query = inv_query.filter(Invoice.request_id.in_(req_id_filter))
+    if _fund_inv_ids:
+        inv_query = inv_query.filter(~Invoice.id.in_(_fund_inv_ids))
 
     invoices = inv_query.all()
 
@@ -94,6 +104,31 @@ def _build_financial_stats(db: Session, req_id_filter=None):
             elif inv.invoice_type == "komisyon":
                 monthly[key]["sale"] += inv.amount   # komisyon → gelir
 
+    # Fon transferleri → ciroya TRY/KDV hariç katkı
+    # out = alt ref'e giren (gelir), in = alt ref'ten fona dönen (iade)
+    from models import FundTransfer as _FT, Request as _Req
+    ft_query = db.query(_FT)
+    if req_id_filter is not None:
+        ft_query = ft_query.filter(_FT.related_request_id.in_(req_id_filter))
+    for t in ft_query.all():
+        val = t.amount_try_excl_vat
+        sign = +1 if t.direction == "out" else -1
+        total_sale += sign * val
+
+        # Aylık gruplama: alt referansın check_in'i
+        req_obj = t.related_request
+        key = None
+        if req_obj and req_obj.check_in:
+            try:
+                ci = req_obj.check_in
+                key = ci.strftime("%Y-%m") if hasattr(ci, "strftime") else str(ci)[:7]
+            except Exception:
+                pass
+        if not key and t.transfer_date:
+            key = t.transfer_date[:7]
+        if key:
+            monthly[key]["sale"] += sign * val
+
     # Kar = kesilen + komisyon − gelen (requests/detail.html ile aynı formül)
     kar = total_sale + total_komisyon - total_cost
     total_revenue = total_sale + total_komisyon
@@ -116,7 +151,12 @@ def _build_financial_stats(db: Session, req_id_filter=None):
 
 
 def _build_ytd_team_stats(db: Session) -> list[dict]:
-    """Yılbaşından bugüne takım bazlı ciro/kar (tüm takımlar — GM/admin için)."""
+    """Yılbaşından bugüne takım bazlı ciro/kar (tüm takımlar — GM/admin için).
+
+    Fon havuzu ana referanslarının faturaları hariç; FundTransfer'ler dahil.
+    """
+    from utils.funds import fund_pool_invoice_ids
+    from models import FundTransfer as _FT
     year_start = date(date.today().year, 1, 1).isoformat()
 
     reqs = db.query(ReqModel).filter(ReqModel.check_in >= year_start).all()
@@ -125,10 +165,14 @@ def _build_ytd_team_stats(db: Session) -> list[dict]:
     req_team_map = {r.id: r.team_id for r in reqs}
     req_ids = list(req_team_map.keys())
 
-    invoices = db.query(Invoice).filter(
+    _fund_inv_ids = fund_pool_invoice_ids(db)
+    inv_q = db.query(Invoice).filter(
         Invoice.status.in_(["approved", "gm_approved", "active"]),
         Invoice.request_id.in_(req_ids),
-    ).all()
+    )
+    if _fund_inv_ids:
+        inv_q = inv_q.filter(~Invoice.id.in_(_fund_inv_ids))
+    invoices = inv_q.all()
 
     team_name_map = {t.id: t.name for t in db.query(Team).all()}
 
@@ -146,6 +190,16 @@ def _build_ytd_team_stats(db: Session) -> list[dict]:
             agg[name]["maliyet"] += inv.amount
         elif inv.invoice_type == "iade_gelen":
             agg[name]["maliyet"] -= inv.amount
+
+    # FundTransfer'ler — alt ref'in takımına göre
+    for t in db.query(_FT).filter(_FT.related_request_id.in_(req_ids)).all():
+        tid  = req_team_map.get(t.related_request_id)
+        name = team_name_map.get(tid, "Takımsız") if tid else "Takımsız"
+        v = t.amount_try_excl_vat
+        if t.direction == "out":
+            agg[name]["ciro"] += v
+        elif t.direction == "in":
+            agg[name]["ciro"] -= v
 
     rows = []
     for name, v in agg.items():
@@ -175,10 +229,15 @@ def _build_ytd_customer_stats(db: Session, req_id_filter=None, limit: int = 10) 
     req_info = {r.id: (r.customer_id, r.client_name) for r in reqs}
     cust_map = {c.id: (c.code, c.name) for c in db.query(Customer).all()}
 
-    invoices = db.query(Invoice).filter(
+    from utils.funds import fund_pool_invoice_ids
+    _fund_inv_ids = fund_pool_invoice_ids(db)
+    inv_q = db.query(Invoice).filter(
         Invoice.status.in_(["approved", "gm_approved", "active"]),
         Invoice.request_id.in_(list(req_info.keys())),
-    ).all()
+    )
+    if _fund_inv_ids:
+        inv_q = inv_q.filter(~Invoice.id.in_(_fund_inv_ids))
+    invoices = inv_q.all()
 
     def _fallback_code(name: str) -> str:
         n = (name or "").strip()
@@ -211,6 +270,25 @@ def _build_ytd_customer_stats(db: Session, req_id_filter=None, limit: int = 10) 
             agg[key]["maliyet"] += inv.amount
         elif inv.invoice_type == "iade_gelen":
             agg[key]["maliyet"] -= inv.amount
+
+    # FundTransfer'ler — alt ref'in müşterisine göre
+    from models import FundTransfer as _FT
+    for t in db.query(_FT).filter(_FT.related_request_id.in_(list(req_info.keys()))).all():
+        cid, cname = req_info.get(t.related_request_id, (None, None))
+        if cid and cid in cust_map:
+            code, full = cust_map[cid]
+            key = f"cust:{cid}"
+            agg[key]["code"] = (code or _fallback_code(full)).upper()
+            agg[key]["name"] = full
+        else:
+            key = f"free:{(cname or '—').lower()}"
+            agg[key]["code"] = _fallback_code(cname)
+            agg[key]["name"] = cname or "—"
+        v = t.amount_try_excl_vat
+        if t.direction == "out":
+            agg[key]["ciro"] += v
+        elif t.direction == "in":
+            agg[key]["ciro"] -= v
 
     rows = []
     for v in agg.values():

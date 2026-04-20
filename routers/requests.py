@@ -65,6 +65,16 @@ def _check_edem_or_admin(current_user: User):
         raise HTTPException(status_code=403, detail="Bu sayfa E-dem kullanıcılarına özeldir.")
 
 
+def _check_fund_admin(current_user: User):
+    """Fon havuzu aç / transfer yap yetkisi: admin / muhasebe_muduru / GM."""
+    from utils.funds import can_manage_funds
+    if not can_manage_funds(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Fon havuzu işlemleri için yetkiniz yok. (Admin / Muhasebe Müdürü / Genel Müdür)"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Listeler
 # ---------------------------------------------------------------------------
@@ -129,8 +139,14 @@ async def requests_list(
         query = query.filter(ReqModel.status.in_(["offer_sent", "revision", "postponed"]))
         page_title = "Referans Onaylama"
     elif view == "funded":
-        query = query.filter(ReqModel.is_funded == True)
+        query = query.filter(
+            ReqModel.is_funded == True,
+            ReqModel.is_fund_pool == False,   # ana havuzları hariç tut
+        )
         page_title = "Fon Referansları"
+    elif view == "fund_pools":
+        query = query.filter(ReqModel.is_fund_pool == True)
+        page_title = "Fon Havuzları"
     elif view == "awaiting_closure":
         from models import ClosureRequest
         # status=completed olanlar arasında henüz closure_request oluşturulmamışlar
@@ -191,6 +207,223 @@ async def requests_list(
 
 
 # ---------------------------------------------------------------------------
+# Fon Havuzu (Fund Pool) — kurulum ve transfer
+# ---------------------------------------------------------------------------
+
+@router.get("/fund-pools/new", response_class=HTMLResponse, name="fund_pool_new")
+async def fund_pool_new(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _check_fund_admin(current_user)
+    customers = db.query(Customer).order_by(Customer.name).all()
+    return templates.TemplateResponse(
+        "requests/fund_pool_form.html",
+        {
+            "request":      request,
+            "current_user": current_user,
+            "page_title":   "Fon Havuzu Aç",
+            "customers":    customers,
+        },
+    )
+
+
+@router.post("/fund-pools/new", name="fund_pool_create")
+async def fund_pool_create(
+    request: Request,
+    customer_id:     str = Form(...),
+    fund_name:       str = Form(...),
+    fund_currency:   str = Form("TRY"),
+    initial_amount:  str = Form("0"),
+    vat_rate:        str = Form("20"),
+    fund_year:       str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _check_fund_admin(current_user)
+    from models import Invoice
+    from utils.funds import get_current_exchange_rate
+
+    cust = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not cust:
+        raise HTTPException(400, "Müşteri bulunamadı.")
+
+    try:
+        amount_incl = float(initial_amount.replace(",", "."))
+    except ValueError:
+        amount_incl = 0.0
+    if amount_incl <= 0:
+        raise HTTPException(400, "Fon başlangıç tutarı 0'dan büyük olmalı.")
+    try:
+        vat_pct = float(vat_rate)
+    except ValueError:
+        vat_pct = 20.0
+
+    currency = (fund_currency or "TRY").upper()
+    if currency not in ("TRY", "USD", "EUR"):
+        currency = "TRY"
+
+    # Fon yılı → check_in (yıl başlangıcı)
+    try:
+        year_int = int(fund_year) if fund_year else _now().year
+    except ValueError:
+        year_int = _now().year
+    check_in_str = f"{year_int}-01-01"
+
+    # Ref no (özel ev. tipi "fn" — fon)
+    ref_no = generate_ref_no(db, "fn", cust.code, check_in_str)
+
+    # Fon ana referansı
+    fund_req = ReqModel(
+        id=_uuid(),
+        request_no=ref_no,
+        client_name=cust.name,
+        customer_id=cust.id,
+        event_name=fund_name.strip(),
+        event_type="fn",
+        city="",
+        cities_json="[]",
+        attendee_count=0,
+        check_in=check_in_str,
+        check_out=f"{year_int}-12-31",
+        status="fund_pool",
+        items_json="{}",
+        description=f"Fon havuzu · {currency} · %{vat_pct:g} KDV dahil",
+        notes="",
+        preferred_venues_json="[]",
+        selected_venues_json="[]",
+        contact_person_json="{}",
+        is_fund_pool=True,
+        fund_currency=currency,
+        fund_initial_amount=amount_incl,
+        fund_initial_vat_rate=vat_pct,
+        team_id=cust.team_id if getattr(cust, "team_id", None) else current_user.team_id,
+        created_by=current_user.id,
+        created_at=_now(),
+        updated_at=_now(),
+    )
+    db.add(fund_req)
+    db.flush()
+
+    # Muhasebe kaydı — ana fatura (kesilen)
+    amount_excl = round(amount_incl / (1 + vat_pct / 100.0), 2) if vat_pct else amount_incl
+    vat_amount  = round(amount_incl - amount_excl, 2)
+    inv = Invoice(
+        id=_uuid(),
+        request_id=fund_req.id,
+        invoice_type="kesilen",
+        invoice_no="",
+        invoice_date=check_in_str,
+        vendor_name=cust.name,
+        description=f"Fon havuzu kurulum faturası — {fund_name.strip()}",
+        amount=amount_excl,
+        vat_rate=vat_pct,
+        vat_amount=vat_amount,
+        total_amount=amount_incl,
+        status="approved",
+        created_by=current_user.id,
+        created_at=_now(),
+        updated_at=_now(),
+    )
+    db.add(inv)
+    log_activity(
+        db, fund_req.id, "fund_pool_created",
+        f"Fon havuzu kuruldu: {currency} {amount_incl:,.2f} (KDV dahil)",
+        user_id=current_user.id,
+    )
+    db.commit()
+    return RedirectResponse(url=f"/requests/{fund_req.id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/fund/{fund_id}/transfer", name="fund_transfer_create")
+async def fund_transfer_create(
+    fund_id: str,
+    request: Request,
+    related_request_id: str = Form(...),
+    direction:          str = Form("out"),           # "out" | "in"
+    amount:             str = Form("0"),
+    vat_rate:           str = Form(""),
+    exchange_rate_try:  str = Form(""),
+    description:        str = Form(""),
+    transfer_date:      str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _check_fund_admin(current_user)
+    from models import FundTransfer
+    from utils.funds import get_fund_balance, get_current_exchange_rate
+
+    fund = db.query(ReqModel).filter(ReqModel.id == fund_id).first()
+    if not fund or not fund.is_fund_pool:
+        raise HTTPException(404, "Fon havuzu bulunamadı.")
+    alt  = db.query(ReqModel).filter(ReqModel.id == related_request_id).first()
+    if not alt:
+        raise HTTPException(404, "Alt referans bulunamadı.")
+    if direction not in ("out", "in"):
+        raise HTTPException(400, "Geçersiz yön.")
+
+    try:
+        amt = float(amount.replace(",", "."))
+    except ValueError:
+        amt = 0.0
+    if amt <= 0:
+        raise HTTPException(400, "Transfer tutarı 0'dan büyük olmalı.")
+
+    vat_pct = float(vat_rate) if vat_rate else float(fund.fund_initial_vat_rate or 20.0)
+    rate    = float(exchange_rate_try) if exchange_rate_try else get_current_exchange_rate(fund.fund_currency)
+
+    # Validasyon
+    balance = get_fund_balance(fund, db)
+    if direction == "out":
+        if amt > balance["remaining"] + 0.01:
+            raise HTTPException(
+                400,
+                f"Bakiye yetersiz: kalan {balance['currency']} {balance['remaining']:,.2f}, "
+                f"talep {balance['currency']} {amt:,.2f}"
+            )
+        # alt ref aynı fon altında değilse bağla
+        if alt.parent_fund_request_id != fund.id:
+            alt.parent_fund_request_id = fund.id
+            alt.is_funded = True
+
+    if direction == "in" and alt.parent_fund_request_id != fund.id:
+        raise HTTPException(400, "Bu alt referans bu fon havuzuna bağlı değil.")
+
+    td = (transfer_date or _now().strftime("%Y-%m-%d")).strip()
+
+    ft = FundTransfer(
+        id=_uuid(),
+        fund_request_id=fund.id,
+        related_request_id=alt.id,
+        direction=direction,
+        amount=round(amt, 2),
+        vat_rate=vat_pct,
+        currency=fund.fund_currency or "TRY",
+        exchange_rate_try=rate,
+        description=description.strip(),
+        transfer_date=td,
+        created_by=current_user.id,
+        created_at=_now(),
+    )
+    db.add(ft)
+    dir_label = "dağıtım" if direction == "out" else "iade"
+    log_activity(
+        db, alt.id, "fund_transfer",
+        f"Fon {dir_label}: {fund.fund_currency} {amt:,.2f} · {fund.request_no}",
+        user_id=current_user.id,
+    )
+    log_activity(
+        db, fund.id, "fund_transfer",
+        f"{dir_label.capitalize()}: {fund.fund_currency} {amt:,.2f} · {alt.request_no}",
+        user_id=current_user.id,
+    )
+    db.commit()
+    redirect_to = request.headers.get("referer") or f"/requests/{fund.id}"
+    return RedirectResponse(url=redirect_to, status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
 # Yeni Talep Oluştur
 # ---------------------------------------------------------------------------
 
@@ -204,6 +437,23 @@ async def get_customer_contacts(
     if not customer:
         return JSONResponse([])
     return JSONResponse(customer.contacts)
+
+
+@router.get("/api/customer-fund-pools/{customer_id}", name="customer_fund_pools_api")
+async def get_customer_fund_pools(
+    customer_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşteriye ait aktif fon havuzları (form'daki alt referans dropdown'ı için)."""
+    from utils.funds import get_customer_fund_pools as _cfp
+    pools = _cfp(customer_id, db)
+    return JSONResponse([{
+        "id":         p.id,
+        "request_no": p.request_no,
+        "event_name": p.event_name,
+        "currency":   p.fund_currency or "TRY",
+    } for p in pools])
 
 
 @router.get("/new", response_class=HTMLResponse, name="requests_new")
@@ -270,6 +520,7 @@ async def requests_create(
     contact_person_json:  str = Form("{}"),
     is_funded:            str = Form(""),     # checkbox: "on" veya boş
     funding_source:       str = Form(""),
+    parent_fund_request_id: str = Form(""),   # fon havuzu (is_funded=on ise doldurulur)
     action:               str = Form("draft"),  # 'draft' veya 'send'
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -328,6 +579,7 @@ async def requests_create(
         contact_person_json=contact_person_json,
         is_funded=(is_funded == "on"),
         funding_source=funding_source.strip(),
+        parent_fund_request_id=parent_fund_request_id or None,
         team_id=_team_id,
         created_by=current_user.id,
         created_at=_now(),
@@ -366,6 +618,44 @@ async def requests_detail(
     if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         if req.team_id != current_user.team_id:
             raise HTTPException(403, "Bu referans takımınıza ait değil.")
+
+    # Fon havuzu referansı → özel detay sayfası
+    if req.is_fund_pool:
+        from models import FundTransfer as _FT
+        from utils.funds import get_fund_balance, get_current_exchange_rate, can_manage_funds
+        balance = get_fund_balance(req, db)
+        # En yeniden eskiye transferler
+        transfers = (db.query(_FT)
+                       .filter(_FT.fund_request_id == req.id)
+                       .order_by(_FT.transfer_date.desc(), _FT.created_at.desc())
+                       .all())
+        # Alt referans isimlerini toplu çek
+        alt_ids = {t.related_request_id for t in transfers}
+        alt_map = {r.id: r for r in db.query(ReqModel).filter(ReqModel.id.in_(alt_ids)).all()} if alt_ids else {}
+        # Bu fona bağlı tüm alt referanslar (transfer olmamış olsa da)
+        alt_refs = (db.query(ReqModel)
+                      .filter(ReqModel.parent_fund_request_id == req.id)
+                      .order_by(ReqModel.created_at.desc())
+                      .all())
+        current_rate = get_current_exchange_rate(req.fund_currency)
+        customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
+                    if req.customer_id else None)
+        return templates.TemplateResponse(
+            "requests/fund_pool_detail.html",
+            {
+                "request":      request,
+                "current_user": current_user,
+                "req":          req,
+                "page_title":   req.request_no,
+                "balance":      balance,
+                "transfers":    transfers,
+                "alt_map":      alt_map,
+                "alt_refs":     alt_refs,
+                "current_rate": current_rate,
+                "can_manage_funds": can_manage_funds(current_user),
+                "customer":     customer,
+            },
+        )
 
     venues      = db.query(Venue).filter(Venue.active == True).all()
     event_types = db.query(EventType).order_by(EventType.sort_order).all()
@@ -595,6 +885,31 @@ async def requests_detail(
     invoice_ciro = round(invoice_ciro + _undoc_gelir - _undoc_gider, 2)
     invoice_kar  = round(invoice_kar  + _undoc_gelir - _undoc_gider, 2)
 
+    # Fon transferleri → ciroya dahil et (KDV hariç TRY karşılığı)
+    # out = fondan ref'e (gelir ekler), in = ref'ten fona (gelir çıkarır)
+    from models import FundTransfer as _FT
+    fund_transfers = (db.query(_FT)
+                        .filter(_FT.related_request_id == req.id)
+                        .order_by(_FT.transfer_date.desc(), _FT.created_at.desc())
+                        .all())
+    fund_in_total  = 0.0   # out direction — ref'e giren (gelir)
+    fund_out_total = 0.0   # in direction — ref'ten çıkan (iade)
+    for t in fund_transfers:
+        # TRY cinsinden, KDV hariç
+        v = t.amount_try_excl_vat
+        if t.direction == "out":
+            fund_in_total += v
+        elif t.direction == "in":
+            fund_out_total += v
+    fund_net_ciro = round(fund_in_total - fund_out_total, 2)
+    invoice_ciro  = round(invoice_ciro + fund_net_ciro, 2)
+    invoice_kar   = round(invoice_kar  + fund_net_ciro, 2)
+
+    # Fon havuzu referansı bilgisi (alt referansın bağlı olduğu)
+    parent_fund = None
+    if req.parent_fund_request_id:
+        parent_fund = db.query(ReqModel).filter(ReqModel.id == req.parent_fund_request_id).first()
+
     confirmed_budget = None
     for b in req.budgets:
         if b.id == req.confirmed_budget_id:
@@ -769,6 +1084,13 @@ async def requests_detail(
             "undocumented_entries":   undocumented_entries,
             "undoc_gelir_total":      undoc_gelir_total,
             "undoc_gider_total":      undoc_gider_total,
+            # Fon transferleri (alt referans görünümü)
+            "fund_transfers":         fund_transfers,
+            "fund_in_total":          round(fund_in_total, 2),
+            "fund_out_total":         round(fund_out_total, 2),
+            "fund_net_ciro":          fund_net_ciro,
+            "parent_fund":            parent_fund,
+            "can_manage_funds":       (lambda u: u.role in ("admin", "muhasebe_muduru") or u.is_gm)(current_user),
             "today":                  today,
             # Kütüphane
             "timeline":               timeline,
@@ -851,6 +1173,7 @@ async def requests_update(
     contact_person_json:  str = Form("{}"),
     is_funded:            str = Form(""),
     funding_source:       str = Form(""),
+    parent_fund_request_id: str = Form(""),
     action:               str = Form("draft"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -895,6 +1218,7 @@ async def requests_update(
     req.contact_person_json   = contact_person_json
     req.is_funded             = (is_funded == "on")
     req.funding_source        = funding_source.strip()
+    req.parent_fund_request_id = parent_fund_request_id or None
     req.updated_at            = _now()
 
     went_pending = False

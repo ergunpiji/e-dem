@@ -61,6 +61,7 @@ REQUEST_STATUSES = [
     {"value": "closed",            "label": "Kapatıldı",                 "color": "dark"},
     {"value": "cancelled",         "label": "İptal Edildi",              "color": "danger"},
     {"value": "postponed",         "label": "Ertelendi",                 "color": "secondary"},
+    {"value": "fund_pool",         "label": "Fon Havuzu",                "color": "teal"},
 ]
 
 REQUEST_STATUS_COLORS = {s["value"]: s["color"] for s in REQUEST_STATUSES}
@@ -551,6 +552,12 @@ class Request(Base):
     revision_count        = Column(Integer, default=0)
     is_funded             = Column(Boolean, default=False, nullable=False)   # fon/sponsor destekli mi
     funding_source        = Column(String(255), default="")                   # fon kaynağı (opsiyonel serbest metin)
+    # Fon havuzu alanları (sadece is_fund_pool=True ise anlamlı)
+    is_fund_pool              = Column(Boolean, default=False, nullable=False)
+    parent_fund_request_id    = Column(String(36), ForeignKey("requests.id"), nullable=True)
+    fund_currency             = Column(String(3), default="TRY")
+    fund_initial_amount       = Column(Float, default=0.0)                    # KDV dahil
+    fund_initial_vat_rate     = Column(Float, default=20.0)                   # yüzde
     team_id          = Column(String(36), ForeignKey("teams.id"), nullable=True)
     created_by       = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at       = Column(DateTime, default=_now, nullable=False)
@@ -682,6 +689,63 @@ class Request(Base):
             "created_at":       self.created_at.isoformat() if self.created_at else None,
             "updated_at":       self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class FundTransfer(Base):
+    """Fon havuzundan alt referansa yapılan iki yönlü transfer.
+
+    direction:
+      "out" → Fon havuzundan alt referansa (normal dağıtım, ref'in ciro'suna eklenir)
+      "in"  → Alt referanstan fon havuzuna (iade, ref'in ciro'sundan düşer)
+
+    Tutar KDV dahil ve fon currency cinsinden saklanır.
+    """
+    __tablename__ = "fund_transfers"
+
+    id                 = Column(String(36), primary_key=True, default=_uuid)
+    fund_request_id    = Column(String(36), ForeignKey("requests.id"), nullable=False)
+    related_request_id = Column(String(36), ForeignKey("requests.id"), nullable=False)
+    direction          = Column(String(10), nullable=False)   # "out" | "in"
+    amount             = Column(Float, nullable=False)        # KDV dahil
+    vat_rate           = Column(Float, default=20.0)          # yüzde
+    currency           = Column(String(3), default="TRY")
+    exchange_rate_try  = Column(Float, default=1.0)           # transfer anındaki TRY kuru
+    description        = Column(Text, default="")
+    transfer_date      = Column(String(10), nullable=False)   # YYYY-MM-DD
+    created_by         = Column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at         = Column(DateTime, default=_now, nullable=False)
+
+    fund_request    = relationship("Request", foreign_keys=[fund_request_id])
+    related_request = relationship("Request", foreign_keys=[related_request_id])
+    creator         = relationship("User", foreign_keys=[created_by])
+
+    @property
+    def amount_excl_vat(self) -> float:
+        try:
+            if self.vat_rate:
+                return round(float(self.amount) / (1.0 + float(self.vat_rate) / 100.0), 2)
+            return round(float(self.amount), 2)
+        except Exception:
+            return 0.0
+
+    @property
+    def amount_vat(self) -> float:
+        return round(float(self.amount) - self.amount_excl_vat, 2)
+
+    @property
+    def amount_try(self) -> float:
+        """TRY karşılığı (raporlar için)."""
+        try:
+            return round(float(self.amount) * float(self.exchange_rate_try or 1.0), 2)
+        except Exception:
+            return 0.0
+
+    @property
+    def amount_try_excl_vat(self) -> float:
+        try:
+            return round(self.amount_excl_vat * float(self.exchange_rate_try or 1.0), 2)
+        except Exception:
+            return 0.0
 
 
 class Budget(Base):
