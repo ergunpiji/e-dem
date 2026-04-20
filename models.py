@@ -1094,8 +1094,11 @@ class Invoice(Base):
     document_path    = Column(String(500), nullable=True)   # disk path (relative)
     document_name    = Column(String(255), nullable=True)   # orijinal dosya adı
     status           = Column(String(20), default="pending") # pending|mudur_approved|gm_approved|approved|rejected|cancelled
-    payment_status   = Column(String(20), default="unpaid")  # unpaid|paid|partial
-    paid_at          = Column(String(10), nullable=True)      # YYYY-MM-DD
+    payment_status   = Column(String(20), default="unpaid")   # unpaid|paid|partial
+    paid_at          = Column(String(10), nullable=True)       # YYYY-MM-DD (son ödeme tarihi)
+    paid_amount      = Column(Float, default=0.0)              # birikimli ödenen tutar
+    payment_method   = Column(String(20), default="banka")     # banka|kredi_karti|cek
+    cc_due_date      = Column(String(10), nullable=True)       # kredi kartı son ödeme tarihi (YYYY-MM-DD)
     rejection_note       = Column(String(300), default="")
     approved_by          = Column(String(36), ForeignKey("users.id"), nullable=True)
     approved_at          = Column(DateTime, nullable=True)

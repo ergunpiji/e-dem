@@ -147,18 +147,38 @@
           {% if w.outgoing %}
           <div class="cf-label mb-2 {% if w.incoming %}mt-3{% endif %}">Borçlar (Gider)</div>
           {% for inv in w.outgoing %}
+          {% set _remaining = [(inv.total_amount or 0) - (inv.paid_amount or 0), 0] | max %}
           <div class="cf-row d-flex justify-content-between align-items-center py-1 border-bottom">
             <div>
               <a href="/vendors/{{ inv.vendor.id }}" class="fw-semibold text-decoration-none"
                  style="color:#dc2626;">
                 {{ inv.vendor.name if inv.vendor else inv.vendor_name or '—' }}
               </a>
+              {% if inv.payment_method == 'kredi_karti' %}
+              <span class="badge bg-primary ms-1" style="font-size:10px;">KK</span>
+              {% elif inv.payment_method == 'cek' %}
+              <span class="badge bg-secondary ms-1" style="font-size:10px;">Çek</span>
+              {% endif %}
+              {% if inv.payment_status == 'partial' %}
+              <span class="badge ms-1" style="background:#fef9c3;color:#a16207;font-size:10px;">Kısmi</span>
+              {% endif %}
               {% if inv.request %}
               <span class="text-muted ms-1" style="font-size:11px;">{{ inv.request.request_no }}</span>
               {% endif %}
-              <div class="text-muted" style="font-size:11px;">Vade: {{ inv.due_date }}</div>
+              <div class="text-muted" style="font-size:11px;">
+                {% if inv.payment_method == 'kredi_karti' and inv.cc_due_date %}
+                Kart son ödeme: {{ inv.cc_due_date }}
+                {% else %}
+                Vade: {{ inv.due_date }}
+                {% endif %}
+              </div>
             </div>
-            <span style="color:#dc2626;font-weight:600;">₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}</span>
+            <div class="text-end">
+              <span style="color:#dc2626;font-weight:600;">-₺{{ '{:,.0f}'.format(_remaining) }}</span>
+              {% if inv.payment_status == 'partial' %}
+              <div style="font-size:10px;color:#64748b;">toplam ₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}</div>
+              {% endif %}
+            </div>
           </div>
           {% endfor %}
           {% endif %}

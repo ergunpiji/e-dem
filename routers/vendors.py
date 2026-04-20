@@ -315,20 +315,46 @@ async def vendors_delete(
 
 @router.post("/{vendor_id}/invoices/{invoice_id}/mark-paid", name="vendors_mark_paid")
 async def vendors_mark_paid(
-    vendor_id:  str,
-    invoice_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-    payment_status: str = Form("paid"),   # paid | partial
-    paid_at:        str = Form(""),
+    vendor_id:      str,
+    invoice_id:     str,
+    current_user:   User = Depends(get_current_user),
+    db:             Session = Depends(get_db),
+    payment_status: str   = Form("paid"),   # paid | partial
+    paid_at:        str   = Form(""),
+    paid_amount:    str   = Form(""),       # kısmi ödeme tutarı
+    payment_method: str   = Form("banka"),  # banka | kredi_karti | cek
+    cc_due_date:    str   = Form(""),       # kredi kartı son ödeme tarihi
 ):
     _require_finance(current_user)
     inv = db.query(Invoice).filter(Invoice.id == invoice_id, Invoice.vendor_id == vendor_id).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Fatura bulunamadı.")
-    inv.payment_status = payment_status
+
+    inv.payment_method = payment_method
     inv.paid_at        = paid_at or date.today().isoformat()
     inv.updated_at     = _now()
+
+    if payment_status == "partial" and paid_amount:
+        try:
+            amt = float(paid_amount)
+            inv.paid_amount = round((inv.paid_amount or 0.0) + amt, 2)
+            # Tam ödendiyse otomatik "paid" yap
+            if inv.paid_amount >= (inv.total_amount or 0.0):
+                inv.payment_status = "paid"
+            else:
+                inv.payment_status = "partial"
+        except (ValueError, TypeError):
+            inv.payment_status = "partial"
+    else:
+        inv.payment_status = "paid"
+        inv.paid_amount    = inv.total_amount or 0.0
+
+    # Kredi kartı son ödeme tarihi — nakit akışında kullanılır
+    if payment_method == "kredi_karti" and cc_due_date:
+        inv.cc_due_date = cc_due_date
+    else:
+        inv.cc_due_date = None
+
     db.commit()
     return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=303)
 
@@ -351,25 +377,50 @@ async def cash_flow(
     end_str  = end_date.isoformat()
     today_str = today.isoformat()
 
-    # Vadesi gelen ödenmemiş faturalar (gider) — sadece approved
-    outgoing = (
+    def _effective_date(inv: Invoice) -> str | None:
+        """Nakit çıkışının gerçekleşeceği tarih.
+        Kredi kartıyla ödendi ve cc_due_date varsa o kullanılır,
+        aksi hâlde invoice'ın due_date'i."""
+        if inv.payment_method == "kredi_karti" and inv.cc_due_date:
+            return inv.cc_due_date
+        return inv.due_date
+
+    def _remaining(inv: Invoice) -> float:
+        """Faturanın henüz ödenmemiş tutarı."""
+        return round(max(0.0, (inv.total_amount or 0.0) - (inv.paid_amount or 0.0)), 2)
+
+    # Ödenmemiş/kısmi gider faturaları — approved
+    outgoing_raw = (
         db.query(Invoice)
         .filter(
-            Invoice.payment_status == "unpaid",
+            Invoice.payment_status.in_(["unpaid", "partial"]),
             Invoice.status == "approved",
             Invoice.due_date != None,
-            Invoice.due_date >= today_str,
-            Invoice.due_date <= end_str,
         )
         .order_by(Invoice.due_date)
         .all()
     )
+    # Kredi kartıyla ödendi ama kart borcu henüz ödenmedi → cc_due_date aralıkta olabilir
+    cc_paid_raw = (
+        db.query(Invoice)
+        .filter(
+            Invoice.payment_status == "paid",
+            Invoice.payment_method == "kredi_karti",
+            Invoice.cc_due_date != None,
+            Invoice.cc_due_date >= today_str,
+            Invoice.cc_due_date <= end_str,
+        )
+        .all()
+    )
+    outgoing = [i for i in outgoing_raw
+                if today_str <= (_effective_date(i) or "") <= end_str]
+    outgoing += cc_paid_raw
 
-    # Vadesi gelen ödenmemiş müşteri faturaları (gelir, kesilen tip) — sadece approved
+    # Ödenmemiş müşteri faturaları (alacak) — approved, kesilen tip
     incoming = (
         db.query(Invoice)
         .filter(
-            Invoice.payment_status == "unpaid",
+            Invoice.payment_status.in_(["unpaid", "partial"]),
             Invoice.status == "approved",
             Invoice.invoice_type == "kesilen",
             Invoice.due_date != None,
@@ -388,8 +439,8 @@ async def cash_flow(
         ws_str = week_start.isoformat()
         we_str = week_end.isoformat()
 
-        w_out = [i for i in outgoing  if ws_str <= (i.due_date or "") <= we_str]
-        w_in  = [i for i in incoming  if ws_str <= (i.due_date or "") <= we_str]
+        w_out = [i for i in outgoing if ws_str <= (_effective_date(i) or "") <= we_str]
+        w_in  = [i for i in incoming if ws_str <= (i.due_date or "") <= we_str]
 
         weeks_data.append({
             "label":       f"Hafta {w+1}",
@@ -397,15 +448,15 @@ async def cash_flow(
             "end":         week_end.strftime("%d.%m"),
             "outgoing":    w_out,
             "incoming":    w_in,
-            "total_out":   round(sum(i.total_amount or 0 for i in w_out), 2),
-            "total_in":    round(sum(i.total_amount or 0 for i in w_in),  2),
+            "total_out":   round(sum(_remaining(i) for i in w_out), 2),
+            "total_in":    round(sum(_remaining(i) for i in w_in),  2),
         })
 
     # Vadesi geçmiş (overdue)
     overdue = (
         db.query(Invoice)
         .filter(
-            Invoice.payment_status == "unpaid",
+            Invoice.payment_status.in_(["unpaid", "partial"]),
             Invoice.status == "approved",
             Invoice.due_date != None,
             Invoice.due_date < today_str,

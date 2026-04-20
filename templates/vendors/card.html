@@ -136,10 +136,22 @@
                 <span class="text-muted" style="font-size:12px;">—</span>
                 {% endif %}
               </td>
-              <td class="text-end fw-semibold">₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}</td>
+              <td class="text-end fw-semibold">
+                ₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}
+                {% if inv.payment_status == 'partial' and inv.paid_amount %}
+                <div style="font-size:11px;color:#a16207;">
+                  Kalan: ₺{{ '{:,.0f}'.format((inv.total_amount or 0) - (inv.paid_amount or 0)) }}
+                </div>
+                {% endif %}
+              </td>
               <td>
                 {% if inv.payment_status == 'paid' %}
                 <span class="badge" style="background:#dcfce7;color:#16a34a;">Ödendi</span>
+                {% if inv.payment_method == 'kredi_karti' %}
+                <span class="badge bg-primary ms-1" style="font-size:10px;">KK</span>
+                {% elif inv.payment_method == 'cek' %}
+                <span class="badge bg-secondary ms-1" style="font-size:10px;">Çek</span>
+                {% endif %}
                 {% elif inv.payment_status == 'partial' %}
                 <span class="badge" style="background:#fef9c3;color:#a16207;">Kısmi</span>
                 {% else %}
@@ -150,7 +162,7 @@
               <td>
                 {% if inv.payment_status != 'paid' %}
                 <button type="button" class="btn btn-sm btn-outline-success"
-                        onclick="openMarkPaid('{{ inv.id }}', '{{ vendor.id }}', '{{ inv.invoice_no or inv.id[:8] }}')">
+                        onclick="openMarkPaid('{{ inv.id }}', '{{ vendor.id }}', '{{ inv.invoice_no or inv.id[:8] }}', {{ inv.total_amount or 0 }}, {{ inv.paid_amount or 0 }})">
                   <i class="bi bi-check2"></i>
                 </button>
                 {% endif %}
@@ -175,26 +187,59 @@
 {# Mark Paid Modal #}
 {% if can_edit %}
 <div class="modal fade" id="markPaidModal" tabindex="-1">
-  <div class="modal-dialog modal-sm">
+  <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header py-2">
-        <h6 class="modal-title fw-semibold">Ödeme İşaretle</h6>
+        <h6 class="modal-title fw-semibold">Ödeme Kaydet</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" id="markPaidForm">
         <div class="modal-body">
-          <p class="text-muted mb-3" style="font-size:13px;">Fatura: <strong id="markPaidInvNo"></strong></p>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Ödeme Durumu</label>
-            <select name="payment_status" class="form-select form-select-sm">
-              <option value="paid">Tam Ödendi</option>
-              <option value="partial">Kısmi Ödeme</option>
-            </select>
+          <p class="text-muted mb-1" style="font-size:13px;">Fatura: <strong id="markPaidInvNo"></strong></p>
+          <p class="mb-3" style="font-size:12px;">
+            Toplam: <strong id="markPaidTotal"></strong>
+            &nbsp;|&nbsp; Kalan: <strong id="markPaidRemaining" style="color:#dc2626;"></strong>
+          </p>
+
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:12px;">Ödeme Türü</label>
+              <select name="payment_status" id="mpPaymentStatus" class="form-select form-select-sm"
+                      onchange="onMpStatusChange()">
+                <option value="paid">Tam Ödendi</option>
+                <option value="partial">Kısmi Ödeme</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:12px;">Ödeme Yöntemi</label>
+              <select name="payment_method" id="mpMethod" class="form-select form-select-sm"
+                      onchange="onMpMethodChange()">
+                <option value="banka">Banka Havalesi</option>
+                <option value="kredi_karti">Kredi Kartı</option>
+                <option value="cek">Çek</option>
+              </select>
+            </div>
           </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Ödeme Tarihi</label>
-            <input type="date" name="paid_at" class="form-control form-control-sm"
-                   value="{{ today_str }}">
+
+          <div id="mpPartialBox" style="display:none;" class="mb-2">
+            <label class="form-label fw-semibold" style="font-size:12px;">Ödenen Tutar (₺)</label>
+            <input type="number" name="paid_amount" id="mpAmount" class="form-control form-control-sm"
+                   step="0.01" min="0" placeholder="0.00">
+          </div>
+
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label fw-semibold" style="font-size:12px;">Ödeme Tarihi</label>
+              <input type="date" name="paid_at" class="form-control form-control-sm"
+                     value="{{ today_str }}">
+            </div>
+            <div class="col-6" id="mpCcBox" style="display:none;">
+              <label class="form-label fw-semibold" style="font-size:12px;">Kart Son Ödeme Tarihi</label>
+              <input type="date" name="cc_due_date" id="mpCcDueDate" class="form-control form-control-sm">
+            </div>
+          </div>
+          <div id="mpCcNote" style="display:none;font-size:11px;color:#2563eb;" class="mt-1">
+            <i class="bi bi-info-circle me-1"></i>Nakit akışı, kart son ödeme tarihine göre hesaplanacak.
           </div>
         </div>
         <div class="modal-footer py-2">
@@ -209,10 +254,31 @@
 </div>
 
 <script>
-function openMarkPaid(invoiceId, vendorId, invNo) {
+function openMarkPaid(invoiceId, vendorId, invNo, totalAmount, paidAmount) {
+  const remaining = totalAmount - paidAmount;
   document.getElementById('markPaidInvNo').textContent = invNo;
+  document.getElementById('markPaidTotal').textContent = '₺' + totalAmount.toLocaleString('tr-TR', {maximumFractionDigits:0});
+  document.getElementById('markPaidRemaining').textContent = '₺' + remaining.toLocaleString('tr-TR', {maximumFractionDigits:0});
   document.getElementById('markPaidForm').action = '/vendors/' + vendorId + '/invoices/' + invoiceId + '/mark-paid';
+  document.getElementById('mpAmount').value = '';
+  document.getElementById('mpAmount').max = remaining;
+  document.getElementById('mpPaymentStatus').value = 'paid';
+  document.getElementById('mpMethod').value = 'banka';
+  onMpStatusChange();
+  onMpMethodChange();
   new bootstrap.Modal(document.getElementById('markPaidModal')).show();
+}
+
+function onMpStatusChange() {
+  const isPart = document.getElementById('mpPaymentStatus').value === 'partial';
+  document.getElementById('mpPartialBox').style.display = isPart ? '' : 'none';
+  if (isPart) document.getElementById('mpAmount').focus();
+}
+
+function onMpMethodChange() {
+  const isCC = document.getElementById('mpMethod').value === 'kredi_karti';
+  document.getElementById('mpCcBox').style.display  = isCC ? '' : 'none';
+  document.getElementById('mpCcNote').style.display = isCC ? '' : 'none';
 }
 </script>
 {% endif %}

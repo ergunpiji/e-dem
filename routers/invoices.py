@@ -5,7 +5,7 @@ Erişim: admin, muhasebe_muduru, muhasebe
 import json
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, date as _date, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -410,13 +410,28 @@ async def invoices_create(
     if req:
         _initial_approver_id = req.created_by
 
+    # due_date otomatik hesaplama: boşsa invoice_date + payment_term
+    _due_date = due_date or None
+    if not _due_date and invoice_date:
+        try:
+            _pt = int(vendor_payment_term or 60)
+            # Mevcut vendor'un payment_term'i öncelikli
+            if vendor_id.strip():
+                _fv = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id.strip()).first()
+                if _fv and _fv.payment_term:
+                    _pt = _fv.payment_term
+            _base = _date.fromisoformat(invoice_date)
+            _due_date = (_base + timedelta(days=_pt)).isoformat()
+        except Exception:
+            pass
+
     inv = Invoice(
         id                  = _uuid(),
         request_id          = req_id or None,
         invoice_type        = invoice_type,
         invoice_no          = invoice_no.strip(),
         invoice_date        = invoice_date or None,
-        due_date            = due_date or None,
+        due_date            = _due_date,
         vendor_id           = vendor_id.strip() or None,
         vendor_name         = vendor_name.strip(),
         description         = description.strip(),
