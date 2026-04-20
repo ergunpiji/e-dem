@@ -15,7 +15,7 @@
       Tutar <strong>KDV dahil</strong> girilmelidir.
     </p>
 
-    <form method="post" action="/requests/fund-pools/new">
+    <form method="post" action="/requests/fund-pools/new" enctype="multipart/form-data">
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label fw-semibold" style="font-size:13px;">Müşteri <span class="text-danger">*</span></label>
@@ -42,7 +42,7 @@
           </select>
         </div>
 
-        <div class="col-md-5">
+        <div class="col-md-3">
           <label class="form-label fw-semibold" style="font-size:13px;">
             Başlangıç Tutarı <span class="text-muted fw-normal" style="font-size:11px;">(KDV dahil)</span>
             <span class="text-danger">*</span>
@@ -66,6 +66,24 @@
         <div class="col-md-2">
           <label class="form-label fw-semibold" style="font-size:13px;">Yıl</label>
           <input type="number" name="fund_year" class="form-control" min="2020" max="2099" placeholder="2026">
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label fw-semibold" style="font-size:13px;">Fatura No</label>
+          <input type="text" name="invoice_no" class="form-control" placeholder="2026/12345">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Fatura Tarihi</label>
+          <input type="date" name="invoice_date" class="form-control">
+        </div>
+
+        <div class="col-md-9">
+          <label class="form-label fw-semibold" style="font-size:13px;">
+            Fatura Belgesi <span class="text-muted fw-normal" style="font-size:11px;">(PDF / JPG / PNG · max 10 MB)</span>
+          </label>
+          <input type="file" name="document" class="form-control"
+                 accept=".pdf,.jpg,.jpeg,.png,.gif,.webp">
         </div>
 
         <div class="col-12 mt-4 d-flex gap-2">

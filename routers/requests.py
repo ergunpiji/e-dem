@@ -12,7 +12,7 @@ import unicodedata
 import urllib.parse
 from datetime import date
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -238,12 +238,16 @@ async def fund_pool_create(
     initial_amount:  str = Form("0"),
     vat_rate:        str = Form("20"),
     fund_year:       str = Form(""),
+    invoice_no:      str = Form(""),
+    invoice_date:    str = Form(""),
+    document:        UploadFile = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _check_fund_admin(current_user)
     from models import Invoice
     from utils.funds import get_current_exchange_rate
+    from routers.invoices import _save_document
 
     cust = db.query(Customer).filter(Customer.id == customer_id).first()
     if not cust:
@@ -309,12 +313,13 @@ async def fund_pool_create(
     # Muhasebe kaydı — ana fatura (kesilen)
     amount_excl = round(amount_incl / (1 + vat_pct / 100.0), 2) if vat_pct else amount_incl
     vat_amount  = round(amount_incl - amount_excl, 2)
+    inv_id = _uuid()
     inv = Invoice(
-        id=_uuid(),
+        id=inv_id,
         request_id=fund_req.id,
         invoice_type="kesilen",
-        invoice_no="",
-        invoice_date=check_in_str,
+        invoice_no=invoice_no.strip(),
+        invoice_date=(invoice_date or check_in_str),
         vendor_name=cust.name,
         description=f"Fon havuzu kurulum faturası — {fund_name.strip()}",
         amount=amount_excl,
@@ -326,6 +331,16 @@ async def fund_pool_create(
         created_at=_now(),
         updated_at=_now(),
     )
+    # Belge yükleme — opsiyonel
+    if document and getattr(document, "filename", ""):
+        try:
+            doc_path, doc_name = _save_document(document, inv_id)
+            inv.document_path = doc_path
+            inv.document_name = doc_name
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # belge yüklemede hata fonun kurulumunu engellemez
     db.add(inv)
     log_activity(
         db, fund_req.id, "fund_pool_created",
@@ -621,7 +636,7 @@ async def requests_detail(
 
     # Fon havuzu referansı → özel detay sayfası
     if req.is_fund_pool:
-        from models import FundTransfer as _FT
+        from models import FundTransfer as _FT, Invoice as _Inv
         from utils.funds import get_fund_balance, get_current_exchange_rate, can_manage_funds
         balance = get_fund_balance(req, db)
         # En yeniden eskiye transferler
@@ -629,6 +644,11 @@ async def requests_detail(
                        .filter(_FT.fund_request_id == req.id)
                        .order_by(_FT.transfer_date.desc(), _FT.created_at.desc())
                        .all())
+        # Kurulum faturası (en eski "kesilen" fatura — havuz açılışı)
+        initial_invoice = (db.query(_Inv)
+                             .filter(_Inv.request_id == req.id, _Inv.invoice_type == "kesilen")
+                             .order_by(_Inv.created_at.asc())
+                             .first())
         # Alt referans isimlerini toplu çek
         alt_ids = {t.related_request_id for t in transfers}
         alt_map = {r.id: r for r in db.query(ReqModel).filter(ReqModel.id.in_(alt_ids)).all()} if alt_ids else {}
@@ -669,6 +689,7 @@ async def requests_detail(
                 "current_rate": current_rate,
                 "can_manage_funds": can_manage_funds(current_user),
                 "customer":     customer,
+                "initial_invoice": initial_invoice,
             },
         )
 

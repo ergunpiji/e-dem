@@ -94,21 +94,20 @@
   </div>
 </div>
 
-{# ── TRANSFER TABLOSU ── #}
+{# ── İŞLEM TABLOSU (kurulum faturası + transferler) ── #}
 <div class="card mb-4">
   <div class="card-body p-0">
     <div class="d-flex align-items-center justify-content-between px-4 pt-3 pb-2">
-      <h6 class="mb-0 fw-bold"><i class="bi bi-list-ul text-primary me-2"></i>Transfer Geçmişi</h6>
-      <span class="badge bg-secondary">{{ transfers|length }}</span>
+      <h6 class="mb-0 fw-bold"><i class="bi bi-list-ul text-primary me-2"></i>Hesap Hareketleri</h6>
+      <span class="badge bg-secondary">{{ (transfers|length) + (1 if initial_invoice else 0) }}</span>
     </div>
-    {% if transfers %}
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead class="table-light">
           <tr>
             <th class="ps-4">Tarih</th>
-            <th>Yön</th>
-            <th>Alt Referans</th>
+            <th>İşlem</th>
+            <th>Alt Referans / Belge</th>
             <th class="text-end">Tutar (KDV dahil)</th>
             <th class="text-end">KDV hariç</th>
             <th class="text-end pe-4">TRY karşılığı</th>
@@ -116,6 +115,7 @@
           </tr>
         </thead>
         <tbody>
+          {# Transferler (en yeni en üstte) #}
           {% for t in transfers %}
           {% set alt = alt_map.get(t.related_request_id) %}
           <tr class="{% if t.direction == 'out' %}transfer-row-out{% else %}transfer-row-in{% endif %}">
@@ -148,15 +148,51 @@
             <td class="text-muted" style="font-size:11px;">{{ t.description or '—' }}</td>
           </tr>
           {% endfor %}
+
+          {# Kurulum faturası — en altta (ilk işlem) #}
+          {% if initial_invoice %}
+          <tr style="background: #f0fdf4; border-top: 2px solid #86efac;">
+            <td class="ps-4" style="font-size:12px; white-space:nowrap;">
+              {{ initial_invoice.invoice_date or '—' }}
+            </td>
+            <td>
+              <span class="badge bg-success bg-opacity-15 text-success" style="font-size:11px;">
+                <i class="bi bi-receipt-cutoff me-1"></i>Kurulum Faturası
+              </span>
+            </td>
+            <td style="font-size:12px;">
+              {% if initial_invoice.invoice_no %}
+              <span class="fw-semibold text-muted">No: {{ initial_invoice.invoice_no }}</span><br>
+              {% endif %}
+              {% if initial_invoice.document_path %}
+              <a href="/static/{{ initial_invoice.document_path }}" target="_blank"
+                 class="btn btn-xs btn-outline-success py-0 px-2" style="font-size:11px;">
+                <i class="bi bi-file-earmark-text me-1"></i>{{ initial_invoice.document_name or 'Belge' }}
+              </a>
+              {% else %}
+              <span class="text-muted" style="font-size:11px;">Belge yok</span>
+              {% endif %}
+            </td>
+            <td class="text-end fw-bold" style="font-size:13px; color:#16a34a;">
+              {{ sym }}{{ '{:,.2f}'.format(initial_invoice.total_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td class="text-end" style="font-size:12px; color:#64748b;">
+              {{ sym }}{{ '{:,.2f}'.format(initial_invoice.amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td class="text-end pe-4 text-muted" style="font-size:12px;">—</td>
+            <td class="text-muted" style="font-size:11px;">{{ initial_invoice.description or 'Havuz açılış faturası' }}</td>
+          </tr>
+          {% endif %}
+
+          {% if not transfers and not initial_invoice %}
+          <tr><td colspan="7" class="text-center py-4 text-muted" style="font-size:13px;">
+            <i class="bi bi-inbox" style="font-size:2rem; opacity:.3;"></i>
+            <div class="mt-2">Henüz işlem yok.</div>
+          </td></tr>
+          {% endif %}
         </tbody>
       </table>
     </div>
-    {% else %}
-    <div class="text-center py-5 text-muted">
-      <i class="bi bi-inbox" style="font-size:2.5rem; opacity:.3;"></i>
-      <p class="mt-2 mb-0" style="font-size:13px;">Henüz transfer yapılmadı.</p>
-    </div>
-    {% endif %}
   </div>
 </div>
 
