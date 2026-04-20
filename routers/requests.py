@@ -684,6 +684,14 @@ async def requests_detail(
                              .filter(_Inv.request_id == req.id, _Inv.invoice_type == "kesilen")
                              .order_by(_Inv.created_at.asc())
                              .first())
+        # Vendor fund pool: bölme yoluyla gelen child gelen faturalar
+        incoming_invoices = []
+        if req.fund_pool_type == "vendor":
+            incoming_invoices = (db.query(_Inv)
+                                   .filter(_Inv.request_id == req.id,
+                                           _Inv.parent_invoice_id.isnot(None))
+                                   .order_by(_Inv.invoice_date.desc(), _Inv.created_at.desc())
+                                   .all())
         # Alt referans isimlerini toplu çek
         alt_ids = {t.related_request_id for t in transfers}
         alt_map = {r.id: r for r in db.query(ReqModel).filter(ReqModel.id.in_(alt_ids)).all()} if alt_ids else {}
@@ -692,20 +700,18 @@ async def requests_detail(
                       .filter(ReqModel.parent_fund_request_id == req.id)
                       .order_by(ReqModel.created_at.desc())
                       .all())
-        # Transfer modalı için: aynı müşteriye ait tüm aktif referanslar (fon değil + iptal/kapalı değil)
-        # Transfer sırasında alt ref otomatik bu fona bağlanır (route içinde).
+        # Transfer modalı için aktif referans listesi:
+        # - Customer pool → aynı müşteriye ait aktif refler
+        # - Vendor pool  → TÜM aktif refler (vendor fonu herhangi bir referansa pay edilebilir)
         eligible_alt_refs = []
-        if req.customer_id:
-            eligible_alt_refs = (
-                db.query(ReqModel)
-                  .filter(
-                      ReqModel.customer_id == req.customer_id,
-                      ReqModel.is_fund_pool == False,                # noqa: E712
-                      ReqModel.status.notin_(["draft", "cancelled", "closed"]),
-                  )
-                  .order_by(ReqModel.created_at.desc())
-                  .all()
-            )
+        _base_q = (db.query(ReqModel)
+                     .filter(ReqModel.is_fund_pool == False,            # noqa: E712
+                             ReqModel.status.notin_(["draft", "cancelled", "closed"])))
+        if req.fund_pool_type == "vendor":
+            eligible_alt_refs = _base_q.order_by(ReqModel.created_at.desc()).all()
+        elif req.customer_id:
+            eligible_alt_refs = (_base_q.filter(ReqModel.customer_id == req.customer_id)
+                                       .order_by(ReqModel.created_at.desc()).all())
         current_rate = get_current_exchange_rate(req.fund_currency)
         customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
                     if req.customer_id else None)
@@ -725,6 +731,7 @@ async def requests_detail(
                 "can_manage_funds": can_manage_funds(current_user),
                 "customer":     customer,
                 "initial_invoice": initial_invoice,
+                "incoming_invoices": incoming_invoices,
             },
         )
 

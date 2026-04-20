@@ -153,7 +153,31 @@
           </tr>
           {% endfor %}
 
-          {# Kurulum faturası — en altta (ilk işlem) #}
+          {# Vendor pool: bölme yoluyla gelen child gelen faturalar #}
+          {% for inv in incoming_invoices %}
+          <tr style="background: #ecfdf5;">
+            <td class="ps-4" style="font-size:12px; white-space:nowrap;">{{ inv.invoice_date or '—' }}</td>
+            <td>
+              <span class="badge bg-success bg-opacity-15 text-success" style="font-size:11px;">
+                <i class="bi bi-arrow-down-right me-1"></i>Bölme Geliri
+              </span>
+            </td>
+            <td style="font-size:12px;">
+              {% if inv.invoice_no %}<span class="fw-semibold text-muted">No: {{ inv.invoice_no }}</span><br>{% endif %}
+              <span class="text-muted" style="font-size:11px;">{{ inv.vendor_name or '—' }}</span>
+            </td>
+            <td class="text-end fw-bold" style="font-size:13px; color:#16a34a;">
+              {{ sym }}{{ '{:,.2f}'.format(inv.total_amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td class="text-end" style="font-size:12px; color:#64748b;">
+              {{ sym }}{{ '{:,.2f}'.format(inv.amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td class="text-end pe-4 text-muted" style="font-size:12px;">—</td>
+            <td class="text-muted" style="font-size:11px;">{{ inv.description or 'Bölme kalanı' }}</td>
+          </tr>
+          {% endfor %}
+
+          {# Kurulum faturası (customer pool için) — en altta (ilk işlem) #}
           {% if initial_invoice %}
           <tr style="background: #f0fdf4; border-top: 2px solid #86efac;">
             <td class="ps-4" style="font-size:12px; white-space:nowrap;">
@@ -188,7 +212,7 @@
           </tr>
           {% endif %}
 
-          {% if not transfers and not initial_invoice %}
+          {% if not transfers and not initial_invoice and not incoming_invoices %}
           <tr><td colspan="7" class="text-center py-4 text-muted" style="font-size:13px;">
             <i class="bi bi-inbox" style="font-size:2rem; opacity:.3;"></i>
             <div class="mt-2">Henüz işlem yok.</div>
