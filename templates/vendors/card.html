@@ -149,15 +149,30 @@
               <td>
                 {% if inv.payment_status == 'paid' %}
                 <span class="badge" style="background:#dcfce7;color:#16a34a;">Ödendi</span>
-                {% if inv.payment_method == 'kredi_karti' %}
-                <span class="badge bg-primary ms-1" style="font-size:10px;">KK</span>
-                {% elif inv.payment_method == 'cek' %}
-                <span class="badge bg-secondary ms-1" style="font-size:10px;">Çek</span>
-                {% endif %}
                 {% elif inv.payment_status == 'partial' %}
                 <span class="badge" style="background:#fef9c3;color:#a16207;">Kısmi</span>
                 {% else %}
                 <span class="badge" style="background:#fee2e2;color:#dc2626;">Bekliyor</span>
+                {% endif %}
+                {# Ödeme yöntemi #}
+                {% if inv.payment_status in ('paid','partial') and inv.paid_amount %}
+                  {% if inv.payment_method == 'kredi_karti' %}
+                  <span class="badge ms-1" style="background:#ede9fe;color:#6d28d9;font-size:9px;">
+                    <i class="bi bi-credit-card"></i> KK
+                  </span>
+                  {% elif inv.payment_method == 'cek' %}
+                  <span class="badge ms-1" style="background:#f1f5f9;color:#475569;font-size:9px;">
+                    <i class="bi bi-file-text"></i> Çek
+                  </span>
+                  {% elif inv.payment_method == 'on_odeme' %}
+                  <span class="badge ms-1" style="background:#fef9c3;color:#854d0e;font-size:9px;">
+                    <i class="bi bi-arrow-up-circle"></i> Ön Ödeme
+                  </span>
+                  {% else %}
+                  <span class="badge ms-1" style="background:#f0fdf4;color:#166534;font-size:9px;">
+                    <i class="bi bi-bank"></i> Havale
+                  </span>
+                  {% endif %}
                 {% endif %}
               </td>
               {% if can_edit %}

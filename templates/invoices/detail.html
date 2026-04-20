@@ -170,6 +170,37 @@
           <div class="col-4">
             <div class="inv-label">Ödenen</div>
             <div class="inv-value" style="color:#16a34a;">₺{{ '{:,.0f}'.format(inv.paid_amount or 0) }}</div>
+            {# Ödeme yöntemi badge #}
+            {% if inv.paid_amount and inv.paid_amount > 0 %}
+              {% if inv.payment_method == 'kredi_karti' %}
+              <div class="mt-1">
+                <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;background:#ede9fe;color:#6d28d9;font-size:10px;font-weight:600;">
+                  <i class="bi bi-credit-card"></i> Kredi Kartı
+                </span>
+                {% if inv.cc_due_date %}
+                <div style="font-size:10px;color:#7c3aed;margin-top:2px;">Son ödeme: {{ inv.cc_due_date }}</div>
+                {% endif %}
+              </div>
+              {% elif inv.payment_method == 'cek' %}
+              <div class="mt-1">
+                <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;background:#f1f5f9;color:#475569;font-size:10px;font-weight:600;">
+                  <i class="bi bi-file-text"></i> Çek
+                </span>
+              </div>
+              {% elif inv.payment_method == 'on_odeme' %}
+              <div class="mt-1">
+                <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;background:#fef9c3;color:#854d0e;font-size:10px;font-weight:600;">
+                  <i class="bi bi-arrow-up-circle"></i> Ön Ödeme
+                </span>
+              </div>
+              {% else %}
+              <div class="mt-1">
+                <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;background:#f0fdf4;color:#166534;font-size:10px;font-weight:600;">
+                  <i class="bi bi-bank"></i> Banka Havalesi
+                </span>
+              </div>
+              {% endif %}
+            {% endif %}
           </div>
           <div class="col-4">
             <div class="inv-label">Kalan</div>
@@ -177,13 +208,16 @@
             <div class="inv-value {% if remaining > 0 %}text-danger{% endif %}">₺{{ '{:,.0f}'.format(remaining|abs) }}</div>
           </div>
           {% if inv.cc_pending_amount and inv.cc_pending_amount > 0 %}
-          <div class="col-6">
-            <div class="inv-label">KK Taahhüdü</div>
-            <div class="inv-value" style="color:#7c3aed;">₺{{ '{:,.0f}'.format(inv.cc_pending_amount) }}</div>
-          </div>
-          <div class="col-6">
-            <div class="inv-label">KK Son Ödeme</div>
-            <div class="inv-value" style="color:#7c3aed;">{{ inv.cc_due_date or '—' }}</div>
+          <div class="col-12">
+            <div style="background:#f5f3ff;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:12px;">
+              <i class="bi bi-credit-card-2-front" style="color:#7c3aed;font-size:16px;"></i>
+              <div>
+                <span style="color:#6d28d9;font-weight:600;">KK Taahhüdü: ₺{{ '{:,.0f}'.format(inv.cc_pending_amount) }}</span>
+                {% if inv.cc_due_date %}
+                <span class="text-muted ms-2">— Kart son ödeme: {{ inv.cc_due_date }}</span>
+                {% endif %}
+              </div>
+            </div>
           </div>
           {% endif %}
         </div>
