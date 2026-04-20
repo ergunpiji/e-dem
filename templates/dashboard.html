@@ -109,9 +109,8 @@
   <a href="/requests" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-list-ul me-1"></i> Tüm Referanslar
   </a>
-  <a href="/requests?view=awaiting" class="btn btn-outline-warning btn-sm">
-    <i class="bi bi-hourglass-split me-1"></i> Referans Onaylama
-    {% if nc.budgets_pending_all %}<span class="badge bg-warning text-dark ms-1">{{ nc.budgets_pending_all }}</span>{% endif %}
+  <a href="/requests?view=ongoing" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-activity me-1"></i> Aktif Referanslar
   </a>
   <a href="/requests?view=closing" class="btn btn-outline-primary btn-sm">
     <i class="bi bi-folder-check me-1"></i> Kapama Onayında
