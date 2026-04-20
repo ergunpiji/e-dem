@@ -82,8 +82,11 @@ async def requests_list(
     query = db.query(ReqModel)
 
     # ── ADIM 1: Rol bazlı BASE SCOPE — tüm view filtreleri bunun üstüne eklenir ──
+    # GM her zaman tüm referansları görür (takım atanmış olsa bile)
+    if current_user.is_gm:
+        pass  # filtre yok
     # Birim müdürü (takımlı mudur): sadece kendi takımının talepleri
-    if current_user.role == "mudur" and current_user.team_id:
+    elif current_user.role == "mudur" and current_user.team_id:
         query = query.filter(ReqModel.team_id == current_user.team_id)
     elif current_user.role == "yonetici":
         sub_ids = _get_subtree_ids(current_user.id, db)
@@ -584,8 +587,8 @@ async def requests_detail(
     budget_sale_excl = confirmed_budget.grand_sale_excl_vat if confirmed_budget else 0.0
     budget_cost_excl = confirmed_budget.grand_cost_excl_vat if confirmed_budget else 0.0
 
-    can_manage_invoices  = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    can_manage_undoc     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
+    can_manage_invoices  = current_user.role in ("admin", "muhasebe_muduru", "muhasebe") or current_user.is_gm
+    can_manage_undoc     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe") or current_user.is_gm
     # Limit tabanlı zincirleme onay: approver veya hiyerarşik üstü onaylayabilir
     def _above_in_chain(candidate_id: str, subordinate_id: str) -> bool:
         seen: set = set()
@@ -621,7 +624,7 @@ async def requests_detail(
         inv.id for inv in (req.invoices or [])
         if inv.status == "pending" and _can_approve_inv(inv)
     }
-    can_approve_invoices = bool(approvable_invoice_ids) or current_user.role in ("admin", "muhasebe_muduru")
+    can_approve_invoices = bool(approvable_invoice_ids) or current_user.role in ("admin", "muhasebe_muduru") or current_user.is_gm
     # Adım 2 — Muhasebe keser (approved → final)
     can_cut_invoices     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
 

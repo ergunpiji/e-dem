@@ -27,17 +27,12 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 def _require_finance(current_user: User):
-    if current_user.role not in FINANCE_ROLES:
+    if current_user.role not in FINANCE_ROLES and not current_user.is_gm:
         raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
 
 
 def _is_gm(user: User) -> bool:
-    """Admin rolü VEYA grade=1 unvanlı kullanıcılar GM yetkisi taşır."""
-    if user.role == "admin":
-        return True
-    if user.org_title and user.org_title.grade == 1:
-        return True
-    return False
+    return user.is_gm
 
 
 def _is_above_in_chain(db: Session, candidate_id: str, subordinate_id: str, max_depth: int = 10) -> bool:

@@ -84,27 +84,31 @@ async def nav_counts_middleware(request: Request, call_next):
             role = payload.get("role", "")
             db = SessionLocal()
             try:
-                if role in ("mudur", "admin", "muhasebe_muduru"):
+                from models import User as _User
+                _user_obj = db.query(_User).filter(_User.id == uid).first()
+                _is_gm = _user_obj.is_gm if _user_obj else False
+
+                if role in ("mudur", "admin", "muhasebe_muduru") or _is_gm:
                     # GM onayı bekleyen fatura talepleri
                     counts["inv_pending_gm"] = db.execute(
                         _text("SELECT COUNT(*) FROM invoices WHERE status='pending'")
                     ).scalar() or 0
-                if role in ("muhasebe", "muhasebe_muduru", "admin"):
+                if role in ("muhasebe", "muhasebe_muduru", "admin") or _is_gm:
                     # Muhasebe kesmesi bekleyen faturalar
                     counts["inv_pending_cut"] = db.execute(
                         _text("SELECT COUNT(*) FROM invoices WHERE status='gm_approved'")
                     ).scalar() or 0
-                if role in ("mudur", "admin"):
+                if role in ("mudur", "admin") or _is_gm:
                     # Kapama onayı — GM adımı bekleyen
                     counts["closure_pending_gm"] = db.execute(
                         _text("SELECT COUNT(*) FROM closure_requests WHERE status='pending_gm'")
                     ).scalar() or 0
-                if role in ("muhasebe_muduru", "admin"):
+                if role in ("muhasebe_muduru", "admin") or _is_gm:
                     # Kapama onayı — Muhasebe müdürü adımı
                     counts["closure_pending_finance"] = db.execute(
                         _text("SELECT COUNT(*) FROM closure_requests WHERE status='pending_finance'")
                     ).scalar() or 0
-                if role in ("mudur", "admin"):
+                if role in ("mudur", "admin") or _is_gm:
                     # Kapama onayı — Müdür adımı
                     counts["closure_pending_manager"] = db.execute(
                         _text("SELECT COUNT(*) FROM closure_requests WHERE status='pending_manager'")
@@ -123,7 +127,7 @@ async def nav_counts_middleware(request: Request, call_next):
                             "WHERE b.budget_status='pending_manager' AND r.created_by=:uid"
                         ), {"uid": uid}
                     ).scalar() or 0
-                if role in ("mudur", "admin", "muhasebe_muduru"):
+                if role in ("mudur", "admin", "muhasebe_muduru") or _is_gm:
                     # Yönetici: tüm bütçeler fiyatlandırma bekliyor (PM'ler için)
                     counts["budgets_pending_all"] = db.execute(
                         _text(
@@ -131,7 +135,7 @@ async def nav_counts_middleware(request: Request, call_next):
                             "WHERE budget_status='pending_manager'"
                         )
                     ).scalar() or 0
-                if role in ("mudur", "admin"):
+                if role in ("mudur", "admin") or _is_gm:
                     # Müdür onayı bekleyen faturalar (limit aşıldı, GM onayı gerekiyor)
                     counts["inv_pending_mudur"] = db.execute(
                         _text("SELECT COUNT(*) FROM invoices WHERE status='mudur_approved'")

@@ -23,12 +23,12 @@ VIEW_ROLES    = {"admin", "muhasebe_muduru", "muhasebe", "mudur"}  # mudur = GM 
 
 
 def _require_finance(current_user: User):
-    if current_user.role not in FINANCE_ROLES:
+    if current_user.role not in FINANCE_ROLES and not current_user.is_gm:
         raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok.")
 
 
 def _require_view(current_user: User):
-    if current_user.role not in VIEW_ROLES:
+    if current_user.role not in VIEW_ROLES and not current_user.is_gm:
         raise HTTPException(status_code=403, detail="Bu sayfayı görüntüleme yetkiniz yok.")
 
 
@@ -42,7 +42,7 @@ async def vendors_autocomplete(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role not in {*FINANCE_ROLES, "mudur"}:
+    if current_user.role not in {*FINANCE_ROLES, "mudur"} and not current_user.is_gm:
         return JSONResponse([])
     term = f"%{q.strip()}%"
     vendors = (

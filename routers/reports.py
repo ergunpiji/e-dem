@@ -22,26 +22,21 @@ FINANCE_ROLES = {"admin", "muhasebe_muduru", "muhasebe"}
 
 
 def _require_admin(current_user: User):
-    """Admin veya GM (takımsız mudur) erişebilir."""
-    if current_user.role == "admin":
-        return
-    if current_user.role == "mudur" and not current_user.team_id:
+    """Admin veya GM erişebilir."""
+    if current_user.role == "admin" or current_user.is_gm:
         return
     raise HTTPException(status_code=403, detail="Bu sayfa yalnızca Admin ve Genel Müdür'e özeldir.")
 
 
 def _require_finance(current_user: User):
-    if current_user.role not in FINANCE_ROLES and current_user.role not in ("mudur", "yonetici", "asistan"):
+    if (current_user.role not in FINANCE_ROLES
+            and current_user.role not in ("mudur", "yonetici", "asistan")
+            and not current_user.is_gm):
         raise HTTPException(status_code=403, detail="Bu sayfa için yetkiniz yok.")
 
 
 def _is_gm(user: User) -> bool:
-    """Genel Müdür mü? → mudur rolü + takımsız VEYA admin."""
-    if user.role == "admin":
-        return True
-    if user.role == "mudur" and not user.team_id:
-        return True
-    return False
+    return user.is_gm
 
 
 @router.get("", response_class=HTMLResponse, name="reports")

@@ -317,6 +317,13 @@ class User(Base):
         return None
 
     @property
+    def is_gm(self) -> bool:
+        """Genel Müdür mü? admin rolü VEYA org_title.grade == 1 (şirketteki en üst unvan)."""
+        if self.role == "admin":
+            return True
+        return self.org_title is not None and self.org_title.grade == 1
+
+    @property
     def is_pm_side(self) -> bool:
         """Proje tarafı mı? (mudur/yonetici/asistan)"""
         return self.role in ("mudur", "yonetici", "asistan")

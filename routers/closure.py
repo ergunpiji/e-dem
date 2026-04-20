@@ -43,15 +43,15 @@ router = APIRouter(tags=["closure"])
 # ---------------------------------------------------------------------------
 
 def _can_approve_l1(user: User) -> bool:
-    return user.role in ("admin", "mudur")
+    return user.role in ("admin", "mudur") or user.is_gm
 
 
 def _can_approve_gm(user: User) -> bool:
-    return user.role in ("admin", "mudur")
+    return user.role in ("admin", "mudur") or user.is_gm
 
 
 def _can_approve_final(user: User) -> bool:
-    return user.role in ("admin", "muhasebe_muduru")
+    return user.role in ("admin", "muhasebe_muduru") or user.is_gm
 
 
 def _find_mudur_in_chain(user: User, db: Session) -> User | None:
