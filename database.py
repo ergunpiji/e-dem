@@ -632,6 +632,11 @@ def migrate_db():
         _safe_add_column(conn, "requests", "fund_currency",          "TEXT",  "'TRY'")
         _safe_add_column(conn, "requests", "fund_initial_amount",    "REAL",  "0.0")
         _safe_add_column(conn, "requests", "fund_initial_vat_rate",  "REAL",  "20.0")
+        _safe_add_column(conn, "requests", "fund_pool_type",         "TEXT",  "'customer'")
+        _safe_add_column(conn, "requests", "fund_vendor_name",       "TEXT",  "''")
+        # Invoices — bölme alanları
+        _safe_add_column(conn, "invoices", "is_split_parent",        _bool_type, _bool_default)
+        _safe_add_column(conn, "invoices", "parent_invoice_id",      "TEXT")
 
         # fund_transfers tablosu
         if _is_sqlite:

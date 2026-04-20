@@ -935,8 +935,10 @@ async def requests_detail(
     rejected_invoices    = [inv for inv in (req.invoices or []) if inv.status == "rejected"]
     # Kar/zarar hesabına: onaylanmış (approved), kesilecek (gm_approved) ve eski "active" dahildir.
     # mudur_approved ve pending henüz GM onayından geçmediği için hariç tutulur.
+    # Bölünmüş parent fatura (is_split_parent=True) çift sayılmasın diye dışarıda.
     active_invoices = [inv for inv in (req.invoices or [])
-                       if inv.status in ("approved", "gm_approved", "active")]
+                       if inv.status in ("approved", "gm_approved", "active")
+                       and not inv.is_split_parent]
 
     invoice_ciro     = (sum(inv.amount for inv in active_invoices if inv.invoice_type == "kesilen")
                       - sum(inv.amount for inv in active_invoices if inv.invoice_type == "iade_kesilen"))

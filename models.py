@@ -554,10 +554,12 @@ class Request(Base):
     funding_source        = Column(String(255), default="")                   # fon kaynağı (opsiyonel serbest metin)
     # Fon havuzu alanları (sadece is_fund_pool=True ise anlamlı)
     is_fund_pool              = Column(Boolean, default=False, nullable=False)
+    fund_pool_type            = Column(String(16), default="customer")        # "customer" | "vendor"
     parent_fund_request_id    = Column(String(36), ForeignKey("requests.id"), nullable=True)
     fund_currency             = Column(String(3), default="TRY")
     fund_initial_amount       = Column(Float, default=0.0)                    # KDV dahil
     fund_initial_vat_rate     = Column(Float, default=20.0)                   # yüzde
+    fund_vendor_name          = Column(String(255), default="")               # vendor pool için tedarikçi adı
     team_id          = Column(String(36), ForeignKey("teams.id"), nullable=True)
     created_by       = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at       = Column(DateTime, default=_now, nullable=False)
@@ -1206,6 +1208,9 @@ class Invoice(Base):
     approved_by          = Column(String(36), ForeignKey("users.id"), nullable=True)
     approved_at          = Column(DateTime, nullable=True)
     current_approver_id  = Column(String(36), ForeignKey("users.id"), nullable=True)
+    # Fatura bölme — parent fatura birden fazla alt referansa pay edildiğinde
+    is_split_parent      = Column(Boolean, default=False, nullable=False)
+    parent_invoice_id    = Column(String(36), ForeignKey("invoices.id"), nullable=True)
     created_by           = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at           = Column(DateTime, default=_now, nullable=False)
     updated_at           = Column(DateTime, default=_now, onupdate=_now, nullable=False)

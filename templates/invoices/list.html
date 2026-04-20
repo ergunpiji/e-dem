@@ -271,6 +271,21 @@
                     <i class="bi bi-paperclip" style="font-size:11px;"></i>
                   </button>
                   {% endif %}
+                  {# Bölme: yetkili roller, gelen fatura, onaylı, henüz bölünmemiş #}
+                  {% if can_split and inv.invoice_type == 'gelen' and inv.status in ('approved', 'active')
+                        and not inv.is_split_parent and not inv.parent_invoice_id %}
+                  <button class="btn btn-sm btn-outline-primary py-0 px-2"
+                          title="Faturayı Böl"
+                          data-invoice='{{ inv.to_dict() | tojson }}'
+                          onclick="openSplitModal(JSON.parse(this.dataset.invoice))">
+                    <i class="bi bi-scissors" style="font-size:11px;"></i>
+                  </button>
+                  {% endif %}
+                  {% if inv.is_split_parent %}
+                  <span class="badge bg-primary bg-opacity-15 text-primary" title="Bölünmüş">
+                    <i class="bi bi-diagram-2"></i>
+                  </span>
+                  {% endif %}
                 </div>
               </td>
             </tr>
@@ -314,6 +329,11 @@
     </div>
   </div>
 </div>
+
+{# ── Fatura Bölme Modal ── #}
+{% if can_split %}
+{% include "invoices/_split_modal.html" %}
+{% endif %}
 
 {# ── Fatura Kes Modal (muhasebe) ── #}
 {% if can_cut %}

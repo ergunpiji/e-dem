@@ -260,6 +260,8 @@ async def invoices_list(
     can_approve       = _is_gm(current_user) or current_user.role == "mudur"
     can_mudur_approve = _is_gm(current_user) or current_user.role == "mudur"
     can_gm_approve    = _is_gm(current_user)   # mudur_approved → gm_approved
+    from utils.funds import can_split_invoice as _can_split
+    can_split         = _can_split(current_user)
 
     return templates.TemplateResponse("invoices/list.html", {
         "request":              request,
@@ -279,6 +281,7 @@ async def invoices_list(
         "can_approve":          can_approve,
         "can_mudur_approve":    can_mudur_approve,
         "can_gm_approve":       can_gm_approve,
+        "can_split":            can_split,
     })
 
 
@@ -1039,6 +1042,177 @@ async def invoices_unlinked(
 # ---------------------------------------------------------------------------
 # POST /invoices/{id}/assign-request  — Faturaya referans ata
 # ---------------------------------------------------------------------------
+
+@router.get("/api/active-requests", name="invoices_active_requests_api")
+async def invoices_active_requests_api(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bölme modal'ı için aktif referans listesi — JSON."""
+    from utils.funds import can_split_invoice
+    if not can_split_invoice(current_user):
+        raise HTTPException(403)
+    q = db.query(ReqModel).filter(
+        ReqModel.status.notin_(["draft", "cancelled", "closed"]),
+        ReqModel.is_fund_pool == False,                     # noqa: E712
+    )
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
+        q = q.filter(ReqModel.team_id == current_user.team_id)
+    rows = q.order_by(ReqModel.created_at.desc()).limit(300).all()
+    return JSONResponse([{
+        "id":         r.id,
+        "request_no": r.request_no,
+        "event_name": r.event_name,
+        "client_name": r.client_name or "",
+    } for r in rows])
+
+
+@router.post("/{invoice_id}/split", name="invoices_split")
+async def invoices_split(
+    invoice_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tedarikçiden gelen faturayı birden fazla alt referansa pay et.
+
+    Form payload (JSON-encoded list olarak `allocations_json` ya da repeating
+    form fields):
+      allocations: [
+        {request_id: "<alt_ref_id>" | "__vendor_fund__", amount_incl: 1500.00, vat_rate: 20},
+        ...
+      ]
+
+    "__vendor_fund__" hedefi seçilirse: tedarikçi adı + yıl bazlı vendor fund
+    pool otomatik bulunur/yaratılır.
+
+    Validasyon: SUM(allocations.amount_incl) == invoice.total_amount.
+    Her allocation için yeni bir Invoice (gelen, status=approved) yaratılır;
+    parent_invoice_id ile orijinale bağlanır. Parent fatura is_split_parent=True
+    olur ve finansal hesaplara dahil edilmez.
+    """
+    from utils.funds import can_split_invoice, get_or_create_vendor_fund_pool
+    if not can_split_invoice(current_user):
+        raise HTTPException(403, "Fatura bölme yetkiniz yok. (Admin / GM / Muhasebe Müdürü / Etkinlik Süreç Müdürü)")
+
+    inv = _get_invoice_or_404(db, invoice_id)
+    if inv.invoice_type not in ("gelen",):
+        raise HTTPException(400, "Sadece gelen (tedarikçi) faturaları bölünebilir.")
+    if inv.is_split_parent:
+        raise HTTPException(400, "Bu fatura zaten bölünmüş.")
+    if inv.parent_invoice_id:
+        raise HTTPException(400, "Bu fatura zaten başka bir bölmenin parçası.")
+    if inv.status not in ("approved", "active"):
+        raise HTTPException(400, "Bölmek için fatura onaylanmış olmalı.")
+
+    # Form datasını al
+    form = await request.form()
+    import json as _json
+    raw = form.get("allocations_json") or "[]"
+    try:
+        allocations = _json.loads(raw)
+        if not isinstance(allocations, list):
+            raise ValueError
+    except Exception:
+        raise HTTPException(400, "Geçersiz allocations verisi.")
+    if not allocations:
+        raise HTTPException(400, "En az bir bölme satırı gerekli.")
+
+    # Toplam validasyonu
+    total_alloc = round(sum(float(a.get("amount_incl", 0) or 0) for a in allocations), 2)
+    parent_total = round(float(inv.total_amount or 0), 2)
+    if abs(total_alloc - parent_total) > 0.05:
+        raise HTTPException(
+            400,
+            f"Atama toplamı fatura tutarına eşit olmalı: ₺{total_alloc:,.2f} ≠ ₺{parent_total:,.2f}"
+        )
+
+    # Vendor fund pool — gerekirse oluştur (lazy)
+    _vendor_fund_cache = {"pool": None}
+    def _vendor_fund():
+        if _vendor_fund_cache["pool"] is None:
+            year = int(inv.invoice_date[:4]) if inv.invoice_date else _now().year
+            _vendor_fund_cache["pool"] = get_or_create_vendor_fund_pool(
+                inv.vendor_name or "Tedarikçi", year, "TRY", db,
+                created_by_id=current_user.id,
+            )
+        return _vendor_fund_cache["pool"]
+
+    # Child fatura kayıtları
+    child_count = 0
+    for alloc in allocations:
+        target = (alloc.get("request_id") or "").strip()
+        if not target:
+            raise HTTPException(400, "Hedef referans seçilmedi.")
+
+        amount_incl = round(float(alloc.get("amount_incl", 0) or 0), 2)
+        if amount_incl <= 0:
+            continue
+        vat_rate = float(alloc.get("vat_rate", inv.vat_rate or 20.0))
+        amount_excl = round(amount_incl / (1 + vat_rate / 100.0), 2) if vat_rate else amount_incl
+        vat_amount  = round(amount_incl - amount_excl, 2)
+
+        if target == "__vendor_fund__":
+            target_req = _vendor_fund()
+            target_req.fund_initial_amount = float(target_req.fund_initial_amount or 0) + amount_incl
+            target_id = target_req.id
+            note = f"Bölme kalanı (parent: {inv.invoice_no or inv.id[:8]})"
+        else:
+            target_req = db.query(ReqModel).filter(ReqModel.id == target).first()
+            if not target_req:
+                raise HTTPException(400, f"Hedef referans bulunamadı: {target}")
+            target_id = target_req.id
+            note = f"Bölme — kaynak fatura: {inv.invoice_no or inv.id[:8]}"
+
+        child = Invoice(
+            id=_uuid(),
+            request_id=target_id,
+            vendor_id=inv.vendor_id,
+            invoice_type="gelen",
+            invoice_no=inv.invoice_no or "",
+            invoice_date=inv.invoice_date,
+            due_date=inv.due_date,
+            vendor_name=inv.vendor_name or "",
+            description=f"{inv.description} · {note}".strip(" ·"),
+            amount=amount_excl,
+            vat_rate=vat_rate,
+            vat_amount=vat_amount,
+            total_amount=amount_incl,
+            status="approved",
+            payment_status=inv.payment_status,
+            payment_method=inv.payment_method,
+            is_split_parent=False,
+            parent_invoice_id=inv.id,
+            created_by=current_user.id,
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        db.add(child)
+        child_count += 1
+
+        log_activity(
+            db, target_id, "invoice_split_received",
+            f"Bölünmüş fatura payı geldi — {inv.vendor_name or '—'}: ₺{amount_incl:,.2f}",
+            user_id=current_user.id,
+        )
+
+    if child_count == 0:
+        raise HTTPException(400, "Hiçbir geçerli bölme satırı yok.")
+
+    inv.is_split_parent = True
+    inv.updated_at = _now()
+    if inv.request_id:
+        log_activity(
+            db, inv.request_id, "invoice_split",
+            f"Fatura {child_count} parçaya bölündü — toplam ₺{parent_total:,.2f}",
+            user_id=current_user.id,
+        )
+    db.commit()
+
+    # Geri dönüş: hangi sayfadan geldiyse oraya
+    referer = request.headers.get("referer") or "/invoices"
+    return RedirectResponse(url=referer, status_code=303)
+
 
 @router.post("/{invoice_id}/assign-request", name="invoices_assign_request")
 async def invoices_assign_request(
