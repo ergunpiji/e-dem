@@ -160,6 +160,8 @@ def _build_ytd_customer_stats(db: Session, req_id_filter=None, limit: int = 10) 
     """Yılbaşından bugüne müşteri bazlı ciro/kar.
 
     req_id_filter verilirse sadece o referans ID'leri kapsanır (rol scope).
+    Dönen her kayıt: {code, name, ciro, kar} — label olarak 3 harfli kod
+    (kod yoksa adın ilk 3 harfi) kullanılır, tam ad tooltip/alt satır için.
     """
     year_start = date(date.today().year, 1, 1).isoformat()
 
@@ -171,17 +173,34 @@ def _build_ytd_customer_stats(db: Session, req_id_filter=None, limit: int = 10) 
         return []
 
     req_info = {r.id: (r.customer_id, r.client_name) for r in reqs}
-    cust_name_map = {c.id: c.name for c in db.query(Customer).all()}
+    cust_map = {c.id: (c.code, c.name) for c in db.query(Customer).all()}
 
     invoices = db.query(Invoice).filter(
         Invoice.status.in_(["approved", "gm_approved", "active"]),
         Invoice.request_id.in_(list(req_info.keys())),
     ).all()
 
-    agg: dict[str, dict] = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0, "komisyon": 0.0})
+    def _fallback_code(name: str) -> str:
+        n = (name or "").strip()
+        return (n[:3] or "—").upper()
+
+    # key = customer_id (varsa) veya "free:"+client_name — aynı müşteriye ait faturalar toplansın
+    agg: dict[str, dict] = defaultdict(
+        lambda: {"code": "—", "name": "—", "ciro": 0.0, "maliyet": 0.0, "komisyon": 0.0}
+    )
     for inv in invoices:
         cid, cname = req_info.get(inv.request_id, (None, None))
-        key = cust_name_map.get(cid) or (cname or "—")
+        if cid and cid in cust_map:
+            code, full = cust_map[cid]
+            key = f"cust:{cid}"
+            label_code = (code or _fallback_code(full)).upper()
+            label_name = full
+        else:
+            key = f"free:{(cname or '—').lower()}"
+            label_code = _fallback_code(cname)
+            label_name = cname or "—"
+        agg[key]["code"] = label_code
+        agg[key]["name"] = label_name
         if inv.invoice_type == "kesilen":
             agg[key]["ciro"] += inv.amount
         elif inv.invoice_type == "iade_kesilen":
@@ -194,22 +213,40 @@ def _build_ytd_customer_stats(db: Session, req_id_filter=None, limit: int = 10) 
             agg[key]["maliyet"] -= inv.amount
 
     rows = []
-    for name, v in agg.items():
+    for v in agg.values():
         ciro = v["ciro"] + v["komisyon"]
         kar  = ciro - v["maliyet"]
         if ciro == 0 and kar == 0:
             continue
-        rows.append({"name": name, "ciro": round(ciro, 0), "kar": round(kar, 0)})
+        rows.append({
+            "code": v["code"],
+            "name": v["name"],
+            "ciro": round(ciro, 0),
+            "kar":  round(kar, 0),
+        })
     rows.sort(key=lambda r: r["ciro"], reverse=True)
     return rows[:limit]
 
 
+def _fmt_amount(v: float) -> str:
+    try:
+        return "₺" + "{:,.0f}".format(float(v)).replace(",", ".")
+    except Exception:
+        return ""
+
+
 def _build_pending_tasks(db: Session, current_user) -> list[dict]:
-    """Role göre bekleyen işlemleri linkli liste olarak döner."""
+    """Role göre bekleyen işlemleri linkli liste olarak döner.
+
+    Her görev: {icon, color, label, title, context, url}
+      - label   = kısa etiket (renk + tip rozeti)
+      - title   = kullanıcıya ne yapması gerektiği (aksiyon cümlesi)
+      - context = ref no + etkinlik adı + (tutar / tedarikçi / müşteri gibi)
+    """
     tasks = []
     role = current_user.role
 
-    # ── GM / Admin: onay bekleyen fatura talepleri ──────────────────────────
+    # ── Müdür / Admin / Muhasebe Müdürü: onay bekleyen fatura ──────────────
     if role in ("mudur", "admin", "muhasebe_muduru"):
         invs = (
             db.query(Invoice)
@@ -222,15 +259,21 @@ def _build_pending_tasks(db: Session, current_user) -> list[dict]:
             req = inv.request
             if not req:
                 continue
+            ctx_bits = [req.request_no, req.event_name]
+            if inv.vendor_name:
+                ctx_bits.append(inv.vendor_name)
+            if inv.amount:
+                ctx_bits.append(_fmt_amount(inv.amount))
             tasks.append({
-                "icon": "bi-receipt",
-                "color": "warning",
-                "label": "Fatura Onayı",
-                "text": f"{req.request_no} — {req.event_name}",
-                "url": f"/requests/{req.id}",
+                "icon":    "bi-receipt",
+                "color":   "warning",
+                "label":   "Fatura Onayı",
+                "title":   "Fatura onayınız bekleniyor",
+                "context": " · ".join(ctx_bits),
+                "url":     f"/requests/{req.id}",
             })
 
-    # ── GM / Admin: kapama onayı bekleyen (pending_gm) ──────────────────────
+    # ── GM / Admin: kapama GM onayı ────────────────────────────────────────
     if role in ("mudur", "admin"):
         closures = (
             db.query(ClosureRequest)
@@ -244,14 +287,15 @@ def _build_pending_tasks(db: Session, current_user) -> list[dict]:
             if not req:
                 continue
             tasks.append({
-                "icon": "bi-folder-check",
-                "color": "primary",
-                "label": "Kapama Onayı",
-                "text": f"{req.request_no} — {req.event_name}",
-                "url": f"/requests/{req.id}",
+                "icon":    "bi-folder-check",
+                "color":   "primary",
+                "label":   "Kapama (GM)",
+                "title":   "Dosya kapama — Genel Müdür onayınız bekleniyor",
+                "context": f"{req.request_no} · {req.event_name}",
+                "url":     f"/requests/{req.id}",
             })
 
-    # ── Müdür: kapama onayı (pending_manager) ──────────────────────────────
+    # ── Müdür / Admin: kapama müdür onayı ──────────────────────────────────
     if role in ("mudur", "admin"):
         closures_mgr = (
             db.query(ClosureRequest)
@@ -265,14 +309,15 @@ def _build_pending_tasks(db: Session, current_user) -> list[dict]:
             if not req:
                 continue
             tasks.append({
-                "icon": "bi-folder-check",
-                "color": "warning",
-                "label": "Kapama (Müdür Onayı)",
-                "text": f"{req.request_no} — {req.event_name}",
-                "url": f"/requests/{req.id}",
+                "icon":    "bi-folder-check",
+                "color":   "warning",
+                "label":   "Kapama (Müdür)",
+                "title":   "Dosya kapama — Müdür onayınız bekleniyor",
+                "context": f"{req.request_no} · {req.event_name}",
+                "url":     f"/requests/{req.id}",
             })
 
-    # ── Muhasebe: GM onaylı fatura kes ──────────────────────────────────────
+    # ── Muhasebe: GM onaylı fatura kesilecek ───────────────────────────────
     if role in ("muhasebe", "muhasebe_muduru", "admin"):
         invs_gm = (
             db.query(Invoice)
@@ -285,12 +330,18 @@ def _build_pending_tasks(db: Session, current_user) -> list[dict]:
             req = inv.request
             if not req:
                 continue
+            ctx_bits = [req.request_no, req.event_name]
+            if inv.vendor_name:
+                ctx_bits.append(inv.vendor_name)
+            if inv.amount:
+                ctx_bits.append(_fmt_amount(inv.amount))
             tasks.append({
-                "icon": "bi-scissors",
-                "color": "danger",
-                "label": "Fatura Kes",
-                "text": f"{req.request_no} — {req.event_name}",
-                "url": f"/requests/{req.id}",
+                "icon":    "bi-scissors",
+                "color":   "danger",
+                "label":   "Fatura Kes",
+                "title":   "GM onayladı — fatura kesilmeli",
+                "context": " · ".join(ctx_bits),
+                "url":     f"/requests/{req.id}",
             })
 
     # ── Muhasebe müdürü: kapama finans onayı ───────────────────────────────
@@ -307,11 +358,12 @@ def _build_pending_tasks(db: Session, current_user) -> list[dict]:
             if not req:
                 continue
             tasks.append({
-                "icon": "bi-folder-check",
-                "color": "info",
-                "label": "Kapama (Muhasebe Onayı)",
-                "text": f"{req.request_no} — {req.event_name}",
-                "url": f"/requests/{req.id}",
+                "icon":    "bi-folder-check",
+                "color":   "info",
+                "label":   "Kapama (Muhasebe)",
+                "title":   "Dosya kapama — Muhasebe onayınız bekleniyor",
+                "context": f"{req.request_no} · {req.event_name}",
+                "url":     f"/requests/{req.id}",
             })
 
     # ── E-dem: atanmamış talepler ──────────────────────────────────────────
@@ -324,15 +376,20 @@ def _build_pending_tasks(db: Session, current_user) -> list[dict]:
             .all()
         )
         for req in pending_reqs:
+            cust = req.client_name or (req.customer.name if req.customer else "")
+            ctx_bits = [req.request_no, req.event_name]
+            if cust:
+                ctx_bits.append(cust)
             tasks.append({
-                "icon": "bi-inbox-fill",
-                "color": "warning",
-                "label": "Yeni Talep",
-                "text": f"{req.request_no} — {req.event_name}",
-                "url": f"/requests/{req.id}",
+                "icon":    "bi-inbox-fill",
+                "color":   "warning",
+                "label":   "Yeni Talep",
+                "title":   "Yeni talep üstlenilmeyi bekliyor",
+                "context": " · ".join(ctx_bits),
+                "url":     f"/requests/{req.id}",
             })
 
-    # ── PM / Yönetici: bütçesi hazır referanslar ─────────────────────────
+    # ── Yönetici / Asistan: bütçesi hazır / teklif gönderilmiş ─────────────
     if role in ("yonetici", "asistan"):
         from routers.requests import _get_subtree_ids
         sub_ids = _get_subtree_ids(current_user.id, db)
@@ -348,12 +405,17 @@ def _build_pending_tasks(db: Session, current_user) -> list[dict]:
             .all()
         )
         for req in budget_ready:
+            if req.status == "budget_ready":
+                title = "Bütçe hazırlandı — incelemenizi bekliyor"
+            else:
+                title = "Teklif müşteride — yanıt takibi bekliyor"
             tasks.append({
-                "icon": "bi-calculator-fill",
-                "color": "success",
-                "label": "Bütçe Hazır",
-                "text": f"{req.request_no} — {req.event_name}",
-                "url": f"/requests/{req.id}",
+                "icon":    "bi-calculator-fill",
+                "color":   "success",
+                "label":   "Bütçe Hazır" if req.status == "budget_ready" else "Teklif Gönderildi",
+                "title":   title,
+                "context": f"{req.request_no} · {req.event_name}",
+                "url":     f"/requests/{req.id}",
             })
 
     return tasks
@@ -506,9 +568,10 @@ async def dashboard(
             }),
             "show_customer_ytd": show_customer_ytd,
             "customer_ytd_json": json.dumps({
-                "labels": [c["name"] for c in customer_ytd],
-                "ciro":   [c["ciro"]  for c in customer_ytd],
-                "kar":    [c["kar"]   for c in customer_ytd],
+                "labels": [c["code"] for c in customer_ytd],
+                "names":  [c["name"] for c in customer_ytd],
+                "ciro":   [c["ciro"] for c in customer_ytd],
+                "kar":    [c["kar"]  for c in customer_ytd],
             }),
         },
     )

@@ -269,26 +269,50 @@
 {% if pending_tasks %}
 <div class="card mb-3" style="border-left: 4px solid #f59e0b;">
   <div class="card-body py-3 px-4">
-    <div class="d-flex align-items-center mb-2 gap-2">
+    <div class="d-flex align-items-center mb-3 gap-2">
       <i class="bi bi-bell-fill text-warning" style="font-size:16px;"></i>
-      <span class="fw-bold" style="font-size:14px;">Bekleyen İşlemlerim</span>
+      <span class="fw-bold" style="font-size:14px;">Sizi Bekleyen İşlemler</span>
       <span class="badge bg-warning text-dark ms-1">{{ pending_tasks | length }}</span>
+      <span class="text-muted ms-auto" style="font-size:11px;">Satıra tıklayarak işleme gidin</span>
     </div>
-    <div class="d-flex flex-column gap-1">
+    <div class="d-flex flex-column gap-2">
       {% for task in pending_tasks %}
-      <a href="{{ task.url }}" class="text-decoration-none d-flex align-items-center gap-2 py-1 px-2 rounded pending-task-row">
-        <i class="bi {{ task.icon }} text-{{ task.color }}" style="font-size:13px; min-width:16px;"></i>
-        <span class="badge bg-{{ task.color }} bg-opacity-15 text-{{ task.color }}" style="font-size:10px; white-space:nowrap; min-width:fit-content;">{{ task.label }}</span>
-        <span class="text-dark" style="font-size:13px;">{{ task.text }}</span>
-        <i class="bi bi-chevron-right text-muted ms-auto" style="font-size:10px;"></i>
+      <a href="{{ task.url }}" class="text-decoration-none d-flex align-items-center gap-3 p-2 rounded pending-task-row">
+        <div class="task-icon-wrap bg-{{ task.color }} bg-opacity-10 text-{{ task.color }}">
+          <i class="bi {{ task.icon }}"></i>
+        </div>
+        <div class="flex-grow-1 min-width-0">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="fw-semibold text-dark" style="font-size:13.5px;">{{ task.title }}</span>
+            <span class="badge bg-{{ task.color }} bg-opacity-15 text-{{ task.color }}" style="font-size:10px; font-weight:700;">
+              {{ task.label }}
+            </span>
+          </div>
+          {% if task.context %}
+          <div class="text-muted mt-1" style="font-size:11.5px;">{{ task.context }}</div>
+          {% endif %}
+        </div>
+        <i class="bi bi-chevron-right text-muted" style="font-size:12px;"></i>
       </a>
       {% endfor %}
     </div>
   </div>
 </div>
 <style>
-.pending-task-row { transition: background .12s; }
-.pending-task-row:hover { background: #f8fafc; }
+.pending-task-row {
+  transition: background .12s, transform .12s;
+  border: 1px solid transparent;
+}
+.pending-task-row:hover {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  transform: translateX(2px);
+}
+.task-icon-wrap {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; flex-shrink: 0;
+}
 </style>
 {% endif %}
 
@@ -446,12 +470,17 @@
         legend: { position: 'bottom', labels: { font: { size: 11 } } },
         tooltip: {
           callbacks: {
+            title: items => {
+              const i = items && items[0] && items[0].dataIndex;
+              const n = cust.names && cust.names[i];
+              return n ? `${n} (${cust.labels[i]})` : cust.labels[i];
+            },
             label: ctx => ` ${ctx.dataset.label}: ₺${new Intl.NumberFormat('tr-TR').format(Math.round(ctx.parsed.y))}`
           }
         }
       },
       scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 35, minRotation: 20 }, grid: { display: false } },
+        x: { ticks: { font: { size: 11 }, maxRotation: 0 }, grid: { display: false } },
         y: {
           ticks: {
             font: { size: 10 },
