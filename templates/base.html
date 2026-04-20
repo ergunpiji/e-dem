@@ -32,7 +32,30 @@
       height: 100vh; overflow-y: auto;
       display: flex; flex-direction: column;
       z-index: 1000;
+      transition: transform .25s ease;
     }
+    body.sidebar-collapsed .sidebar { transform: translateX(-100%); }
+    body.sidebar-collapsed .main-content { margin-left: 0; }
+    body.sidebar-collapsed .topbar { left: 0; padding-left: 56px; }
+
+    /* ── Sidebar toggle (ok) ── */
+    .sidebar-toggle {
+      position: fixed; top: 16px;
+      left: calc(var(--sidebar-width) - 14px);
+      width: 28px; height: 28px; padding: 0;
+      border-radius: 50%;
+      background: #60a5fa; color: white;
+      border: 2px solid white;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+      cursor: pointer; z-index: 1100;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; line-height: 1;
+      transition: left .25s ease, background .15s;
+    }
+    .sidebar-toggle:hover { background: #3b82f6; }
+    .sidebar-toggle i { transition: transform .25s ease; }
+    body.sidebar-collapsed .sidebar-toggle { left: 8px; }
+    body.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
     .sidebar-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,.08); }
     .sidebar-logo { font-size: 30px; font-weight: 900; color: #60a5fa; letter-spacing: -1px; }
     .sidebar-subtitle { font-size: 10px; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: 1.5px; }
@@ -101,12 +124,17 @@
     .tree-children .sidebar-link { padding-left: 32px; font-size: 13px; }
 
     /* ── Main ── */
-    .main-content { margin-left: var(--sidebar-width); min-height: 100vh; padding-top: var(--topbar-height); }
+    .main-content {
+      margin-left: var(--sidebar-width);
+      min-height: 100vh; padding-top: var(--topbar-height);
+      transition: margin-left .25s ease;
+    }
     .topbar {
       background: white; border-bottom: 1px solid #e2e8f0;
       padding: 0 28px; height: var(--topbar-height);
       display: flex; align-items: center; justify-content: space-between;
       position: fixed; top: 0; left: var(--sidebar-width); right: 0; z-index: 999;
+      transition: left .25s ease;
     }
     .page-title { font-size: 17px; font-weight: 700; color: #1e293b; }
     .page-content { padding: 28px; }
@@ -207,6 +235,14 @@
 <body>
 
 {% if current_user %}
+<script>
+  // Sidebar durumu — boyanmadan önce oku (flash önlemek için)
+  try {
+    if (localStorage.getItem('edem_sidebar_collapsed') === '1') {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  } catch(e) {}
+</script>
 <!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
 <aside class="sidebar">
   <div class="sidebar-header">
@@ -942,6 +978,12 @@
   </div>
 </aside>
 
+<!-- Sidebar aç/kapa butonu -->
+<button type="button" id="sidebarToggle" class="sidebar-toggle"
+        title="Menüyü gizle / göster" onclick="toggleSidebar()">
+  <i class="bi bi-chevron-left"></i>
+</button>
+
 <!-- ═══════════════════════════════ MAIN ═══════════════════════════════ -->
 <div class="main-content">
   <div class="topbar">
@@ -1103,6 +1145,14 @@
       bsAlert.close();
     });
   }, 4000);
+</script>
+
+<!-- ── Sidebar collapse JS ── -->
+<script>
+  window.toggleSidebar = function() {
+    var collapsed = document.body.classList.toggle('sidebar-collapsed');
+    try { localStorage.setItem('edem_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+  };
 </script>
 
 <!-- ── Tree Nav JS ── -->
