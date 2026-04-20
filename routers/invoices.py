@@ -32,10 +32,10 @@ def _require_finance(current_user: User):
 
 
 def _is_gm(user: User) -> bool:
-    """Admin rolü VEYA 'Genel Müdür' unvanına sahip kullanıcılar GM yetkisi taşır."""
+    """Admin rolü VEYA grade=1 unvanlı kullanıcılar GM yetkisi taşır."""
     if user.role == "admin":
         return True
-    if user.org_title and user.org_title.name == "Genel Müdür":
+    if user.org_title and user.org_title.grade == 1:
         return True
     return False
 
@@ -64,7 +64,7 @@ def _require_approval_permission(current_user: User, inv, db: Session):
     - current_approver_id'nin hiyerarşik üstündeyse → onaylayabilir (zinciri atlayarak)
     - current_approver_id yoksa → req sahibi veya mudur/GM
     """
-    if current_user.role in ("admin", "muhasebe_muduru"):
+    if current_user.role in ("admin", "muhasebe_muduru") or _is_gm(current_user):
         return
     if inv.current_approver_id:
         if current_user.id == inv.current_approver_id:
@@ -725,8 +725,8 @@ async def invoices_approve(
             return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
         return RedirectResponse(url="/invoices?status_filter=approved", status_code=303)
 
-    # Admin / muhasebe_muduru → zinciri atla, direkt onayla
-    if current_user.role in ("admin", "muhasebe_muduru"):
+    # Admin / muhasebe_muduru / GM → zinciri atla, direkt onayla
+    if current_user.role in ("admin", "muhasebe_muduru") or _is_gm(current_user):
         inv.status              = "approved"
         inv.current_approver_id = None
         inv.approved_by         = current_user.id

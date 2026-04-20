@@ -602,7 +602,11 @@ async def requests_detail(
         return False
 
     def _can_approve_inv(inv) -> bool:
-        if current_user.role in ("admin", "muhasebe_muduru"):
+        _user_is_gm = (
+            current_user.role == "admin" or
+            bool(getattr(current_user.org_title, "grade", None) == 1)
+        )
+        if current_user.role in ("admin", "muhasebe_muduru") or _user_is_gm:
             return True
         if inv.current_approver_id:
             if current_user.id == inv.current_approver_id:
