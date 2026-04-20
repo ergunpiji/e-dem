@@ -324,7 +324,8 @@ async def vendors_card(
         "overdue_amount":        round(overdue_amount, 2),
         "today_str":             today_str,
         "can_edit":                current_user.role in FINANCE_ROLES,
-        "can_request_prepayment":  current_user.role in {*FINANCE_ROLES, "mudur", "yonetici", "asistan"} or current_user.is_gm,
+        # Ön ödeme TALEP etme yetkisi — /prepayment-requests/new ile aynı rol seti
+        "can_request_prepayment":  current_user.role in {"admin", "mudur", "yonetici", "asistan"} or current_user.is_gm,
         "prepayment_statuses":     PREPAYMENT_STATUSES,
     })
 
