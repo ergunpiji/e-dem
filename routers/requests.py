@@ -351,6 +351,41 @@ async def fund_pool_create(
     return RedirectResponse(url=f"/requests/{fund_req.id}", status_code=status.HTTP_302_FOUND)
 
 
+@router.get("/fund/{fund_id}/export", name="fund_pool_export")
+async def fund_pool_export(
+    fund_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fon havuzunun T cetveli + alt referans özeti — Excel."""
+    fund = db.query(ReqModel).filter(ReqModel.id == fund_id).first()
+    if not fund or not fund.is_fund_pool:
+        raise HTTPException(404, "Fon havuzu bulunamadı.")
+
+    from excel_export.fund_pool import build_fund_pool_excel
+    try:
+        buf = build_fund_pool_excel(fund, db)
+    except Exception as exc:
+        import traceback as _tb
+        print(f"[FUND-POOL EXCEL ERROR] fund={fund_id}: {exc}\n{_tb.format_exc()}", flush=True)
+        raise HTTPException(500, "Excel raporu oluşturulamadı.")
+
+    raw_name = (fund.event_name or fund.request_no or "fon")[:40]
+    ascii_name = unicodedata.normalize("NFKD", raw_name)
+    ascii_name = "".join(c for c in ascii_name if ord(c) < 128)
+    ascii_name = ascii_name.replace(" ", "_").replace("/", "-").strip("_") or "fon"
+    filename_utf8 = urllib.parse.quote(f"{raw_name}_fon_raporu.xlsx")
+    content_disposition = (
+        f'attachment; filename="{ascii_name}_fon_raporu.xlsx"; '
+        f"filename*=UTF-8''{filename_utf8}"
+    )
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": content_disposition},
+    )
+
+
 @router.post("/fund/{fund_id}/transfer", name="fund_transfer_create")
 async def fund_transfer_create(
     fund_id: str,

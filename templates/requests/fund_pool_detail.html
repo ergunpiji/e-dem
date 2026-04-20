@@ -50,6 +50,10 @@
         · {{ req.check_in[:4] if req.check_in else '—' }} yılı
       </div>
     </div>
+    <a href="/requests/fund/{{ req.id }}/export" class="btn btn-outline-light fw-semibold me-2"
+       title="T cetveli formatında Excel raporu indir">
+      <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
+    </a>
     {% if can_manage_funds %}
     <button type="button" class="btn btn-light fw-semibold" data-bs-toggle="modal" data-bs-target="#transferModal">
       <i class="bi bi-arrow-left-right me-1"></i> Yeni Transfer
