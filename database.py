@@ -1059,9 +1059,10 @@ def migrate_db():
         _safe_add_column(conn, "invoices", "payment_status",      "TEXT", "'unpaid'")
         _safe_add_column(conn, "invoices", "paid_at",             "TEXT")
         _safe_add_column(conn, "invoices", "current_approver_id", "TEXT")
-        _safe_add_column(conn, "invoices", "paid_amount",         "REAL",  "0")
+        _safe_add_column(conn, "invoices", "paid_amount",          "REAL",  "0")
         _safe_add_column(conn, "invoices", "payment_method",      "TEXT",  "'banka'")
         _safe_add_column(conn, "invoices", "cc_due_date",         "TEXT")
+        _safe_add_column(conn, "invoices", "cc_pending_amount",   "REAL",  "0")
         # Mevcut bekleyen faturaları backfill: request sahibini current_approver_id yap
         conn.execute(text(
             "UPDATE invoices SET current_approver_id = ("

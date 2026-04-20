@@ -330,30 +330,40 @@ async def vendors_mark_paid(
     if not inv:
         raise HTTPException(status_code=404, detail="Fatura bulunamadı.")
 
-    inv.payment_method = payment_method
-    inv.paid_at        = paid_at or date.today().isoformat()
-    inv.updated_at     = _now()
+    inv.paid_at    = paid_at or date.today().isoformat()
+    inv.updated_at = _now()
 
     if payment_status == "partial" and paid_amount:
         try:
-            amt = float(paid_amount)
+            amt = round(float(paid_amount), 2)
             inv.paid_amount = round((inv.paid_amount or 0.0) + amt, 2)
+
+            # Kredi kartı kısmını ayrı izle (nakit akışında cc_due_date'e ayrı giriş)
+            if payment_method == "kredi_karti":
+                inv.cc_pending_amount = round((inv.cc_pending_amount or 0.0) + amt, 2)
+                if cc_due_date:
+                    inv.cc_due_date = cc_due_date   # en son CC vadesini güncelle
+
             # Tam ödendiyse otomatik "paid" yap
             if inv.paid_amount >= (inv.total_amount or 0.0):
                 inv.payment_status = "paid"
+                inv.payment_method = payment_method
             else:
                 inv.payment_status = "partial"
+                # Birden fazla yöntem olabilir; son yöntemi kaydet
+                inv.payment_method = payment_method
         except (ValueError, TypeError):
             inv.payment_status = "partial"
     else:
-        inv.payment_status = "paid"
-        inv.paid_amount    = inv.total_amount or 0.0
-
-    # Kredi kartı son ödeme tarihi — nakit akışında kullanılır
-    if payment_method == "kredi_karti" and cc_due_date:
-        inv.cc_due_date = cc_due_date
-    else:
-        inv.cc_due_date = None
+        # Tam ödeme
+        inv.payment_status    = "paid"
+        inv.payment_method    = payment_method
+        inv.paid_amount       = inv.total_amount or 0.0
+        inv.cc_pending_amount = 0.0   # tam ödeme = kart borcu da kapandı
+        if payment_method == "kredi_karti" and cc_due_date:
+            inv.cc_due_date   = cc_due_date
+        else:
+            inv.cc_due_date   = None
 
     db.commit()
     return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=303)
@@ -377,20 +387,42 @@ async def cash_flow(
     end_str  = end_date.isoformat()
     today_str = today.isoformat()
 
-    def _effective_date(inv: Invoice) -> str | None:
-        """Nakit çıkışının gerçekleşeceği tarih.
-        Kredi kartıyla ödendi ve cc_due_date varsa o kullanılır,
-        aksi hâlde invoice'ın due_date'i."""
-        if inv.payment_method == "kredi_karti" and inv.cc_due_date:
-            return inv.cc_due_date
-        return inv.due_date
+    # ── Nakit akışı kalemleri oluştur ─────────────────────────────────────────
+    # Her Invoice birden fazla kalem üretebilir (ör. kısmi CC + kalan bakiye).
+    # Kalem formatı: {invoice, amount, eff_date, is_cc, cc_label}
+    def _build_outgoing_items(invoices: list) -> list:
+        items = []
+        for inv in invoices:
+            total  = inv.total_amount  or 0.0
+            paid   = inv.paid_amount   or 0.0
+            cc_pnd = inv.cc_pending_amount or 0.0
+            remaining_cash = round(max(0.0, total - paid), 2)   # vadede ödenecek
+            due = inv.due_date
 
-    def _remaining(inv: Invoice) -> float:
-        """Faturanın henüz ödenmemiş tutarı."""
-        return round(max(0.0, (inv.total_amount or 0.0) - (inv.paid_amount or 0.0)), 2)
+            # 1) Kalan bakiye (banka/çek ile ödenecek) → orijinal vade tarihinde
+            if remaining_cash > 0 and due:
+                items.append({
+                    "invoice":  inv,
+                    "amount":   remaining_cash,
+                    "eff_date": due,
+                    "is_cc":    False,
+                    "cc_label": None,
+                })
+
+            # 2) Kredi kartı ile taahhüt edilen tutar → cc_due_date'te ayrı giriş
+            if cc_pnd > 0 and inv.cc_due_date:
+                items.append({
+                    "invoice":  inv,
+                    "amount":   round(cc_pnd, 2),
+                    "eff_date": inv.cc_due_date,
+                    "is_cc":    True,
+                    "cc_label": inv.cc_due_date,
+                })
+
+        return items
 
     # Ödenmemiş/kısmi gider faturaları — approved
-    outgoing_raw = (
+    invoices_raw = (
         db.query(Invoice)
         .filter(
             Invoice.payment_status.in_(["unpaid", "partial"]),
@@ -400,23 +432,27 @@ async def cash_flow(
         .order_by(Invoice.due_date)
         .all()
     )
-    # Kredi kartıyla ödendi ama kart borcu henüz ödenmedi → cc_due_date aralıkta olabilir
-    cc_paid_raw = (
+    # Tamamen ödendi ama CC borcu henüz bankadan çıkmadı
+    cc_fully_paid = (
         db.query(Invoice)
         .filter(
             Invoice.payment_status == "paid",
-            Invoice.payment_method == "kredi_karti",
+            Invoice.cc_pending_amount > 0,
             Invoice.cc_due_date != None,
             Invoice.cc_due_date >= today_str,
             Invoice.cc_due_date <= end_str,
         )
         .all()
     )
-    outgoing = [i for i in outgoing_raw
-                if today_str <= (_effective_date(i) or "") <= end_str]
-    outgoing += cc_paid_raw
 
-    # Ödenmemiş müşteri faturaları (alacak) — approved, kesilen tip
+    all_outgoing_items = _build_outgoing_items(invoices_raw) + _build_outgoing_items(cc_fully_paid)
+    # Dönem aralığına filtrele
+    all_outgoing_items = [
+        it for it in all_outgoing_items
+        if today_str <= (it["eff_date"] or "") <= end_str
+    ]
+
+    # Ödenmemiş müşteri alacakları (gelir) — approved, kesilen tip
     incoming = (
         db.query(Invoice)
         .filter(
@@ -439,17 +475,17 @@ async def cash_flow(
         ws_str = week_start.isoformat()
         we_str = week_end.isoformat()
 
-        w_out = [i for i in outgoing if ws_str <= (_effective_date(i) or "") <= we_str]
-        w_in  = [i for i in incoming if ws_str <= (i.due_date or "") <= we_str]
+        w_items = [it for it in all_outgoing_items if ws_str <= (it["eff_date"] or "") <= we_str]
+        w_in    = [i  for i  in incoming           if ws_str <= (i.due_date or "")    <= we_str]
 
         weeks_data.append({
             "label":       f"Hafta {w+1}",
             "start":       week_start.strftime("%d.%m"),
             "end":         week_end.strftime("%d.%m"),
-            "outgoing":    w_out,
+            "outgoing":    w_items,    # artık kalem listesi (dict)
             "incoming":    w_in,
-            "total_out":   round(sum(_remaining(i) for i in w_out), 2),
-            "total_in":    round(sum(_remaining(i) for i in w_in),  2),
+            "total_out":   round(sum(it["amount"] for it in w_items), 2),
+            "total_in":    round(sum(max(0.0, (i.total_amount or 0) - (i.paid_amount or 0)) for i in w_in), 2),
         })
 
     # Vadesi geçmiş (overdue)
@@ -473,5 +509,5 @@ async def cash_flow(
         "overdue":      overdue,
         "weeks":        weeks,
         "today_str":    today_str,
-        "total_overdue": round(sum(i.total_amount or 0 for i in overdue), 2),
+        "total_overdue": round(sum(max(0.0, (i.total_amount or 0) - (i.paid_amount or 0)) for i in overdue), 2),
     })

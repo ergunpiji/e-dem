@@ -203,37 +203,37 @@
                   {% if w.outgoing %}
                   <div class="col-12 col-md-{% if w.incoming %}6{% else %}12{% endif %}">
                     <div class="cf-section-label"><i class="bi bi-arrow-up-circle me-1"></i>Borçlar (Gider)</div>
-                    {% for inv in w.outgoing %}
-                    {% set _remaining = [(inv.total_amount or 0) - (inv.paid_amount or 0), 0] | max %}
+                    {% for it in w.outgoing %}
+                    {% set inv = it.invoice %}
                     <div class="cf-entry d-flex justify-content-between align-items-start">
                       <div>
                         <a href="{% if inv.vendor %}/vendors/{{ inv.vendor.id }}{% else %}#{% endif %}"
                            class="fw-semibold text-decoration-none" style="color:#dc2626;">
                           {{ inv.vendor.name if inv.vendor else inv.vendor_name or '—' }}
                         </a>
-                        {% if inv.payment_method == 'kredi_karti' %}
-                        <span class="badge bg-primary ms-1" style="font-size:9px;">KK</span>
+                        {% if it.is_cc %}
+                        <span class="badge bg-primary ms-1" style="font-size:9px;"><i class="bi bi-credit-card me-1"></i>Kredi Kartı</span>
                         {% elif inv.payment_method == 'cek' %}
                         <span class="badge bg-secondary ms-1" style="font-size:9px;">Çek</span>
                         {% endif %}
-                        {% if inv.payment_status == 'partial' %}
-                        <span class="badge ms-1" style="background:#fef9c3;color:#a16207;font-size:9px;">Kısmi</span>
+                        {% if inv.payment_status == 'partial' and not it.is_cc %}
+                        <span class="badge ms-1" style="background:#fef9c3;color:#a16207;font-size:9px;">Kalan Bakiye</span>
                         {% endif %}
                         {% if inv.request %}
                         <span class="text-muted ms-1" style="font-size:11px;">{{ inv.request.request_no }}</span>
                         {% endif %}
                         <div class="text-muted" style="font-size:11px;">
-                          {% if inv.payment_method == 'kredi_karti' and inv.cc_due_date %}
-                          Kart son ödeme: {{ inv.cc_due_date }}
+                          {% if it.is_cc %}
+                          <i class="bi bi-credit-card" style="font-size:10px;"></i> Kart son ödeme: {{ it.eff_date }}
                           {% else %}
-                          Vade: {{ inv.due_date }}
+                          Vade: {{ it.eff_date }}
                           {% endif %}
                         </div>
                       </div>
                       <div class="text-end" style="white-space:nowrap;">
-                        <span style="color:#dc2626;font-weight:600;">-₺{{ '{:,.0f}'.format(_remaining) }}</span>
+                        <span style="color:#dc2626;font-weight:600;">-₺{{ '{:,.0f}'.format(it.amount) }}</span>
                         {% if inv.payment_status == 'partial' %}
-                        <div style="font-size:10px;color:#94a3b8;">toplam ₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}</div>
+                        <div style="font-size:10px;color:#94a3b8;">fatura: ₺{{ '{:,.0f}'.format(inv.total_amount or 0) }}</div>
                         {% endif %}
                       </div>
                     </div>
