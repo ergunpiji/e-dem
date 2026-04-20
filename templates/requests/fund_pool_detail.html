@@ -231,13 +231,33 @@
             <label class="form-label fw-semibold">Alt Referans <span class="text-danger">*</span></label>
             <select name="related_request_id" class="form-select" required>
               <option value="">— Seçin —</option>
-              {% for r in alt_refs %}
-              <option value="{{ r.id }}">{{ r.request_no }} — {{ r.event_name }}</option>
+              {% set _linked = [] %}
+              {% set _unlinked = [] %}
+              {% for r in eligible_alt_refs %}
+                {% if r.parent_fund_request_id == req.id %}
+                  {% set _ = _linked.append(r) %}
+                {% else %}
+                  {% set _ = _unlinked.append(r) %}
+                {% endif %}
               {% endfor %}
+              {% if _linked %}
+              <optgroup label="Bu fona bağlı">
+                {% for r in _linked %}
+                <option value="{{ r.id }}">{{ r.request_no }} — {{ r.event_name }} ({{ r.status_label }})</option>
+                {% endfor %}
+              </optgroup>
+              {% endif %}
+              {% if _unlinked %}
+              <optgroup label="Müşterinin diğer aktif referansları (transfer ile otomatik bağlanır)">
+                {% for r in _unlinked %}
+                <option value="{{ r.id }}">{{ r.request_no }} — {{ r.event_name }} ({{ r.status_label }})</option>
+                {% endfor %}
+              </optgroup>
+              {% endif %}
             </select>
             <div class="form-text" style="font-size:11px;">
-              Henüz bu fona bağlı referans yoksa, önce alt referansı "Fon destekli etkinlik"
-              olarak kurup bu fon havuzunu seçmeniz gerekir.
+              Müşteriye ait taslak/iptal/kapalı dışındaki tüm referanslar listelenir.
+              Henüz fona bağlı olmayan bir referans seçerseniz transfer yapılırken otomatik bu fona bağlanır.
             </div>
           </div>
 

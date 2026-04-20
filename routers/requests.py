@@ -632,11 +632,25 @@ async def requests_detail(
         # Alt referans isimlerini toplu çek
         alt_ids = {t.related_request_id for t in transfers}
         alt_map = {r.id: r for r in db.query(ReqModel).filter(ReqModel.id.in_(alt_ids)).all()} if alt_ids else {}
-        # Bu fona bağlı tüm alt referanslar (transfer olmamış olsa da)
+        # Bu fona bağlı tüm alt referanslar (transfer olmamış olsa da) — "Fona Bağlı" tablosu için
         alt_refs = (db.query(ReqModel)
                       .filter(ReqModel.parent_fund_request_id == req.id)
                       .order_by(ReqModel.created_at.desc())
                       .all())
+        # Transfer modalı için: aynı müşteriye ait tüm aktif referanslar (fon değil + iptal/kapalı değil)
+        # Transfer sırasında alt ref otomatik bu fona bağlanır (route içinde).
+        eligible_alt_refs = []
+        if req.customer_id:
+            eligible_alt_refs = (
+                db.query(ReqModel)
+                  .filter(
+                      ReqModel.customer_id == req.customer_id,
+                      ReqModel.is_fund_pool == False,                # noqa: E712
+                      ReqModel.status.notin_(["draft", "cancelled", "closed"]),
+                  )
+                  .order_by(ReqModel.created_at.desc())
+                  .all()
+            )
         current_rate = get_current_exchange_rate(req.fund_currency)
         customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
                     if req.customer_id else None)
@@ -651,6 +665,7 @@ async def requests_detail(
                 "transfers":    transfers,
                 "alt_map":      alt_map,
                 "alt_refs":     alt_refs,
+                "eligible_alt_refs": eligible_alt_refs,
                 "current_rate": current_rate,
                 "can_manage_funds": can_manage_funds(current_user),
                 "customer":     customer,
