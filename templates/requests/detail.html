@@ -1252,152 +1252,8 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endif %}
 
 
-{# ─── FON TRANSFERLERİ — alt fon referanslarında görünür ─── #}
-{% if parent_fund %}
-{% set fund_sym = {'TRY':'₺','USD':'$','EUR':'€'}.get(parent_fund.fund_currency, parent_fund.fund_currency) %}
-<div class="card mb-4" style="border-left: 4px solid #7c3aed;">
-  <div class="card-header d-flex align-items-center justify-content-between py-2"
-       style="background:#f5f3ff; border-bottom:1px solid #ddd6fe;">
-    <h6 class="fw-bold mb-0">
-      <i class="bi bi-piggy-bank-fill me-2" style="color:#7c3aed;"></i>Fon Transferleri
-      <span class="badge ms-2" style="background:#7c3aed; color:white; font-size:11px;">{{ fund_transfers | length }}</span>
-    </h6>
-    <div class="d-flex align-items-center gap-2">
-      <a href="/requests/{{ parent_fund.id }}" class="btn btn-sm btn-outline-primary">
-        <i class="bi bi-piggy-bank me-1"></i>Havuz: {{ parent_fund.request_no }}
-      </a>
-      {% if can_manage_funds %}
-      <button type="button" class="btn btn-sm" style="background:#7c3aed; color:white;"
-              data-bs-toggle="modal" data-bs-target="#fundReturnModal">
-        <i class="bi bi-arrow-down-left me-1"></i>Fona İade Et
-      </button>
-      {% endif %}
-    </div>
-  </div>
-  <div class="card-body">
-    <div class="row g-3 mb-3">
-      <div class="col-md-4">
-        <div class="p-3 rounded" style="background:#eff6ff;">
-          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Fondan Alınan (KDV hariç TRY)</div>
-          <div class="fw-bold text-primary" style="font-size:20px;">
-            ₺{{ '{:,.2f}'.format(fund_in_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="p-3 rounded" style="background:#fef3c7;">
-          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Fona İade (KDV hariç TRY)</div>
-          <div class="fw-bold text-warning" style="font-size:20px;">
-            ₺{{ '{:,.2f}'.format(fund_out_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="p-3 rounded" style="background:#f0fdf4;">
-          <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Net Ciro Katkısı</div>
-          <div class="fw-bold text-success" style="font-size:20px;">
-            ₺{{ '{:,.2f}'.format(fund_net_ciro).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-          </div>
-          <div style="font-size:11px; color:#94a3b8;">Referans ciro'sunda</div>
-        </div>
-      </div>
-    </div>
-
-    {% if fund_transfers %}
-    <div class="table-responsive">
-      <table class="table table-sm align-middle mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>Tarih</th>
-            <th>Yön</th>
-            <th class="text-end">Tutar (KDV dahil)</th>
-            <th class="text-end">KDV hariç</th>
-            <th class="text-end">TRY karşılığı</th>
-            <th>Açıklama</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in fund_transfers %}
-          <tr>
-            <td style="font-size:12px; white-space:nowrap;">{{ t.transfer_date }}</td>
-            <td>
-              {% if t.direction == 'out' %}
-              <span class="badge bg-primary bg-opacity-15 text-primary"><i class="bi bi-arrow-down-right me-1"></i>Fondan Geldi</span>
-              {% else %}
-              <span class="badge bg-warning bg-opacity-25 text-warning"><i class="bi bi-arrow-up-left me-1"></i>Fona İade</span>
-              {% endif %}
-            </td>
-            <td class="text-end fw-bold" style="font-size:13px;">{{ fund_sym }}{{ '{:,.2f}'.format(t.amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-            <td class="text-end" style="font-size:12px; color:#64748b;">{{ fund_sym }}{{ '{:,.2f}'.format(t.amount_excl_vat).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-            <td class="text-end" style="font-size:12px;">
-              {% if t.currency != 'TRY' %}₺{{ '{:,.2f}'.format(t.amount_try).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-              {% else %}—{% endif %}
-            </td>
-            <td class="text-muted" style="font-size:11px;">{{ t.description or '—' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="text-center py-3 text-muted" style="font-size:12px;">
-      Bu referansa henüz fon transferi yapılmadı.
-    </div>
-    {% endif %}
-  </div>
-</div>
-
-{% if can_manage_funds %}
-{# Fona İade modalı #}
-<div class="modal fade" id="fundReturnModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form method="post" action="/requests/fund/{{ parent_fund.id }}/transfer" class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-arrow-down-left me-2"></i>Fona İade</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" name="direction" value="in">
-        <input type="hidden" name="related_request_id" value="{{ req.id }}">
-
-        <div class="alert alert-info" style="font-size:12px;">
-          Bu referanstan <strong>{{ parent_fund.event_name }}</strong> havuzuna
-          {{ fund_sym }} cinsinden iade yapılacak. Tutar KDV dahildir.
-        </div>
-
-        <div class="row g-3">
-          <div class="col-md-7">
-            <label class="form-label fw-semibold">Tutar ({{ fund_sym }}, KDV dahil)</label>
-            <input type="number" name="amount" class="form-control" required min="0.01" step="0.01">
-          </div>
-          <div class="col-md-5">
-            <label class="form-label fw-semibold">KDV %</label>
-            <input type="number" name="vat_rate" class="form-control" step="1"
-                   value="{{ '{:g}'.format(parent_fund.fund_initial_vat_rate) }}">
-          </div>
-          <div class="col-12">
-            <label class="form-label fw-semibold">Tarih</label>
-            <input type="date" name="transfer_date" class="form-control" value="{{ today }}">
-          </div>
-          <div class="col-12">
-            <label class="form-label fw-semibold">Açıklama</label>
-            <input type="text" name="description" class="form-control" placeholder="Örn: Kullanılmayan tutarın iadesi">
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
-        <button type="submit" class="btn" style="background:#7c3aed; color:white;">
-          <i class="bi bi-check-lg me-1"></i>İade Et
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-{% endif %}
-{% endif %}
-
 {# ─── FİNANSAL SEKME ─── #}
+{% set fund_sym = {'TRY':'₺','USD':'$','EUR':'€'}.get(parent_fund.fund_currency, parent_fund.fund_currency) if parent_fund else '₺' %}
 <div class="card mb-4" id="tab-financial">
   <div class="card-header d-flex align-items-center justify-content-between py-2"
        style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
@@ -1406,6 +1262,18 @@ document.addEventListener('DOMContentLoaded', function() {
       <span class="badge bg-secondary ms-1" style="font-size:11px;">KDV Hariç, TRY</span>
     </h6>
     <div class="d-flex align-items-center gap-2">
+    {% if parent_fund %}
+    <a href="/requests/{{ parent_fund.id }}" class="btn btn-outline-primary btn-sm"
+       style="border-color:#a78bfa; color:#7c3aed;">
+      <i class="bi bi-piggy-bank me-1"></i>Havuz: {{ parent_fund.request_no }}
+    </a>
+    {% if can_manage_funds %}
+    <button type="button" class="btn btn-sm" style="background:#7c3aed; color:white;"
+            data-bs-toggle="modal" data-bs-target="#fundReturnModal">
+      <i class="bi bi-arrow-down-left me-1"></i>Fona İade Et
+    </button>
+    {% endif %}
+    {% endif %}
     {% if can_manage_invoices %}
     <a href="/invoices/new?request_id={{ req.id }}"
        class="btn btn-success btn-sm">
@@ -1729,8 +1597,8 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     {% endif %}
 
-    {# ── Onaylanan Faturalar ── #}
-    {% if active_invoices %}
+    {# ── Onaylanan Faturalar (+ fon transferleri) ── #}
+    {% if active_invoices or fund_transfers %}
     <div class="table-responsive">
       <table class="table table-sm table-hover mb-0" style="font-size:13px;">
         <thead style="background:#f1f5f9;">
@@ -1742,22 +1610,74 @@ document.addEventListener('DOMContentLoaded', function() {
           </tr>
         </thead>
         <tbody>
+          {# Fon transfer satırları — fatura listesi içinde "Fondan Transfer / Fona İade" olarak #}
+          {% for t in fund_transfers %}
+          <tr style="background: {% if t.direction == 'out' %}#f5f3ff{% else %}#fef3c7{% endif %};">
+            <td>
+              {% if t.direction == 'out' %}
+              <span class="badge" style="background:#ede9fe; color:#6d28d9; font-size:11px; white-space:nowrap;">
+                <i class="bi bi-arrow-down-right me-1"></i>Fondan Transfer
+              </span>
+              {% else %}
+              <span class="badge" style="background:#fef3c7; color:#92400e; font-size:11px; white-space:nowrap;">
+                <i class="bi bi-arrow-up-left me-1"></i>Fona İade
+              </span>
+              {% endif %}
+            </td>
+            <td class="text-muted">—</td>
+            <td style="white-space:nowrap; color:#64748b;">{{ t.transfer_date | date_tr }}</td>
+            <td>
+              {% if parent_fund %}
+              <a href="/requests/{{ parent_fund.id }}" class="text-decoration-none" style="color:#7c3aed;">
+                <i class="bi bi-piggy-bank me-1"></i>{{ parent_fund.event_name }}
+              </a>
+              {% else %}—{% endif %}
+            </td>
+            <td style="color:#64748b; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              {{ t.description or 'Fon transferi' }}
+            </td>
+            <td class="text-end fw-semibold">
+              {% if t.currency != 'TRY' %}{{ fund_sym }}{{ '{:,.2f}'.format(t.amount_excl_vat).replace(',', '.') }}<br>
+              <small class="text-muted">≈ ₺{{ '{:,.2f}'.format(t.amount_try_excl_vat).replace(',', '.') }}</small>
+              {% else %}₺{{ '{:,.2f}'.format(t.amount_excl_vat).replace(',', '.') }}{% endif %}
+            </td>
+            <td class="text-end text-muted">
+              %{{ t.vat_rate | int }}<br>
+              <small>{{ fund_sym }}{{ '{:,.2f}'.format(t.amount_vat).replace(',', '.') }}</small>
+            </td>
+            <td class="text-end fw-semibold">
+              {% if t.currency != 'TRY' %}{{ fund_sym }}{{ '{:,.2f}'.format(t.amount).replace(',', '.') }}<br>
+              <small class="text-muted">≈ ₺{{ '{:,.2f}'.format(t.amount_try).replace(',', '.') }}</small>
+              {% else %}₺{{ '{:,.2f}'.format(t.amount).replace(',', '.') }}{% endif %}
+            </td>
+            <td><span class="text-muted" style="font-size:11px;">—</span></td>
+            <td class="text-end"><span class="text-muted" style="font-size:11px;">—</span></td>
+          </tr>
+          {% endfor %}
           {% for inv in active_invoices %}
             {{ invoice_row(inv, show_actions=can_manage_invoices, show_approve=false, show_cut=can_cut_invoices) }}
           {% endfor %}
         </tbody>
         <tfoot style="background:#f8fafc; font-size:12px;">
+          {% set _inv_amount  = active_invoices | sum(attribute='amount') %}
+          {% set _inv_total   = active_invoices | sum(attribute='total_amount') %}
+          {% set _ft_excl_try = fund_in_total - fund_out_total %}
           <tr>
-            <td colspan="5" class="fw-semibold text-end pe-3">Toplam (KDV Hariç):</td>
-            <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(active_invoices | sum(attribute='amount')).replace(',', '.') }}</td>
+            <td colspan="5" class="fw-semibold text-end pe-3">Toplam (KDV Hariç, TRY):</td>
+            <td class="text-end fw-bold">
+              ₺{{ '{:,.2f}'.format(_inv_amount + _ft_excl_try).replace(',', '.') }}
+              {% if fund_transfers %}
+              <br><small class="text-muted fw-normal">fatura: ₺{{ '{:,.2f}'.format(_inv_amount).replace(',', '.') }} · fon: ₺{{ '{:,.2f}'.format(_ft_excl_try).replace(',', '.') }}</small>
+              {% endif %}
+            </td>
             <td></td>
-            <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(active_invoices | sum(attribute='total_amount')).replace(',', '.') }}</td>
+            <td class="text-end fw-bold">₺{{ '{:,.2f}'.format(_inv_total).replace(',', '.') }}</td>
             <td colspan="2"></td>
           </tr>
         </tfoot>
       </table>
     </div>
-    {% elif not pending_invoices and not gm_approved_invoices %}
+    {% elif not pending_invoices and not gm_approved_invoices and not fund_transfers %}
     <div class="text-center py-4 text-muted">
       <i class="bi bi-receipt" style="font-size:2.5rem; opacity:.3;"></i>
       <p class="mt-2 mb-0" style="font-size:13px;">Henüz fatura girilmemiş.</p>
@@ -1922,6 +1842,53 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
           </form>
         </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Fona İade Modalı ── #}
+    {% if parent_fund and can_manage_funds %}
+    <div class="modal fade" id="fundReturnModal" tabindex="-1">
+      <div class="modal-dialog">
+        <form method="post" action="/requests/fund/{{ parent_fund.id }}/transfer" class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title"><i class="bi bi-arrow-down-left me-2"></i>Fona İade</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" name="direction" value="in">
+            <input type="hidden" name="related_request_id" value="{{ req.id }}">
+            <div class="alert alert-info" style="font-size:12px;">
+              Bu referanstan <strong>{{ parent_fund.event_name }}</strong> havuzuna
+              {{ fund_sym }} cinsinden iade yapılacak. Tutar KDV dahildir.
+            </div>
+            <div class="row g-3">
+              <div class="col-md-7">
+                <label class="form-label fw-semibold">Tutar ({{ fund_sym }}, KDV dahil)</label>
+                <input type="number" name="amount" class="form-control" required min="0.01" step="0.01">
+              </div>
+              <div class="col-md-5">
+                <label class="form-label fw-semibold">KDV %</label>
+                <input type="number" name="vat_rate" class="form-control" step="1"
+                       value="{{ '{:g}'.format(parent_fund.fund_initial_vat_rate) }}">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Tarih</label>
+                <input type="date" name="transfer_date" class="form-control" value="{{ today }}">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Açıklama</label>
+                <input type="text" name="description" class="form-control" placeholder="Örn: Kullanılmayan tutarın iadesi">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
+            <button type="submit" class="btn" style="background:#7c3aed; color:white;">
+              <i class="bi bi-check-lg me-1"></i>İade Et
+            </button>
+          </div>
+        </form>
       </div>
     </div>
     {% endif %}
