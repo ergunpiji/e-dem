@@ -92,12 +92,9 @@ async def requests_list(
     query = db.query(ReqModel)
 
     # ── ADIM 1: Rol bazlı BASE SCOPE — tüm view filtreleri bunun üstüne eklenir ──
-    # GM her zaman tüm referansları görür (takım atanmış olsa bile)
-    if current_user.is_gm:
+    # GM ve mudur (Etkinlik Süreç Müdürü) tüm referansları görür — çapraz takım erişimi.
+    if current_user.is_gm or current_user.role == "mudur":
         pass  # filtre yok
-    # Birim müdürü (takımlı mudur): sadece kendi takımının talepleri
-    elif current_user.role == "mudur" and current_user.team_id:
-        query = query.filter(ReqModel.team_id == current_user.team_id)
     elif current_user.role == "yonetici":
         sub_ids = _get_subtree_ids(current_user.id, db)
         query = query.filter(ReqModel.created_by.in_([current_user.id] + sub_ids))
@@ -159,9 +156,7 @@ async def requests_list(
 
     # Sayfa başlığı (view yoksa role bazlı)
     if not page_title:
-        if current_user.role == "mudur" and current_user.team_id:
-            page_title = "Takım Referansları"
-        elif current_user.role in ("yonetici", "asistan"):
+        if current_user.role in ("yonetici", "asistan"):
             page_title = "Referanslarım"
         elif current_user.role == "e_dem":
             page_title = "Gelen Referanslar"
@@ -664,10 +659,7 @@ async def requests_detail(
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
 
-    # Birim müdürü (takımlı mudur) sadece kendi takımının referanslarını görebilir
-    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
-        if req.team_id != current_user.team_id:
-            raise HTTPException(403, "Bu referans takımınıza ait değil.")
+    # mudur (Etkinlik Süreç Müdürü) ve GM tüm referansları görebilir — takım engeli yok
 
     # Fon havuzu referansı → özel detay sayfası
     if req.is_fund_pool:

@@ -516,16 +516,9 @@ async def dashboard(
     recent_requests = []
 
     if current_user.role in ("admin", "mudur", "muhasebe_muduru"):
-        # Birim müdürü: takımındaki referanslar; GM/admin/muhasebe_muduru: tümü
-        if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
-            team_ids = [u.id for u in db.query(User).filter(
-                User.team_id == current_user.team_id, User.active == True).all()]
-            req_filter = ReqModel.created_by.in_(team_ids + [current_user.id])
-            req_id_filter = [r.id for r in db.query(ReqModel.id).filter(req_filter).all()]
-            base_q = db.query(ReqModel).filter(req_filter)
-        else:
-            req_id_filter = None
-            base_q = db.query(ReqModel)
+        # mudur (Etkinlik Süreç Müdürü), GM, admin, muhasebe_muduru: tüm referansları görür
+        req_id_filter = None
+        base_q = db.query(ReqModel)
 
         stats = {
             "total_venues":    db.query(Venue).filter(Venue.active == True).count(),
