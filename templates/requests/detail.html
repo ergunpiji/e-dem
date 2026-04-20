@@ -1566,6 +1566,41 @@ document.addEventListener('DOMContentLoaded', function() {
       </a>
       {% endif %}
     </div>
+    {% elif not can_approve_invoices and pending_invoices %}
+    {# PM ve yöneticiler: onay bekleyen faturalar var ama onaylama yetkisi yok — sadece sayı göster #}
+    <div class="py-3 px-1">
+      <div class="d-flex align-items-center gap-2" style="font-size:13px; color:#92400e;">
+        <i class="bi bi-hourglass-split text-warning"></i>
+        <span>
+          <strong>{{ pending_invoices | length }}</strong> fatura GM / müdür onayı bekliyor.
+        </span>
+      </div>
+      <div class="table-responsive mt-2">
+        <table class="table table-sm mb-0" style="font-size:13px;">
+          <thead style="background:#fef9c3;">
+            <tr>
+              <th>Tip</th><th>Fatura No</th><th>Tarih</th>
+              <th>Tedarikçi / Müşteri</th>
+              <th class="text-end">Toplam (KDV dahil)</th><th>Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in pending_invoices %}
+            <tr>
+              {% set _tc = {'kesilen':('bg-success','text-success'),'gelen':('bg-danger','text-danger'),'komisyon':('bg-success','text-success'),'iade_kesilen':('bg-info','text-info'),'iade_gelen':('bg-secondary','text-secondary')} %}
+              {% set _c = _tc.get(inv.invoice_type, ('bg-secondary','text-secondary')) %}
+              <td><span class="badge {{ _c[0] }} bg-opacity-10 {{ _c[1] }}" style="font-size:10px;">{{ inv.type_label }}</span></td>
+              <td class="text-muted">{{ inv.invoice_no or '—' }}</td>
+              <td style="white-space:nowrap; color:#64748b;">{{ inv.invoice_date | date_tr if inv.invoice_date else '—' }}</td>
+              <td>{{ inv.vendor_name or '—' }}</td>
+              <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}</td>
+              <td><span class="badge bg-warning bg-opacity-20 text-warning" style="font-size:10px;">Onay Bekliyor</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
     {% endif %}
 
     {# ── Reddedilen Faturalar (gizli, aç/kapa) ── #}
