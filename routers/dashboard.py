@@ -153,13 +153,17 @@ def _build_financial_stats(db: Session, req_id_filter=None):
 def _build_ytd_team_stats(db: Session) -> list[dict]:
     """Yılbaşından bugüne takım bazlı ciro/kar (tüm takımlar — GM/admin için).
 
-    Fon havuzu ana referanslarının faturaları hariç; FundTransfer'ler dahil.
+    Fon havuzu referansları (customer + vendor) tamamen hariç tutulur —
+    sahte takım/müşteri olarak görünmesinler.
     """
     from utils.funds import fund_pool_invoice_ids
     from models import FundTransfer as _FT
     year_start = date(date.today().year, 1, 1).isoformat()
 
-    reqs = db.query(ReqModel).filter(ReqModel.check_in >= year_start).all()
+    reqs = (db.query(ReqModel)
+              .filter(ReqModel.check_in >= year_start,
+                      ReqModel.is_fund_pool == False)            # noqa: E712
+              .all())
     if not reqs:
         return []
     req_team_map = {r.id: r.team_id for r in reqs}
@@ -219,7 +223,9 @@ def _build_ytd_customer_stats(db: Session, req_id_filter=None, limit: int = 10) 
     """
     year_start = date(date.today().year, 1, 1).isoformat()
 
-    req_q = db.query(ReqModel).filter(ReqModel.check_in >= year_start)
+    req_q = (db.query(ReqModel)
+               .filter(ReqModel.check_in >= year_start,
+                       ReqModel.is_fund_pool == False))           # noqa: E712
     if req_id_filter is not None:
         req_q = req_q.filter(ReqModel.id.in_(req_id_filter))
     reqs = req_q.all()
