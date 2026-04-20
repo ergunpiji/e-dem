@@ -196,6 +196,27 @@
 </div>
 {% endif %}{# /e_dem gizle #}
 
+{# ══════════════════ MÜŞTERİ YTD GRAFİĞİ ══════════════════ #}
+{% if show_customer_ytd %}
+<div class="chart-card mb-4">
+  <div class="chart-title">
+    <i class="bi bi-buildings text-success me-2"></i>Müşteri Bazlı Ciro / Kar
+    <span class="text-muted fw-normal ms-2" style="font-size:11px;">
+      YTD · Yılbaşından bugüne
+      {% if current_user.is_gm or current_user.role == 'admin' %}
+        · Tüm müşteriler
+      {% elif current_user.role == 'mudur' %}
+        · Takımımın müşterileri
+      {% else %}
+        · Benim referanslarım
+      {% endif %}
+      · İlk 10
+    </span>
+  </div>
+  <canvas id="customerYtdChart" style="max-height:300px;"></canvas>
+</div>
+{% endif %}
+
 {# ══════════════════ BEKLEYENLERİM ══════════════════ #}
 {% if pending_tasks %}
 <div class="card mb-3" style="border-left: 4px solid #f59e0b;">
@@ -353,6 +374,48 @@
   });
 })();
 </script>
+
+{% if show_customer_ytd %}
+<script>
+(function() {
+  const cust = {{ customer_ytd_json | safe }};
+  const ctx  = document.getElementById('customerYtdChart');
+  if (!ctx || !cust.labels || !cust.labels.length) return;
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: cust.labels,
+      datasets: [
+        { label: 'Ciro', data: cust.ciro, backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4 },
+        { label: 'Kar',  data: cust.kar,  backgroundColor: 'rgba(22,163,74,0.8)',  borderRadius: 4 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₺${new Intl.NumberFormat('tr-TR').format(Math.round(ctx.parsed.y))}`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 35, minRotation: 20 }, grid: { display: false } },
+        y: {
+          ticks: {
+            font: { size: 10 },
+            callback: v => '₺' + new Intl.NumberFormat('tr-TR', {notation:'compact'}).format(v)
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
 
 {% if show_team_ytd %}
 <script>

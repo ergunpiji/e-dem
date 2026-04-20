@@ -156,6 +156,54 @@ def _build_ytd_team_stats(db: Session) -> list[dict]:
     return rows
 
 
+def _build_ytd_customer_stats(db: Session, req_id_filter=None, limit: int = 10) -> list[dict]:
+    """Yılbaşından bugüne müşteri bazlı ciro/kar.
+
+    req_id_filter verilirse sadece o referans ID'leri kapsanır (rol scope).
+    """
+    year_start = date(date.today().year, 1, 1).isoformat()
+
+    req_q = db.query(ReqModel).filter(ReqModel.check_in >= year_start)
+    if req_id_filter is not None:
+        req_q = req_q.filter(ReqModel.id.in_(req_id_filter))
+    reqs = req_q.all()
+    if not reqs:
+        return []
+
+    req_info = {r.id: (r.customer_id, r.client_name) for r in reqs}
+    cust_name_map = {c.id: c.name for c in db.query(Customer).all()}
+
+    invoices = db.query(Invoice).filter(
+        Invoice.status.in_(["approved", "gm_approved", "active"]),
+        Invoice.request_id.in_(list(req_info.keys())),
+    ).all()
+
+    agg: dict[str, dict] = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0, "komisyon": 0.0})
+    for inv in invoices:
+        cid, cname = req_info.get(inv.request_id, (None, None))
+        key = cust_name_map.get(cid) or (cname or "—")
+        if inv.invoice_type == "kesilen":
+            agg[key]["ciro"] += inv.amount
+        elif inv.invoice_type == "iade_kesilen":
+            agg[key]["ciro"] -= inv.amount
+        elif inv.invoice_type == "komisyon":
+            agg[key]["komisyon"] += inv.amount
+        elif inv.invoice_type == "gelen":
+            agg[key]["maliyet"] += inv.amount
+        elif inv.invoice_type == "iade_gelen":
+            agg[key]["maliyet"] -= inv.amount
+
+    rows = []
+    for name, v in agg.items():
+        ciro = v["ciro"] + v["komisyon"]
+        kar  = ciro - v["maliyet"]
+        if ciro == 0 and kar == 0:
+            continue
+        rows.append({"name": name, "ciro": round(ciro, 0), "kar": round(kar, 0)})
+    rows.sort(key=lambda r: r["ciro"], reverse=True)
+    return rows[:limit]
+
+
 def _build_pending_tasks(db: Session, current_user) -> list[dict]:
     """Role göre bekleyen işlemleri linkli liste olarak döner."""
     tasks = []
@@ -428,6 +476,12 @@ async def dashboard(
     if show_team_ytd:
         team_ytd = _build_ytd_team_stats(db)
 
+    # Müşteri YTD grafiği — finansal görüntülemesi olan roller (asistan/e_dem hariç)
+    customer_ytd = []
+    show_customer_ytd = current_user.role in ("admin", "mudur", "muhasebe_muduru", "yonetici")
+    if show_customer_ytd:
+        customer_ytd = _build_ytd_customer_stats(db, req_id_filter=req_id_filter)
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -448,6 +502,12 @@ async def dashboard(
                 "labels": [t["name"] for t in team_ytd],
                 "ciro":   [t["ciro"]  for t in team_ytd],
                 "kar":    [t["kar"]   for t in team_ytd],
+            }),
+            "show_customer_ytd": show_customer_ytd,
+            "customer_ytd_json": json.dumps({
+                "labels": [c["name"] for c in customer_ytd],
+                "ciro":   [c["ciro"]  for c in customer_ytd],
+                "kar":    [c["kar"]   for c in customer_ytd],
             }),
         },
     )
