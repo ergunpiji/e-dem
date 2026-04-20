@@ -146,6 +146,30 @@ async def vendors_list(
         unpaid_map[v.id]  = round(unpaid,  2)
         overdue_map[v.id] = round(overdue, 2)
 
+    # Vendor fund pool bakiyeleri — tedarikçi adına göre eşleşen havuzları bul
+    from models import Request as ReqModel
+    from utils.funds import get_fund_balance
+    pools = (db.query(ReqModel)
+               .filter(ReqModel.is_fund_pool == True,                 # noqa: E712
+                       ReqModel.fund_pool_type == "vendor")
+               .order_by(ReqModel.check_in.desc())
+               .all())
+    # vendor_name (case-insensitive) → en güncel havuz + bakiye
+    fund_map: dict = {}
+    for p in pools:
+        key = (p.fund_vendor_name or "").strip().lower()
+        if not key or key in fund_map:
+            continue   # ilk gelen (en güncel yıl) tutulur
+        bal = get_fund_balance(p, db)
+        fund_map[key] = {
+            "pool_id":   p.id,
+            "request_no": p.request_no,
+            "year":      p.check_in[:4] if p.check_in else "",
+            "currency":  bal["currency"],
+            "remaining": bal["remaining"],
+            "initial":   bal["initial"],
+        }
+
     return templates.TemplateResponse("vendors/list.html", {
         "request":      request,
         "current_user": current_user,
@@ -154,6 +178,7 @@ async def vendors_list(
         "q":            q,
         "unpaid_map":   unpaid_map,
         "overdue_map":  overdue_map,
+        "fund_map":     fund_map,
         "can_edit":     current_user.role in FINANCE_ROLES,
     })
 
