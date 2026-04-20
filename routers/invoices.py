@@ -134,9 +134,17 @@ async def invoice_detail(
     db: Session = Depends(get_db),
 ):
     from models import INVOICE_LOG_ACTIONS
-    inv = _get_invoice_or_404(db, invoice_id)
-    logs = inv.logs  # InvoiceLog.created_at sıralı (model tanımında order_by var)
     from datetime import date as _dt
+    inv = _get_invoice_or_404(db, invoice_id)
+    try:
+        logs = (
+            db.query(InvoiceLog)
+            .filter(InvoiceLog.invoice_id == invoice_id)
+            .order_by(InvoiceLog.created_at)
+            .all()
+        )
+    except Exception:
+        logs = []
     return templates.TemplateResponse("invoices/detail.html", {
         "request":       request,
         "current_user":  current_user,

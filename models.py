@@ -1113,7 +1113,7 @@ class Invoice(Base):
     creator          = relationship("User", foreign_keys=[created_by])
     approver         = relationship("User", foreign_keys=[approved_by])
     current_approver = relationship("User", foreign_keys=[current_approver_id])
-    logs             = relationship("InvoiceLog", back_populates="invoice", order_by="InvoiceLog.created_at")
+    logs             = relationship("InvoiceLog", back_populates="invoice")
 
     @property
     def lines(self) -> list:
