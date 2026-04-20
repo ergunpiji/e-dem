@@ -3,13 +3,14 @@ E-dem — Finansal Tedarikçi Yönetimi (FinancialVendor)
 Erişim: admin, muhasebe_muduru, muhasebe  (liste/düzenle)
 Görüntüleme: mudur (GM), muhasebe ekibi
 """
+import os
 from datetime import date, datetime, timedelta
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, func, text
+from sqlalchemy.orm import Session, sessionmaker
 
 from auth import get_current_user
 from database import get_db
@@ -17,6 +18,47 @@ from models import FinancialVendor, Invoice, User, _uuid, _now
 from templates_config import templates
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
+
+# ── Finans agent DB (kredi kartı ekstrelerini okumak için) ────────────────────
+_finans_raw_url = os.environ.get(
+    "FINANS_AGENT_DB",
+    os.environ.get("DATABASE_URL", "sqlite:///./agents/finans/finans_agent.db"),
+)
+if _finans_raw_url.startswith("postgres://"):
+    _finans_raw_url = _finans_raw_url.replace("postgres://", "postgresql://", 1)
+_finans_is_sqlite = _finans_raw_url.startswith("sqlite")
+_finans_kwargs: dict = {"echo": False}
+if _finans_is_sqlite:
+    _finans_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _finans_kwargs["pool_pre_ping"] = True
+    _finans_kwargs["pool_recycle"]  = 300
+    _finans_kwargs["pool_size"]     = 3
+    _finans_kwargs["max_overflow"]  = 5
+_finans_engine = create_engine(_finans_raw_url, **_finans_kwargs)
+_FinansSession = sessionmaker(autocommit=False, autoflush=False, bind=_finans_engine)
+
+
+def _get_cc_statements(today_str: str, end_str: str) -> list[dict]:
+    """Ödenmemiş/kısmi kredi kartı ekstrelerini finans DB'den çek."""
+    try:
+        with _FinansSession() as sess:
+            rows = sess.execute(
+                text("""
+                    SELECT s.id, s.due_date, s.total_amount, s.paid_amount, s.status,
+                           c.name AS card_name, c.bank, c.last_four
+                    FROM credit_card_statements s
+                    JOIN credit_cards c ON c.id = s.card_id
+                    WHERE s.status != 'odendi'
+                      AND s.due_date >= :today
+                      AND s.due_date <= :end
+                    ORDER BY s.due_date
+                """),
+                {"today": today_str, "end": end_str},
+            ).fetchall()
+            return [dict(r._mapping) for r in rows]
+    except Exception:
+        return []
 
 FINANCE_ROLES = {"admin", "muhasebe_muduru", "muhasebe"}
 VIEW_ROLES    = {"admin", "muhasebe_muduru", "muhasebe", "mudur"}  # mudur = GM here
@@ -470,6 +512,26 @@ async def cash_flow(
         .all()
     )
 
+    # Kredi kartı ekstresi ödemeleri (finans agent DB'den)
+    cc_statements = _get_cc_statements(today_str, end_str)
+    # Kalem formatına dönüştür (is_cc_stmt=True ile ayırt edelim)
+    cc_stmt_items = [
+        {
+            "invoice":    None,
+            "amount":     round(max(0.0, (s["total_amount"] or 0) - (s["paid_amount"] or 0)), 2),
+            "eff_date":   str(s["due_date"]),
+            "is_cc":      True,
+            "is_cc_stmt": True,
+            "cc_label":   str(s["due_date"]),
+            "card_name":  s["card_name"],
+            "card_bank":  s["bank"] or "",
+            "card_last4": s["last_four"] or "",
+        }
+        for s in cc_statements
+        if round(max(0.0, (s["total_amount"] or 0) - (s["paid_amount"] or 0)), 2) > 0
+    ]
+    all_outgoing_items = all_outgoing_items + cc_stmt_items
+
     # Haftalık gruplama
     weeks_data = []
     for w in range(weeks):
@@ -485,7 +547,7 @@ async def cash_flow(
             "label":       f"Hafta {w+1}",
             "start":       week_start.strftime("%d.%m"),
             "end":         week_end.strftime("%d.%m"),
-            "outgoing":    w_items,    # artık kalem listesi (dict)
+            "outgoing":    w_items,
             "incoming":    w_in,
             "total_out":   round(sum(it["amount"] for it in w_items), 2),
             "total_in":    round(sum(max(0.0, (i.total_amount or 0) - (i.paid_amount or 0)) for i in w_in), 2),
