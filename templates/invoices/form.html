@@ -88,7 +88,8 @@
         <form method="post"
               action="{% if edit_mode %}/invoices/{{ invoice.id }}/edit{% else %}/invoices/new{% endif %}"
               enctype="multipart/form-data"
-              id="invoiceForm">
+              id="invoiceForm"
+              onsubmit="syncCustomerNameToVendorName()">
 
           {# ── Hesap Dökümü / Fatura Talebi Banner ── #}
           {% if statement_prefill %}
@@ -195,24 +196,47 @@
                      placeholder="2024/00123">
             </div>
             <div class="col-md-4" id="colVendorName">
-              <label class="form-label fw-semibold">Tedarikçi / Müşteri</label>
-              <input type="hidden" name="vendor_id" id="fVendorId"
-                     value="{{ invoice.vendor_id if invoice and invoice.vendor_id else '' }}">
-              <input type="hidden" name="define_vendor" id="fDefineVendor" value="no">
-              <input type="hidden" name="vendor_payment_term" id="fVendorPaymentTerm" value="60">
-              <div style="position:relative;">
-                <input type="text" name="vendor_name" id="fVendorName" class="form-control"
-                       value="{{ invoice.vendor_name if invoice else '' }}"
-                       placeholder="Firma adı"
-                       autocomplete="off"
-                       oninput="vendorSearch(this.value)"
-                       onblur="setTimeout(hideVendorDrop, 200)">
-                <div id="vendorDropdown"
-                     style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:200px;
-                            overflow-y:auto; z-index:1000; background:#fff; border:1px solid #e2e8f0;
-                            border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.1); font-size:13px;"></div>
+              {# Tedarikçi modu (gelen/komisyon/iade) #}
+              <div id="vendorSection">
+                <label class="form-label fw-semibold">Tedarikçi</label>
+                <input type="hidden" name="vendor_id" id="fVendorId"
+                       value="{{ invoice.vendor_id if invoice and invoice.vendor_id else '' }}">
+                <input type="hidden" name="define_vendor" id="fDefineVendor" value="no">
+                <input type="hidden" name="vendor_payment_term" id="fVendorPaymentTerm" value="60">
+                <div style="position:relative;">
+                  <input type="text" name="vendor_name" id="fVendorName" class="form-control"
+                         value="{{ invoice.vendor_name if invoice else '' }}"
+                         placeholder="Firma adı"
+                         autocomplete="off"
+                         oninput="vendorSearch(this.value)"
+                         onblur="setTimeout(hideVendorDrop, 200)">
+                  <div id="vendorDropdown"
+                       style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:200px;
+                              overflow-y:auto; z-index:1000; background:#fff; border:1px solid #e2e8f0;
+                              border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.1); font-size:13px;"></div>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:3px;">Seçili tedarikçi varsa vade otomatik hesaplanır.</div>
               </div>
-              <div style="font-size:11px;color:#64748b;margin-top:3px;">Seçili tedarikçi varsa vade otomatik hesaplanır.</div>
+
+              {# Müşteri modu (kesilen/iade_kesilen) #}
+              <div id="customerSection" style="display:none;">
+                <label class="form-label fw-semibold">Müşteri</label>
+                <input type="hidden" name="customer_id" id="fCustomerId" value="">
+                <input type="hidden" name="define_customer" id="fDefineCustomer" value="no">
+                <div style="position:relative;">
+                  <input type="text" id="fCustomerName" class="form-control"
+                         value="{{ invoice.vendor_name if invoice else '' }}"
+                         placeholder="Müşteri adı ara veya yaz..."
+                         autocomplete="off"
+                         oninput="customerSearch(this.value)"
+                         onblur="setTimeout(hideCustomerDrop, 200)">
+                  <div id="customerDropdown"
+                       style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:200px;
+                              overflow-y:auto; z-index:1000; background:#fff; border:1px solid #e2e8f0;
+                              border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.1); font-size:13px;"></div>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:3px;">Kayıtlı müşteri seçin ya da yeni müşteri adı yazın.</div>
+              </div>
             </div>
           </div>
 
@@ -246,6 +270,35 @@
                             onclick="dismissDefineVendor()"
                             style="font-size:12px;">
                       Hayır
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# ── Yeni Müşteri Kaydet Prompt ── #}
+          <div id="defineCustomerBox" style="display:none; margin-bottom:14px;">
+            <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:12px 16px;">
+              <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-person-plus text-success mt-1"></i>
+                <div class="flex-grow-1">
+                  <div class="fw-semibold" style="font-size:13px; color:#14532d;">
+                    "<span id="defineCustomerNameLabel"></span>" müşteri kaydı oluşturulacak.
+                  </div>
+                  <div style="font-size:12px; color:#166534; margin-bottom:8px;">
+                    Kaydederseniz müşteri listesine eklenir ve sonraki faturalarda otomatik seçilebilir.
+                  </div>
+                  <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-success"
+                            onclick="confirmDefineCustomer()"
+                            style="font-size:12px; font-weight:600;">
+                      <i class="bi bi-check me-1"></i> Evet, Kayıt Et
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            onclick="dismissDefineCustomer()"
+                            style="font-size:12px;">
+                      Sadece Bu Fatura İçin
                     </button>
                   </div>
                 </div>
@@ -506,6 +559,78 @@ function selectVendor(id, name, paymentTerm) {
 function hideVendorDrop() {
   const dd = document.getElementById('vendorDropdown');
   if (dd) dd.style.display = 'none';
+}
+
+// ── Müşteri autocomplete ─────────────────────────────────────────────────────
+let _customerSearchTimer = null;
+let _customerDismissed   = false;
+
+function customerSearch(q) {
+  clearTimeout(_customerSearchTimer);
+  syncCustomerNameToVendorName();
+  const dd = document.getElementById('customerDropdown');
+  if (!q.trim()) {
+    dd.style.display = 'none';
+    document.getElementById('fCustomerId').value = '';
+    document.getElementById('defineCustomerBox').style.display = 'none';
+    _customerDismissed = false;
+    return;
+  }
+  _customerSearchTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch('/customers/autocomplete?q=' + encodeURIComponent(q));
+      const data = await res.json();
+      if (!data.length) {
+        dd.style.display = 'none';
+        if (!_customerDismissed && !document.getElementById('fCustomerId').value) {
+          showDefineCustomerBox(q);
+        }
+        return;
+      }
+      dd.innerHTML = data.map(c =>
+        `<div class="px-3 py-2 border-bottom" style="cursor:pointer;"
+              onmousedown="selectCustomer('${c.id}','${c.name.replace(/'/g,"\\'")}')"
+              onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background=''">
+          <span class="fw-semibold">${c.name}</span>
+          ${c.code ? `<span class='text-muted ms-2' style='font-size:11px;'>${c.code.toUpperCase()}</span>` : ''}
+         </div>`
+      ).join('');
+      dd.style.display = '';
+      document.getElementById('defineCustomerBox').style.display = 'none';
+    } catch(e) {}
+  }, 300);
+}
+
+function selectCustomer(id, name) {
+  document.getElementById('fCustomerId').value   = id;
+  document.getElementById('fCustomerName').value = name;
+  document.getElementById('fVendorName').value   = name;
+  document.getElementById('customerDropdown').style.display  = 'none';
+  document.getElementById('defineCustomerBox').style.display = 'none';
+  _customerDismissed = true;
+}
+
+function hideCustomerDrop() {
+  const dd = document.getElementById('customerDropdown');
+  if (dd) dd.style.display = 'none';
+}
+
+function showDefineCustomerBox(name) {
+  const lbl = document.getElementById('defineCustomerNameLabel');
+  if (lbl) lbl.textContent = name || document.getElementById('fCustomerName').value;
+  document.getElementById('defineCustomerBox').style.display = '';
+}
+
+function confirmDefineCustomer() {
+  document.getElementById('fDefineCustomer').value = 'yes';
+  document.getElementById('defineCustomerBox').style.display = 'none';
+  _customerDismissed = true;
+}
+
+function dismissDefineCustomer() {
+  document.getElementById('fDefineCustomer').value = 'no';
+  document.getElementById('defineCustomerBox').style.display = 'none';
+  _customerDismissed = true;
 }
 
 // ── Tanımlı tedarikçi prompt ─────────────────────────────────────────────────
@@ -838,20 +963,48 @@ function docChosen(input) {
 const BELGESIZ_TYPES = new Set(['belgesiz_gelir', 'belgesiz_gider']);
 const INVOICE_SECTIONS = ['colInvoiceNo','colVendorName','rowDates','linesSection','totalsSection','docSection'];
 
+const CUSTOMER_INVOICE_TYPES = new Set(['kesilen', 'iade_kesilen']);
+
 function onInvoiceTypeChange(val) {
   const isBelgesiz = BELGESIZ_TYPES.has(val);
+  const isCustomer = CUSTOMER_INVOICE_TYPES.has(val);
+
   INVOICE_SECTIONS.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isBelgesiz ? 'none' : '';
   });
   document.getElementById('belgesizFields').style.display = isBelgesiz ? '' : 'none';
-  // Belgesiz seçilince kalem tablosunu gizle — AI parse de anlamsız
+
+  // Müşteri / Tedarikçi alanını tipine göre değiştir
+  const vendorSec   = document.getElementById('vendorSection');
+  const customerSec = document.getElementById('customerSection');
+  const defineVBox  = document.getElementById('defineVendorBox');
+  const defineCBox  = document.getElementById('defineCustomerBox');
+
+  if (isCustomer) {
+    vendorSec.style.display   = 'none';
+    customerSec.style.display = '';
+    if (defineVBox) defineVBox.style.display = 'none';
+    // vendor_name için customer input'u bağla
+    syncCustomerNameToVendorName();
+  } else {
+    vendorSec.style.display   = '';
+    customerSec.style.display = 'none';
+    if (defineCBox) defineCBox.style.display = 'none';
+  }
+
   if (isBelgesiz) {
-    // Set invoice_date to today as default
     const d = new Date().toISOString().slice(0,10);
     const fd = document.getElementById('fBelgesizDate');
     if (fd && !fd.value) fd.value = d;
   }
+}
+
+// vendor_name hidden'a müşteri adını yansıt (form submit için)
+function syncCustomerNameToVendorName() {
+  const cn = document.getElementById('fCustomerName');
+  const vn = document.getElementById('fVendorName');
+  if (cn && vn) vn.value = cn.value;
 }
 
 // Sayfa yüklenince mevcut seçime göre uygula

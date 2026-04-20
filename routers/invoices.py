@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
+from models import Budget, Customer, Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
 from routers.library import log_activity
 from templates_config import templates
 
@@ -351,6 +351,8 @@ async def invoices_create(
     vendor_name:         str = Form(""),
     define_vendor:       str = Form("no"),   # "yes" → yeni FinancialVendor oluştur
     vendor_payment_term: str = Form("60"),   # gün
+    customer_id:         str = Form(""),     # kesilen fatura → müşteri FK
+    define_customer:     str = Form("no"),   # "yes" → yeni Customer oluştur
     description:         str = Form(""),
     lines_json:          str = Form("[]"),
     belgesiz_amount:     str = Form(""),
@@ -489,6 +491,44 @@ async def invoices_create(
                 Invoice.vendor_id == None,
                 Invoice.id != inv.id,
             ).update({"vendor_id": _resolved_vendor_id}, synchronize_session=False)
+
+    # ── Kesilen fatura: müşteri bağla / oluştur ──────────────────────────────
+    if invoice_type in ("kesilen", "iade_kesilen"):
+        _cust_name = vendor_name.strip()
+        _cust_id   = customer_id.strip() or None
+
+        if not _cust_id and _cust_name:
+            # Önce mevcut müşteride ara (exact match)
+            existing_cust = db.query(Customer).filter(
+                Customer.name.ilike(_cust_name)
+            ).first()
+            if existing_cust:
+                _cust_id = existing_cust.id
+            elif define_customer == "yes":
+                # Yeni müşteri oluştur
+                import re as _re
+                _code = _re.sub(r"[^a-z]", "", _cust_name.lower())[:3] or "mst"
+                # code benzersiz yapılsın
+                _base_code = _code
+                _sfx = 1
+                while db.query(Customer).filter(Customer.code == _code).first():
+                    _code = _base_code[:2] + str(_sfx)
+                    _sfx += 1
+                new_cust = Customer(
+                    id         = _uuid(),
+                    name       = _cust_name,
+                    code       = _code,
+                    created_at = _now(),
+                )
+                db.add(new_cust)
+                db.flush()
+                _cust_id = new_cust.id
+
+        # vendor_name'i müşteri adına normalize et
+        if _cust_id:
+            cust_obj = db.query(Customer).filter(Customer.id == _cust_id).first()
+            if cust_obj:
+                inv.vendor_name = cust_obj.name
 
     # Kütüphane: fatura girişi logu
     from models import INVOICE_TYPE_LABELS as _ITL
