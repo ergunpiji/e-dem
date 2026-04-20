@@ -116,6 +116,7 @@ def build_fund_pool_excel(fund_req, db) -> io.BytesIO:
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
     r += 1
 
+    _FILL_NONE = PatternFill(fill_type=None)
     bal_rows = [
         ("Başlangıç Tutarı (KDV dahil)",  balance["initial"]),
         ("KDV Hariç Karşılık",            balance["initial_excl"]),
@@ -130,7 +131,7 @@ def build_fund_pool_excel(fund_req, db) -> io.BytesIO:
         c1.border = _BORDER
         c2 = ws.cell(row=r, column=2, value=val)
         c2.font = _FONT_BOLD if label == "Kalan Bakiye" else _FONT_BODY
-        c2.fill = _FILL_BALANCE if label == "Kalan Bakiye" else None
+        c2.fill = _FILL_BALANCE if label == "Kalan Bakiye" else _FILL_NONE
         c2.alignment = _ALIGN_RIGHT
         c2.number_format = money_fmt
         c2.border = _BORDER
