@@ -224,7 +224,7 @@
           <div class="tl-item">
             <div class="tl-dot {{ _la[1] }}"></div>
             <div class="tl-time">
-              {{ lg.created_at.strftime('%d.%m.%Y %H:%M') if lg.created_at else '—' }}
+              {{ lg.created_at | datetime_tr }}
             </div>
             <div class="tl-title">
               <i class="bi {{ _la[2] }} me-1"></i>{{ _la[0] }}
@@ -291,7 +291,7 @@
           </div>
           <div>
             <div style="font-size:13px;font-weight:600;">{{ inv.approver.full_name }}</div>
-            <div class="text-muted" style="font-size:11px;">{{ inv.approved_at.strftime('%d.%m.%Y %H:%M') }}</div>
+            <div class="text-muted" style="font-size:11px;">{{ inv.approved_at | datetime_tr }}</div>
           </div>
         </div>
       </div>

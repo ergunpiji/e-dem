@@ -62,7 +62,22 @@ def fromjson_filter(value: Any) -> Any:
         return {}
 
 
-templates.env.filters["date_tr"]   = format_date_tr
-templates.env.filters["money"]     = format_money
-templates.env.filters["role_label"] = role_label
-templates.env.filters["fromjson"]  = fromjson_filter
+def format_datetime_tr(value: Any) -> str:
+    """datetime veya ISO string → GG.AA.YYYY SS:DD"""
+    if not value:
+        return "—"
+    try:
+        if hasattr(value, "strftime"):
+            return value.strftime("%d.%m.%Y %H:%M")
+        s = str(value)[:16].replace("T", " ")   # "2026-04-20T14:30" → "2026-04-20 14:30"
+        dt = datetime.fromisoformat(s)
+        return dt.strftime("%d.%m.%Y %H:%M")
+    except Exception:
+        return str(value)[:16]
+
+
+templates.env.filters["date_tr"]      = format_date_tr
+templates.env.filters["datetime_tr"]  = format_datetime_tr
+templates.env.filters["money"]        = format_money
+templates.env.filters["role_label"]   = role_label
+templates.env.filters["fromjson"]     = fromjson_filter
