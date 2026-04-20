@@ -1059,6 +1059,12 @@ def migrate_db():
         _safe_add_column(conn, "invoices", "payment_status",      "TEXT", "'unpaid'")
         _safe_add_column(conn, "invoices", "paid_at",             "TEXT")
         _safe_add_column(conn, "invoices", "current_approver_id", "TEXT")
+        # Mevcut bekleyen faturaları backfill: request sahibini current_approver_id yap
+        conn.execute(text(
+            "UPDATE invoices SET current_approver_id = ("
+            "  SELECT created_by FROM requests WHERE requests.id = invoices.request_id"
+            ") WHERE status = 'pending' AND request_id IS NOT NULL AND current_approver_id IS NULL"
+        ))
 
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()

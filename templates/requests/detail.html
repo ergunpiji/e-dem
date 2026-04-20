@@ -1398,10 +1398,11 @@ document.addEventListener('DOMContentLoaded', function() {
           <i class="bi bi-eye"></i>
         </button>
         {% endif %}
-        {# Onay/red butonları #}
+        {# Onay/red butonları — current_approver_id yoksa (eski fatura) req sahibine fallback #}
+        {% set _eff_approver = inv.current_approver_id or (inv.request.created_by if inv.request else None) %}
         {% set _can_approve_this = inv.status in ('pending', 'mudur_approved') and (
             current_user.role in ('admin', 'muhasebe_muduru') or
-            (inv.current_approver_id and inv.current_approver_id == current_user.id)
+            (_eff_approver and _eff_approver == current_user.id)
         ) %}
         {% if _can_approve_this %}
           <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
@@ -1493,11 +1494,12 @@ document.addEventListener('DOMContentLoaded', function() {
           </thead>
           <tbody>
             {% for inv in pending_invoices %}
+            {% set _eff_approver_id = inv.current_approver_id or (inv.request.created_by if inv.request else None) %}
             {% set _row_approve = (
                 current_user.role in ('admin', 'muhasebe_muduru') or
-                (inv.current_approver_id and inv.current_approver_id == current_user.id)
+                (_eff_approver_id and _eff_approver_id == current_user.id)
             ) %}
-            {% set _approver = inv.current_approver %}
+            {% set _approver = inv.current_approver or (inv.request.creator if inv.request else None) %}
             <tr>
               {% set type_colors = {
                 'kesilen':      ('bg-success',  'text-success'),
