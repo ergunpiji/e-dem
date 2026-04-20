@@ -1274,8 +1274,7 @@ class PrepaymentRequest(Base):
     approver          = relationship("User", foreign_keys=[approved_by])
     payer             = relationship("User", foreign_keys=[paid_by])
     vendor_prepayment = relationship("VendorPrepayment", foreign_keys=[vendor_prepayment_id])
-    logs              = relationship("PrepaymentRequestLog", back_populates="prepayment_request",
-                                     order_by="PrepaymentRequestLog.created_at")
+    logs              = relationship("PrepaymentRequestLog", back_populates="prepayment_request")
 
     @property
     def status_label(self) -> str:

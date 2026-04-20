@@ -12,6 +12,7 @@ from models import (
     Base, User, Venue, Customer, Service, CustomCategory, Request, Budget,
     EventType, Settings, OrgTitle, Invoice, EmailTemplate,
     ExpenseReport, ExpenseItem, UndocumentedEntry, FinancialVendor,
+    VendorPrepayment, InvoiceLog, PrepaymentRequest, PrepaymentRequestLog,
     _EMAIL_TEMPLATE_DEFAULTS, _uuid, _now,
 )
 
