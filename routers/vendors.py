@@ -245,14 +245,23 @@ async def vendors_card(
 
     # Özet hesaplamalar
     today_str = date.today().isoformat()
-    total_amount   = sum(inv.total_amount or 0 for inv in invoices if inv.status == "approved")
-    paid_amount    = sum(inv.total_amount or 0 for inv in invoices
-                        if inv.status == "approved" and inv.payment_status in ("paid", "partial"))
-    unpaid_amount  = sum(inv.total_amount or 0 for inv in invoices
-                        if inv.status == "approved" and inv.payment_status == "unpaid")
-    overdue_amount = sum(inv.total_amount or 0 for inv in invoices
-                        if inv.status == "approved" and inv.payment_status == "unpaid"
-                        and inv.due_date and inv.due_date < today_str)
+
+    def _remaining(inv) -> float:
+        return round(max(0.0, (inv.total_amount or 0) - (inv.paid_amount or 0)), 2)
+
+    approved = [inv for inv in invoices if inv.status == "approved"]
+    total_amount   = sum(inv.total_amount or 0 for inv in approved)
+    # ÖDENEN: gerçek ödenen tutar (partial için paid_amount, paid için total_amount)
+    paid_amount    = sum(inv.paid_amount or 0 for inv in approved
+                         if inv.payment_status in ("paid", "partial"))
+    # BEKLEYEN: vadesi henüz geçmemiş ya da vade yok → kalan bakiye
+    unpaid_amount  = sum(_remaining(inv) for inv in approved
+                         if inv.payment_status in ("unpaid", "partial")
+                         and (not inv.due_date or inv.due_date >= today_str))
+    # GECİKMİŞ: vadesi geçmiş, henüz tam ödenmemiş → kalan bakiye
+    overdue_amount = sum(_remaining(inv) for inv in approved
+                         if inv.payment_status in ("unpaid", "partial")
+                         and inv.due_date and inv.due_date < today_str)
 
     return templates.TemplateResponse("vendors/card.html", {
         "request":        request,

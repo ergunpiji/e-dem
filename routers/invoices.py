@@ -133,27 +133,34 @@ async def invoice_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    import traceback
     from models import INVOICE_LOG_ACTIONS
     from datetime import date as _dt
-    inv = _get_invoice_or_404(db, invoice_id)
     try:
-        logs = (
-            db.query(InvoiceLog)
-            .filter(InvoiceLog.invoice_id == invoice_id)
-            .order_by(InvoiceLog.created_at)
-            .all()
-        )
-    except Exception:
-        logs = []
-    return templates.TemplateResponse("invoices/detail.html", {
-        "request":       request,
-        "current_user":  current_user,
-        "inv":           inv,
-        "logs":          logs,
-        "log_actions":   INVOICE_LOG_ACTIONS,
-        "today_str":     _dt.today().isoformat(),
-        "page_title":    f"Fatura — {inv.invoice_no or inv.id[:8]}",
-    })
+        inv = _get_invoice_or_404(db, invoice_id)
+        try:
+            logs = (
+                db.query(InvoiceLog)
+                .filter(InvoiceLog.invoice_id == invoice_id)
+                .order_by(InvoiceLog.created_at)
+                .all()
+            )
+        except Exception:
+            logs = []
+        return templates.TemplateResponse("invoices/detail.html", {
+            "request":       request,
+            "current_user":  current_user,
+            "inv":           inv,
+            "logs":          logs,
+            "log_actions":   INVOICE_LOG_ACTIONS,
+            "today_str":     _dt.today().isoformat(),
+            "page_title":    f"Fatura — {inv.invoice_no or inv.id[:8]}",
+        })
+    except HTTPException:
+        raise
+    except Exception as exc:
+        tb = traceback.format_exc()
+        return HTMLResponse(f"<pre>HATA:\n{tb}</pre>", status_code=500)
 
 
 # ---------------------------------------------------------------------------
