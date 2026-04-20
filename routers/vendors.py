@@ -421,13 +421,15 @@ async def cash_flow(
 
         return items
 
-    # Ödenmemiş/kısmi gider faturaları — approved
+    # Ödenmemiş/kısmi gider faturaları — approved (kesilen/iade_kesilen hariç: onlar gelir)
+    _expense_types_excl = ["kesilen", "iade_kesilen"]
     invoices_raw = (
         db.query(Invoice)
         .filter(
             Invoice.payment_status.in_(["unpaid", "partial"]),
             Invoice.status == "approved",
             Invoice.due_date != None,
+            Invoice.invoice_type.notin_(_expense_types_excl),
         )
         .order_by(Invoice.due_date)
         .all()
@@ -441,6 +443,7 @@ async def cash_flow(
             Invoice.cc_due_date != None,
             Invoice.cc_due_date >= today_str,
             Invoice.cc_due_date <= end_str,
+            Invoice.invoice_type.notin_(_expense_types_excl),
         )
         .all()
     )
