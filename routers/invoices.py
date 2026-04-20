@@ -133,8 +133,8 @@ async def invoices_list(
 
     query = db.query(Invoice).join(Invoice.request)
 
-    # Birim müdürü: sadece takımının referanslarının faturaları
-    if current_user.role == "mudur" and current_user.team_id:
+    # Birim müdürü: sadece takımının referanslarının faturaları (GM hariç)
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         from models import Request as ReqModel
         query = query.filter(ReqModel.team_id == current_user.team_id)
     # PM sadece kendi referanslarının faturalarını görür
@@ -867,8 +867,8 @@ async def invoices_unlinked(
     req_q = db.query(ReqModel).filter(
         ReqModel.status.notin_(["cancelled", "closing", "closed"])
     )
-    # mudur: kendi takımının tüm referansları
-    if current_user.role == "mudur" and current_user.team_id:
+    # mudur: kendi takımının tüm referansları (GM hariç)
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         req_q = req_q.filter(ReqModel.team_id == current_user.team_id)
     # yonetici/asistan: sadece kendi referansları
     elif current_user.role in ("yonetici", "asistan"):
@@ -904,7 +904,7 @@ async def invoices_assign_request(
     new_req = db.query(ReqModel).filter(ReqModel.id == new_request_id).first()
     if not new_req:
         raise HTTPException(status_code=404, detail="Hedef referans bulunamadı.")
-    if current_user.role == "mudur" and current_user.team_id:
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         if new_req.team_id != current_user.team_id:
             raise HTTPException(status_code=403, detail="Bu referans takımınıza ait değil.")
     elif current_user.role in ("yonetici", "asistan"):

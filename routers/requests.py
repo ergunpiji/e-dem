@@ -347,7 +347,7 @@ async def requests_detail(
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
 
     # Birim müdürü (takımlı mudur) sadece kendi takımının referanslarını görebilir
-    if current_user.role == "mudur" and current_user.team_id:
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         if req.team_id != current_user.team_id:
             raise HTTPException(403, "Bu referans takımınıza ait değil.")
 
