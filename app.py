@@ -144,6 +144,16 @@ async def nav_counts_middleware(request: Request, call_next):
                 counts["inv_unlinked"] = db.execute(
                     _text("SELECT COUNT(*) FROM invoices WHERE request_id IS NULL AND status != 'cancelled'")
                 ).scalar() or 0
+                # Ön ödeme talepleri — GM için bekleyen
+                if _is_gm:
+                    counts["prepayment_pending_gm"] = db.execute(
+                        _text("SELECT COUNT(*) FROM prepayment_requests WHERE status='pending_gm'")
+                    ).scalar() or 0
+                # Ön ödeme talepleri — muhasebe için onaylanmış (ödeme bekliyor)
+                if role in ("muhasebe", "muhasebe_muduru", "admin"):
+                    counts["prepayment_approved"] = db.execute(
+                        _text("SELECT COUNT(*) FROM prepayment_requests WHERE status='approved'")
+                    ).scalar() or 0
             except Exception:
                 pass
             finally:
@@ -215,6 +225,7 @@ from routers import vendors as vendors_router
 from routers import library as library_router
 from routers import modules as modules_router
 from routers import permissions as permissions_router
+from routers import prepayment_requests as prepayment_requests_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -240,6 +251,7 @@ app.include_router(vendors_router.router)
 app.include_router(library_router.router)
 app.include_router(modules_router.router)
 app.include_router(permissions_router.router)
+app.include_router(prepayment_requests_router.router)
 
 # ---------------------------------------------------------------------------
 # Operasyon Ajanı — sub-app olarak mount et (/operasyon/...)

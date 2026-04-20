@@ -1046,9 +1046,11 @@ class FinancialVendor(Base):
     created_at   = Column(DateTime, default=_now, nullable=False)
     updated_at   = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
-    invoices = relationship("Invoice", back_populates="vendor",
-                            foreign_keys="Invoice.vendor_id")
-    creator  = relationship("User", foreign_keys=[created_by])
+    invoices     = relationship("Invoice", back_populates="vendor",
+                               foreign_keys="Invoice.vendor_id")
+    prepayments  = relationship("VendorPrepayment", back_populates="vendor",
+                                order_by="VendorPrepayment.payment_date")
+    creator      = relationship("User", foreign_keys=[created_by])
 
     @property
     def total_invoiced(self) -> float:
@@ -1071,6 +1073,40 @@ class FinancialVendor(Base):
             "email":        self.email,
             "phone":        self.phone,
         }
+
+
+PREPAYMENT_STATUSES = {
+    "open":      ("Açık",       "warning"),
+    "partial":   ("Kısmen Uygulandı", "info"),
+    "applied":   ("Uygulandı",  "success"),
+    "cancelled": ("İptal",      "secondary"),
+}
+
+
+class VendorPrepayment(Base):
+    """Tedarikçiye yapılan ön ödeme / avans kaydı"""
+    __tablename__ = "vendor_prepayments"
+
+    id             = Column(String(36), primary_key=True, default=_uuid)
+    vendor_id      = Column(String(36), ForeignKey("financial_vendors.id"), nullable=False, index=True)
+    request_id     = Column(String(36), ForeignKey("requests.id"), nullable=True, index=True)
+    amount         = Column(Float, default=0.0)           # ön ödeme tutarı
+    applied_amount = Column(Float, default=0.0)           # faturaya uygulanan kısım
+    payment_date   = Column(String(10), nullable=False)   # YYYY-MM-DD
+    payment_method = Column(String(20), default="banka")  # banka|kredi_karti|cek
+    notes          = Column(Text, default="")
+    status         = Column(String(16), default="open")   # open|partial|applied|cancelled
+    created_by     = Column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at     = Column(DateTime, default=_now, nullable=False)
+    updated_at     = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    vendor  = relationship("FinancialVendor", back_populates="prepayments")
+    request = relationship("Request", foreign_keys=[request_id])
+    creator = relationship("User",   foreign_keys=[created_by])
+
+    @property
+    def remaining(self) -> float:
+        return round(max(0.0, (self.amount or 0) - (self.applied_amount or 0)), 2)
 
 
 class Invoice(Base):
@@ -1175,6 +1211,95 @@ INVOICE_LOG_ACTIONS = {
     "edited":    ("Düzenlendi",              "secondary", "bi-pencil"),
     "reassigned":("Referans Atandı",         "info",      "bi-link"),
 }
+
+
+# ---------------------------------------------------------------------------
+# Ön Ödeme Talep Sistemi
+# ---------------------------------------------------------------------------
+
+PREPAYMENT_REQUEST_STATUSES = {
+    "pending_gm":  ("GM Onayı Bekliyor",   "warning",  "bi-hourglass-split"),
+    "approved":    ("Muhasebe Bekliyor",   "info",     "bi-check-circle"),
+    "paid":        ("Ödendi",             "success",  "bi-check2-all"),
+    "rejected":    ("Reddedildi",         "danger",   "bi-x-circle"),
+    "cancelled":   ("İptal Edildi",       "secondary","bi-slash-circle"),
+}
+
+PREPAYMENT_REQUEST_LOG_ACTIONS = {
+    "created":    ("Oluşturuldu",        "#64748b",  "bi-plus-circle"),
+    "approved":   ("GM Onayladı",        "#16a34a",  "bi-check-circle-fill"),
+    "rejected":   ("Reddedildi",         "#dc2626",  "bi-x-circle-fill"),
+    "paid":       ("Ödeme Yapıldı",      "#2563eb",  "bi-bank"),
+    "cancelled":  ("İptal Edildi",       "#64748b",  "bi-slash-circle"),
+    "note":       ("Not Eklendi",        "#7c3aed",  "bi-chat-left-text"),
+}
+
+
+class PrepaymentRequest(Base):
+    """PM / Müdür tarafından oluşturulan ön ödeme talebi — GM onayı → Muhasebe öder"""
+    __tablename__ = "prepayment_requests"
+
+    id             = Column(String(36), primary_key=True, default=_uuid)
+    vendor_id      = Column(String(36), ForeignKey("financial_vendors.id"), nullable=False, index=True)
+    request_id     = Column(String(36), ForeignKey("requests.id"), nullable=True, index=True)
+    amount         = Column(Float, nullable=False)
+    description    = Column(Text, default="")
+    notes          = Column(Text, default="")
+
+    # Durum akışı: pending_gm → approved → paid  (veya rejected / cancelled)
+    status         = Column(String(20), default="pending_gm", nullable=False)
+
+    # Talep eden
+    requested_by   = Column(String(36), ForeignKey("users.id"), nullable=False)
+    requested_at   = Column(DateTime, default=_now, nullable=False)
+
+    # GM onayı
+    approved_by    = Column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at    = Column(DateTime, nullable=True)
+    rejection_note = Column(String(500), default="")
+
+    # Muhasebe ödemesi
+    paid_by        = Column(String(36), ForeignKey("users.id"), nullable=True)
+    paid_at        = Column(String(10), nullable=True)          # YYYY-MM-DD
+    payment_method = Column(String(20), nullable=True)          # banka|kredi_karti|cek
+    cc_due_date    = Column(String(10), nullable=True)          # KK son ödeme tarihi
+    vendor_prepayment_id = Column(String(36), ForeignKey("vendor_prepayments.id"), nullable=True)
+
+    created_at     = Column(DateTime, default=_now, nullable=False)
+    updated_at     = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    vendor            = relationship("FinancialVendor", foreign_keys=[vendor_id])
+    request           = relationship("Request", foreign_keys=[request_id])
+    requester         = relationship("User", foreign_keys=[requested_by])
+    approver          = relationship("User", foreign_keys=[approved_by])
+    payer             = relationship("User", foreign_keys=[paid_by])
+    vendor_prepayment = relationship("VendorPrepayment", foreign_keys=[vendor_prepayment_id])
+    logs              = relationship("PrepaymentRequestLog", back_populates="prepayment_request",
+                                     order_by="PrepaymentRequestLog.created_at")
+
+    @property
+    def status_label(self) -> str:
+        return PREPAYMENT_REQUEST_STATUSES.get(self.status, (self.status,))[0]
+
+    @property
+    def status_color(self) -> str:
+        return PREPAYMENT_REQUEST_STATUSES.get(self.status, ("", "secondary"))[1]
+
+
+class PrepaymentRequestLog(Base):
+    """Ön ödeme talebi üzerindeki her işlemin kaydı."""
+    __tablename__ = "prepayment_request_logs"
+
+    id                    = Column(String(36), primary_key=True, default=_uuid)
+    prepayment_request_id = Column(String(36), ForeignKey("prepayment_requests.id"),
+                                   nullable=False, index=True)
+    action     = Column(String(32), nullable=False)
+    actor_id   = Column(String(36), ForeignKey("users.id"), nullable=True)
+    note       = Column(Text, default="")
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    prepayment_request = relationship("PrepaymentRequest", back_populates="logs")
+    actor              = relationship("User", foreign_keys=[actor_id])
 
 
 class InvoiceLog(Base):

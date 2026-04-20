@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from auth import get_current_user
 from database import get_db
-from models import FinancialVendor, Invoice, InvoiceLog, User, _uuid, _now
+from models import FinancialVendor, Invoice, InvoiceLog, VendorPrepayment, PREPAYMENT_STATUSES, User, _uuid, _now
 from templates_config import templates
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
@@ -263,19 +263,43 @@ async def vendors_card(
                          if inv.payment_status in ("unpaid", "partial")
                          and inv.due_date and inv.due_date < today_str)
 
+    # Ön ödemeler (açık + kısmen uygulanmış)
+    prepayments = (
+        db.query(VendorPrepayment)
+        .filter(VendorPrepayment.vendor_id == vendor_id)
+        .order_by(VendorPrepayment.payment_date.desc())
+        .all()
+    )
+    open_prepayment_total = sum(p.remaining for p in prepayments if p.status in ("open", "partial"))
+
+    # Referans listesi — ön ödeme modalı için
+    from models import Request as ReqModel
+    vendor_requests = (
+        db.query(ReqModel)
+        .join(Invoice, Invoice.request_id == ReqModel.id)
+        .filter(Invoice.vendor_id == vendor_id)
+        .distinct()
+        .order_by(ReqModel.created_at.desc())
+        .all()
+    )
+
     return templates.TemplateResponse("vendors/card.html", {
-        "request":        request,
-        "current_user":   current_user,
-        "page_title":     vendor.name,
-        "vendor":         vendor,
-        "invoices":       invoices,
-        "period":         period,
-        "total_amount":   round(total_amount,   2),
-        "paid_amount":    round(paid_amount,    2),
-        "unpaid_amount":  round(unpaid_amount,  2),
-        "overdue_amount": round(overdue_amount, 2),
-        "today_str":      today_str,
-        "can_edit":       current_user.role in FINANCE_ROLES,
+        "request":               request,
+        "current_user":          current_user,
+        "page_title":            vendor.name,
+        "vendor":                vendor,
+        "invoices":              invoices,
+        "prepayments":           prepayments,
+        "open_prepayment_total": round(open_prepayment_total, 2),
+        "vendor_requests":       vendor_requests,
+        "period":                period,
+        "total_amount":          round(total_amount,   2),
+        "paid_amount":           round(paid_amount,    2),
+        "unpaid_amount":         round(unpaid_amount,  2),
+        "overdue_amount":        round(overdue_amount, 2),
+        "today_str":             today_str,
+        "can_edit":              current_user.role in FINANCE_ROLES,
+        "prepayment_statuses":   PREPAYMENT_STATUSES,
     })
 
 
@@ -426,6 +450,67 @@ async def vendors_mark_paid(
         note=inv.paid_at or "",
     ))
     db.commit()
+    return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /vendors/{id}/prepayments/add  — Ön ödeme ekle
+# ---------------------------------------------------------------------------
+
+@router.post("/{vendor_id}/prepayments/add", name="vendors_prepayment_add")
+async def vendors_prepayment_add(
+    vendor_id:      str,
+    current_user:   User = Depends(get_current_user),
+    db:             Session = Depends(get_db),
+    amount:         float = Form(...),
+    payment_date:   str   = Form(...),
+    payment_method: str   = Form("banka"),
+    request_id:     str   = Form(""),
+    notes:          str   = Form(""),
+):
+    _require_finance(current_user)
+    vendor = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id).first()
+    if not vendor:
+        raise HTTPException(status_code=404)
+
+    pp = VendorPrepayment(
+        id             = _uuid(),
+        vendor_id      = vendor_id,
+        request_id     = request_id.strip() or None,
+        amount         = round(float(amount), 2),
+        payment_date   = payment_date,
+        payment_method = payment_method,
+        notes          = notes.strip(),
+        status         = "open",
+        created_by     = current_user.id,
+        created_at     = _now(),
+        updated_at     = _now(),
+    )
+    db.add(pp)
+    db.commit()
+    return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# POST /vendors/{id}/prepayments/{pp_id}/cancel  — Ön ödeme iptal
+# ---------------------------------------------------------------------------
+
+@router.post("/{vendor_id}/prepayments/{pp_id}/cancel", name="vendors_prepayment_cancel")
+async def vendors_prepayment_cancel(
+    vendor_id: str,
+    pp_id:     str,
+    current_user: User = Depends(get_current_user),
+    db:        Session = Depends(get_db),
+):
+    _require_finance(current_user)
+    pp = db.query(VendorPrepayment).filter(
+        VendorPrepayment.id == pp_id,
+        VendorPrepayment.vendor_id == vendor_id,
+    ).first()
+    if pp and pp.status in ("open", "partial"):
+        pp.status     = "cancelled"
+        pp.updated_at = _now()
+        db.commit()
     return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=303)
 
 

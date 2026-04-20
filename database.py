@@ -1064,6 +1064,43 @@ def migrate_db():
         _safe_add_column(conn, "invoices", "cc_due_date",         "TEXT")
         _safe_add_column(conn, "invoices", "cc_pending_amount",   "REAL",  "0")
 
+        # ── vendor_prepayments tablosu ───────────────────────────────────────
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS vendor_prepayments (
+                    id             TEXT PRIMARY KEY,
+                    vendor_id      TEXT NOT NULL REFERENCES financial_vendors(id),
+                    request_id     TEXT REFERENCES requests(id),
+                    amount         REAL DEFAULT 0,
+                    applied_amount REAL DEFAULT 0,
+                    payment_date   TEXT NOT NULL,
+                    payment_method TEXT DEFAULT 'banka',
+                    notes          TEXT DEFAULT '',
+                    status         TEXT DEFAULT 'open',
+                    created_by     TEXT NOT NULL REFERENCES users(id),
+                    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS vendor_prepayments (
+                    id             VARCHAR(36) PRIMARY KEY,
+                    vendor_id      VARCHAR(36) NOT NULL REFERENCES financial_vendors(id),
+                    request_id     VARCHAR(36) REFERENCES requests(id),
+                    amount         FLOAT DEFAULT 0,
+                    applied_amount FLOAT DEFAULT 0,
+                    payment_date   VARCHAR(10) NOT NULL,
+                    payment_method VARCHAR(20) DEFAULT 'banka',
+                    notes          TEXT DEFAULT '',
+                    status         VARCHAR(16) DEFAULT 'open',
+                    created_by     VARCHAR(36) NOT NULL REFERENCES users(id),
+                    created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at     TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+        conn.commit()
+
         # ── invoice_logs tablosu ──────────────────────────────────────────────
         if _is_sqlite:
             conn.execute(text("""
@@ -1091,6 +1128,77 @@ def migrate_db():
                     cc_due_date    VARCHAR(10),
                     note           TEXT DEFAULT '',
                     created_at     TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+        conn.commit()
+
+        # ── prepayment_requests tablosu ───────────────────────────────────────
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS prepayment_requests (
+                    id                   TEXT PRIMARY KEY,
+                    vendor_id            TEXT NOT NULL REFERENCES financial_vendors(id),
+                    request_id           TEXT REFERENCES requests(id),
+                    amount               REAL NOT NULL,
+                    description          TEXT DEFAULT '',
+                    notes                TEXT DEFAULT '',
+                    status               TEXT NOT NULL DEFAULT 'pending_gm',
+                    requested_by         TEXT NOT NULL REFERENCES users(id),
+                    requested_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    approved_by          TEXT REFERENCES users(id),
+                    approved_at          DATETIME,
+                    rejection_note       TEXT DEFAULT '',
+                    paid_by              TEXT REFERENCES users(id),
+                    paid_at              TEXT,
+                    payment_method       TEXT,
+                    cc_due_date          TEXT,
+                    vendor_prepayment_id TEXT REFERENCES vendor_prepayments(id),
+                    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS prepayment_request_logs (
+                    id                    TEXT PRIMARY KEY,
+                    prepayment_request_id TEXT NOT NULL REFERENCES prepayment_requests(id),
+                    action                TEXT NOT NULL,
+                    actor_id              TEXT REFERENCES users(id),
+                    note                  TEXT DEFAULT '',
+                    created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS prepayment_requests (
+                    id                   VARCHAR(36) PRIMARY KEY,
+                    vendor_id            VARCHAR(36) NOT NULL REFERENCES financial_vendors(id),
+                    request_id           VARCHAR(36) REFERENCES requests(id),
+                    amount               FLOAT NOT NULL,
+                    description          TEXT DEFAULT '',
+                    notes                TEXT DEFAULT '',
+                    status               VARCHAR(20) NOT NULL DEFAULT 'pending_gm',
+                    requested_by         VARCHAR(36) NOT NULL REFERENCES users(id),
+                    requested_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+                    approved_by          VARCHAR(36) REFERENCES users(id),
+                    approved_at          TIMESTAMP,
+                    rejection_note       VARCHAR(500) DEFAULT '',
+                    paid_by              VARCHAR(36) REFERENCES users(id),
+                    paid_at              VARCHAR(10),
+                    payment_method       VARCHAR(20),
+                    cc_due_date          VARCHAR(10),
+                    vendor_prepayment_id VARCHAR(36) REFERENCES vendor_prepayments(id),
+                    created_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at           TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS prepayment_request_logs (
+                    id                    VARCHAR(36) PRIMARY KEY,
+                    prepayment_request_id VARCHAR(36) NOT NULL REFERENCES prepayment_requests(id),
+                    action                VARCHAR(32) NOT NULL,
+                    actor_id              VARCHAR(36) REFERENCES users(id),
+                    note                  TEXT DEFAULT '',
+                    created_at            TIMESTAMP NOT NULL DEFAULT NOW()
                 )
             """))
         conn.commit()

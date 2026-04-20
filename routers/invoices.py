@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Invoice, InvoiceLog, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
+from models import Budget, Customer, Invoice, InvoiceLog, VendorPrepayment, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
 from routers.library import log_activity
 from templates_config import templates
 
@@ -34,6 +34,45 @@ def _add_log(db: Session, invoice_id: str, action: str, actor_id: str | None,
         actor_id=actor_id, amount=amount, payment_method=payment_method,
         cc_due_date=cc_due_date, note=note or "",
     ))
+
+
+def _apply_prepayments(db: Session, inv: Invoice) -> None:
+    """Fatura onaylandığında aynı tedarikçinin açık ön ödemelerini uygula."""
+    if not inv.vendor_id:
+        return
+    open_pps = (
+        db.query(VendorPrepayment)
+        .filter(
+            VendorPrepayment.vendor_id == inv.vendor_id,
+            VendorPrepayment.status.in_(["open", "partial"]),
+        )
+        .order_by(VendorPrepayment.payment_date)
+        .all()
+    )
+    if not open_pps:
+        return
+
+    invoice_remaining = round(max(0.0, (inv.total_amount or 0) - (inv.paid_amount or 0)), 2)
+    for pp in open_pps:
+        if invoice_remaining <= 0:
+            break
+        apply = min(pp.remaining, invoice_remaining)
+        if apply <= 0:
+            continue
+        pp.applied_amount = round((pp.applied_amount or 0) + apply, 2)
+        pp.updated_at = _now()
+        pp.status = "applied" if pp.applied_amount >= pp.amount else "partial"
+
+        inv.paid_amount = round((inv.paid_amount or 0) + apply, 2)
+        if inv.paid_amount >= (inv.total_amount or 0):
+            inv.payment_status = "paid"
+        else:
+            inv.payment_status = "partial"
+
+        invoice_remaining = round(invoice_remaining - apply, 2)
+        _add_log(db, inv.id, "payment", None,
+                 amount=apply, payment_method=pp.payment_method,
+                 note=f"Ön ödeme uygulandı ({pp.payment_date})")
 
 
 def _require_finance(current_user: User):
@@ -816,6 +855,7 @@ async def invoices_approve(
         inv.approved_at         = _now()
         inv.rejection_note      = ""
         inv.updated_at          = _now()
+        _apply_prepayments(db, inv)
         _add_log(db, inv.id, "approved", current_user.id)
         db.commit()
         if inv.request_id:
@@ -830,6 +870,7 @@ async def invoices_approve(
         inv.approved_at         = _now()
         inv.rejection_note      = ""
         inv.updated_at          = _now()
+        _apply_prepayments(db, inv)
         _add_log(db, inv.id, "approved", current_user.id)
         db.commit()
         if inv.request_id:
@@ -848,6 +889,7 @@ async def invoices_approve(
         inv.approved_at         = _now()
         inv.rejection_note      = ""
         inv.updated_at          = _now()
+        _apply_prepayments(db, inv)
         _add_log(db, inv.id, "approved", current_user.id)
         db.commit()
         if inv.request_id:
@@ -891,7 +933,8 @@ async def invoices_approve(
             inv.approved_at         = _now()
             inv.rejection_note      = ""
             inv.updated_at          = _now()
-            _add_log(db, inv.id, "approved", current_user.id)
+            _apply_prepayments(db, inv)
+        _add_log(db, inv.id, "approved", current_user.id)
             db.commit()
             if inv.request_id:
                 return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)

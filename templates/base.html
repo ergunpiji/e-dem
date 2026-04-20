@@ -352,8 +352,13 @@
             {{ nb(nc.inv_unlinked) }}
           </a>
           <a href="/vendors"
-             class="sidebar-link {% if cp.startswith('/vendors') %}active{% endif %}">
+             class="sidebar-link {% if cp.startswith('/vendors') and 'cash-flow' not in cp %}active{% endif %}">
             <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
+          </a>
+          <a href="/prepayment-requests"
+             class="sidebar-link {% if '/prepayment-requests' in cp %}active{% endif %}">
+            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talepleri
+            {{ nb((nc.prepayment_pending_gm or 0) + (nc.prepayment_approved or 0)) }}
           </a>
           <a href="/vendors/cash-flow/view"
              class="sidebar-link {% if 'cash-flow' in cp %}active{% endif %}">
@@ -555,8 +560,13 @@
             {{ nb(nc.inv_unlinked) }}
           </a>
           <a href="/vendors"
-             class="sidebar-link {% if cp.startswith('/vendors') %}active{% endif %}">
+             class="sidebar-link {% if cp.startswith('/vendors') and 'cash-flow' not in cp %}active{% endif %}">
             <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
+          </a>
+          <a href="/prepayment-requests"
+             class="sidebar-link {% if '/prepayment-requests' in cp %}active{% endif %}">
+            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talepleri
+            {{ nb((nc.prepayment_pending_gm or 0) + (nc.prepayment_approved or 0)) }}
           </a>
           <a href="/vendors/cash-flow/view"
              class="sidebar-link {% if 'cash-flow' in cp %}active{% endif %}">
@@ -869,8 +879,13 @@
             {{ nb(nc.inv_unlinked) }}
           </a>
           <a href="/vendors"
-             class="sidebar-link {% if cp.startswith('/vendors') %}active{% endif %}">
+             class="sidebar-link {% if cp.startswith('/vendors') and 'cash-flow' not in cp %}active{% endif %}">
             <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
+          </a>
+          <a href="/prepayment-requests"
+             class="sidebar-link {% if '/prepayment-requests' in cp %}active{% endif %}">
+            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talepleri
+            {{ nb((nc.prepayment_pending_gm or 0) + (nc.prepayment_approved or 0)) }}
           </a>
           <a href="/vendors/cash-flow/view"
              class="sidebar-link {% if 'cash-flow' in cp %}active{% endif %}">
