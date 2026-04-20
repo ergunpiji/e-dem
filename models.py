@@ -1113,6 +1113,7 @@ class Invoice(Base):
     creator          = relationship("User", foreign_keys=[created_by])
     approver         = relationship("User", foreign_keys=[approved_by])
     current_approver = relationship("User", foreign_keys=[current_approver_id])
+    logs             = relationship("InvoiceLog", back_populates="invoice", order_by="InvoiceLog.created_at")
 
     @property
     def lines(self) -> list:
@@ -1157,6 +1158,41 @@ class Invoice(Base):
             "created_by":    self.created_by,
             "created_at":    self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ---------------------------------------------------------------------------
+# InvoiceLog — Fatura işlem geçmişi
+# ---------------------------------------------------------------------------
+
+INVOICE_LOG_ACTIONS = {
+    "created":   ("Oluşturuldu",             "secondary", "bi-plus-circle"),
+    "cut":       ("Fatura Kesildi",          "info",      "bi-scissors"),
+    "submitted": ("Onaya Gönderildi",        "warning",   "bi-send"),
+    "approved":  ("Onaylandı",               "success",   "bi-check-circle"),
+    "forwarded": ("Üst Onaya Yönlendirildi", "primary",   "bi-arrow-up-circle"),
+    "rejected":  ("Reddedildi",              "danger",    "bi-x-circle"),
+    "payment":   ("Ödeme Yapıldı",           "success",   "bi-cash-stack"),
+    "edited":    ("Düzenlendi",              "secondary", "bi-pencil"),
+    "reassigned":("Referans Atandı",         "info",      "bi-link"),
+}
+
+
+class InvoiceLog(Base):
+    """Fatura üzerinde yapılan her işlemin kaydı."""
+    __tablename__ = "invoice_logs"
+
+    id             = Column(String(36), primary_key=True, default=_uuid)
+    invoice_id     = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
+    action         = Column(String(32), nullable=False)     # bkz. INVOICE_LOG_ACTIONS
+    actor_id       = Column(String(36), ForeignKey("users.id"), nullable=True)
+    amount         = Column(Float, nullable=True)           # ödeme tutarı (ödeme logunda)
+    payment_method = Column(String(20), nullable=True)      # banka|kredi_karti|cek
+    cc_due_date    = Column(String(10), nullable=True)      # KK son ödeme tarihi
+    note           = Column(Text, default="")
+    created_at     = Column(DateTime, default=_now, nullable=False)
+
+    invoice = relationship("Invoice", back_populates="logs")
+    actor   = relationship("User", foreign_keys=[actor_id])
 
 
 # ---------------------------------------------------------------------------

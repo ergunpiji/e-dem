@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from auth import get_current_user
 from database import get_db
-from models import FinancialVendor, Invoice, User, _uuid, _now
+from models import FinancialVendor, Invoice, InvoiceLog, User, _uuid, _now
 from templates_config import templates
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
@@ -407,6 +407,15 @@ async def vendors_mark_paid(
         else:
             inv.cc_due_date   = None
 
+    # Ödeme logu
+    _log_amt = round(float(paid_amount), 2) if (payment_status == "partial" and paid_amount) else (inv.total_amount or 0.0)
+    _log_cc  = cc_due_date if payment_method == "kredi_karti" and cc_due_date else None
+    db.add(InvoiceLog(
+        id=_uuid(), invoice_id=invoice_id, action="payment",
+        actor_id=current_user.id, amount=_log_amt,
+        payment_method=payment_method, cc_due_date=_log_cc,
+        note=inv.paid_at or "",
+    ))
     db.commit()
     return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=303)
 

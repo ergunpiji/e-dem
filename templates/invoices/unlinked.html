@@ -63,7 +63,11 @@
             {% for inv in invoices %}
             {% set type_label = invoice_types | selectattr('value','equalto', inv.invoice_type) | map(attribute='label') | first | default(inv.invoice_type) %}
             <tr>
-              <td class="ps-3 fw-semibold text-primary">{{ inv.invoice_no or '—' }}</td>
+              <td class="ps-3">
+                <a href="/invoices/{{ inv.id }}/detail" class="fw-semibold text-decoration-none text-primary">
+                  {{ inv.invoice_no or '—' }}
+                </a>
+              </td>
               <td>
                 <span class="badge text-bg-secondary" style="font-size:11px;">{{ type_label }}</span>
               </td>

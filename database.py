@@ -1063,6 +1063,38 @@ def migrate_db():
         _safe_add_column(conn, "invoices", "payment_method",      "TEXT",  "'banka'")
         _safe_add_column(conn, "invoices", "cc_due_date",         "TEXT")
         _safe_add_column(conn, "invoices", "cc_pending_amount",   "REAL",  "0")
+
+        # ── invoice_logs tablosu ──────────────────────────────────────────────
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS invoice_logs (
+                    id             TEXT PRIMARY KEY,
+                    invoice_id     TEXT NOT NULL REFERENCES invoices(id),
+                    action         TEXT NOT NULL,
+                    actor_id       TEXT REFERENCES users(id),
+                    amount         REAL,
+                    payment_method TEXT,
+                    cc_due_date    TEXT,
+                    note           TEXT DEFAULT '',
+                    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS invoice_logs (
+                    id             VARCHAR(36) PRIMARY KEY,
+                    invoice_id     VARCHAR(36) NOT NULL REFERENCES invoices(id),
+                    action         VARCHAR(32) NOT NULL,
+                    actor_id       VARCHAR(36) REFERENCES users(id),
+                    amount         FLOAT,
+                    payment_method VARCHAR(20),
+                    cc_due_date    VARCHAR(10),
+                    note           TEXT DEFAULT '',
+                    created_at     TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+        conn.commit()
+
         # Mevcut bekleyen faturaları backfill: request sahibini current_approver_id yap
         conn.execute(text(
             "UPDATE invoices SET current_approver_id = ("

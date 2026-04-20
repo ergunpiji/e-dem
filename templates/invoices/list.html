@@ -173,7 +173,9 @@
                 {% endif %}
               </td>
               <td>
-                <span class="fw-semibold">{{ inv.invoice_no or '—' }}</span>
+                <a href="/invoices/{{ inv.id }}/detail" class="fw-semibold text-decoration-none text-dark">
+                  {{ inv.invoice_no or '—' }}
+                </a>
                 {% if inv.document_path %}
                 <a href="/invoices/{{ inv.id }}/document" target="_blank"
                    class="ms-1 text-muted" title="Belgeyi Görüntüle">

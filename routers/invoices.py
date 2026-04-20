@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
+from models import Budget, Customer, Invoice, InvoiceLog, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
 from routers.library import log_activity
 from templates_config import templates
 
@@ -24,6 +24,16 @@ INVOICE_REQUEST_ROLES = {"admin", "mudur", "yonetici", "muhasebe_muduru", "muhas
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "static", "uploads", "invoices")
 ALLOWED_EXTS = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def _add_log(db: Session, invoice_id: str, action: str, actor_id: str | None,
+             amount: float | None = None, payment_method: str | None = None,
+             cc_due_date: str | None = None, note: str = "") -> None:
+    db.add(InvoiceLog(
+        id=_uuid(), invoice_id=invoice_id, action=action,
+        actor_id=actor_id, amount=amount, payment_method=payment_method,
+        cc_due_date=cc_due_date, note=note or "",
+    ))
 
 
 def _require_finance(current_user: User):
@@ -110,6 +120,32 @@ def _compute_totals(lines: list) -> tuple[float, float, float]:
     total_excl = sum(float(l.get("amount", 0) or 0) for l in lines)
     total_vat  = sum(float(l.get("vat_amount", 0) or 0) for l in lines)
     return round(total_excl, 2), round(total_vat, 2), round(total_excl + total_vat, 2)
+
+
+# ---------------------------------------------------------------------------
+# GET /invoices/{id}/detail  — Fatura Detay Sayfası
+# ---------------------------------------------------------------------------
+
+@router.get("/{invoice_id}/detail", response_class=HTMLResponse, name="invoice_detail")
+async def invoice_detail(
+    invoice_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from models import INVOICE_LOG_ACTIONS
+    inv = _get_invoice_or_404(db, invoice_id)
+    logs = inv.logs  # InvoiceLog.created_at sıralı (model tanımında order_by var)
+    from datetime import date as _dt
+    return templates.TemplateResponse("invoices/detail.html", {
+        "request":       request,
+        "current_user":  current_user,
+        "inv":           inv,
+        "logs":          logs,
+        "log_actions":   INVOICE_LOG_ACTIONS,
+        "today_str":     _dt.today().isoformat(),
+        "page_title":    f"Fatura — {inv.invoice_no or inv.id[:8]}",
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -539,6 +575,8 @@ async def invoices_create(
             detail=f"Tutar: ₺{inv.amount:,.0f}",
             user_id=current_user.id,
         )
+    _add_log(db, inv.id, "created", current_user.id,
+             note=f"{inv.type_label} — {inv.vendor_name or '—'} — ₺{inv.total_amount:,.0f}")
     db.commit()
 
     # Bildirim: ilk onaylayıcıya (current_approver_id) bildirim gönder
@@ -770,6 +808,7 @@ async def invoices_approve(
         inv.approved_at         = _now()
         inv.rejection_note      = ""
         inv.updated_at          = _now()
+        _add_log(db, inv.id, "approved", current_user.id)
         db.commit()
         if inv.request_id:
             return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
@@ -783,6 +822,7 @@ async def invoices_approve(
         inv.approved_at         = _now()
         inv.rejection_note      = ""
         inv.updated_at          = _now()
+        _add_log(db, inv.id, "approved", current_user.id)
         db.commit()
         if inv.request_id:
             return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
@@ -800,6 +840,7 @@ async def invoices_approve(
         inv.approved_at         = _now()
         inv.rejection_note      = ""
         inv.updated_at          = _now()
+        _add_log(db, inv.id, "approved", current_user.id)
         db.commit()
         if inv.request_id:
             return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
@@ -811,6 +852,8 @@ async def invoices_approve(
             inv.current_approver_id = next_approver.id
             inv.rejection_note      = ""
             inv.updated_at          = _now()
+            _add_log(db, inv.id, "forwarded", current_user.id,
+                     note=f"Limit aşımı — {next_approver.full_name} adresine yönlendirildi")
             db.commit()
             # Bir üst onaylayıcıya bildirim
             if inv.request_id:
@@ -840,6 +883,7 @@ async def invoices_approve(
             inv.approved_at         = _now()
             inv.rejection_note      = ""
             inv.updated_at          = _now()
+            _add_log(db, inv.id, "approved", current_user.id)
             db.commit()
             if inv.request_id:
                 return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
@@ -869,6 +913,7 @@ async def invoices_reject(
     inv.approved_by    = None
     inv.approved_at    = None
     inv.updated_at     = _now()
+    _add_log(db, inv.id, "rejected", current_user.id, note=rejection_note.strip()[:300])
     db.commit()
     if inv.request_id:
         return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
