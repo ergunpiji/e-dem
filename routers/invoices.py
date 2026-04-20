@@ -934,7 +934,7 @@ async def invoices_approve(
             inv.rejection_note      = ""
             inv.updated_at          = _now()
             _apply_prepayments(db, inv)
-        _add_log(db, inv.id, "approved", current_user.id)
+            _add_log(db, inv.id, "approved", current_user.id)
             db.commit()
             if inv.request_id:
                 return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
