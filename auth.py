@@ -154,8 +154,8 @@ def get_current_user_optional(
 # ---------------------------------------------------------------------------
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Admin, Müdür (Genel Müdür) veya Muhasebe Müdürü yetkisi gereklidir."""
-    if current_user.role not in ("admin", "mudur", "muhasebe_muduru"):
+    """Admin, GM (grade=1), Müdür veya Muhasebe Müdürü yetkisi gereklidir."""
+    if current_user.role not in ("admin", "mudur", "muhasebe_muduru") and not current_user.is_gm:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için Admin yetkisi gereklidir.",
@@ -164,8 +164,8 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_pm(current_user: User = Depends(get_current_user)) -> User:
-    """Tüm proje tarafı roller (mudur + yonetici + asistan) + admin."""
-    if current_user.role not in ("admin", "mudur", "yonetici", "asistan", "project_manager"):
+    """Tüm proje tarafı roller (mudur + yonetici + asistan) + admin + GM."""
+    if current_user.role not in ("admin", "mudur", "yonetici", "asistan", "project_manager") and not current_user.is_gm:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için Proje Yöneticisi yetkisi gereklidir.",
@@ -174,10 +174,8 @@ def require_pm(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_pm_yonetici(current_user: User = Depends(get_current_user)) -> User:
-    """Talep oluşturma, teklif gönderme, bütçe onayı gibi işlemler için (mudur + yonetici + admin)."""
-    if current_user.role == "admin":
-        return current_user
-    if current_user.role in ("mudur", "yonetici"):
+    """Talep oluşturma, teklif gönderme, bütçe onayı gibi işlemler için."""
+    if current_user.role in ("admin", "mudur", "yonetici") or current_user.is_gm:
         return current_user
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -186,10 +184,8 @@ def require_pm_yonetici(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_pm_mudur(current_user: User = Depends(get_current_user)) -> User:
-    """Kapama L1 onayı gibi üst düzey işlemler için (mudur + admin)."""
-    if current_user.role == "admin":
-        return current_user
-    if current_user.role == "mudur":
+    """Kapama L1 onayı gibi üst düzey işlemler için (mudur + admin + GM)."""
+    if current_user.role in ("admin", "mudur") or current_user.is_gm:
         return current_user
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -198,7 +194,7 @@ def require_pm_mudur(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_edem(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "e_dem"):
+    if current_user.role not in ("admin", "e_dem") and not current_user.is_gm:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için E-dem yetkisi gereklidir.",
@@ -207,7 +203,7 @@ def require_edem(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_admin_or_edem(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ("admin", "e_dem", "muhasebe_muduru"):
+    if current_user.role not in ("admin", "e_dem", "muhasebe_muduru") and not current_user.is_gm:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için Admin, E-dem veya Muhasebe Müdürü yetkisi gereklidir.",
@@ -216,8 +212,8 @@ def require_admin_or_edem(current_user: User = Depends(get_current_user)) -> Use
 
 
 def require_finance(current_user: User = Depends(get_current_user)) -> User:
-    """Fatura girişi için muhasebe + muhasebe_muduru + admin."""
-    if current_user.role not in ("admin", "muhasebe_muduru", "muhasebe"):
+    """Fatura girişi için muhasebe + muhasebe_muduru + admin + GM."""
+    if current_user.role not in ("admin", "muhasebe_muduru", "muhasebe") and not current_user.is_gm:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için Muhasebe yetkisi gereklidir.",
@@ -226,13 +222,13 @@ def require_finance(current_user: User = Depends(get_current_user)) -> User:
 
 
 def can_approve_invoice(user: User) -> bool:
-    """Fatura onayı: admin, mudur, yonetici, muhasebe_muduru."""
-    return user.role in ("admin", "mudur", "yonetici", "muhasebe_muduru")
+    """Fatura onayı: admin, mudur, yonetici, muhasebe_muduru, GM."""
+    return user.role in ("admin", "mudur", "yonetici", "muhasebe_muduru") or user.is_gm
 
 
 def can_approve_expense(user: User) -> bool:
-    """HBF onayı: admin, mudur, yonetici."""
-    return user.role in ("admin", "mudur", "yonetici")
+    """HBF onayı: admin, mudur, yonetici, GM."""
+    return user.role in ("admin", "mudur", "yonetici") or user.is_gm
 
 
 def can_send_offer(user: User) -> bool:
