@@ -135,36 +135,35 @@
   {% endif %}
 </div>
 
-{# ══════════════════ GRAFİK + DURUM — sadece admin ve PM ══════════════════ #}
+{# ══════════════════ GRAFİK SATIRI — 3 grafik yan yana ══════════════════ #}
 {% if current_user.role != 'e_dem' %}
-<div class="row g-4 mb-4">
+<div class="row g-3 mb-4">
 
-  {# CİRO / KAR GRAFİĞİ #}
-  <div class="col-lg-7">
+  {# CİRO / KAR GRAFİĞİ — Aylık (son 6 ay) #}
+  <div class="col-lg-4 col-md-6">
     <div class="chart-card h-100">
       <div class="chart-title">
-        <i class="bi bi-bar-chart-line text-primary me-2"></i>CİRO / KAR — Aylık
-        <span class="text-muted fw-normal ms-2" style="font-size:11px;">Son 12 ay</span>
+        <i class="bi bi-bar-chart-line text-primary me-2"></i>Ciro / Kar — Aylık
+        <span class="text-muted fw-normal ms-2" style="font-size:11px;">Son 6 ay</span>
       </div>
-      <canvas id="ciroKarChart" style="max-height:260px;"></canvas>
+      <canvas id="ciroKarChart" style="max-height:240px;"></canvas>
     </div>
   </div>
 
-  {# DURUM ÖZET KARTLARI — GM/admin için takım YTD grafiği, diğerleri için klasik özet #}
-  <div class="col-lg-5">
+  {# TAKIM YTD (GM/admin) veya İŞ DURUMU (yonetici/asistan) #}
+  {% if show_team_ytd or current_user.role in ('yonetici', 'asistan') %}
+  <div class="col-lg-4 col-md-6">
     <div class="chart-card h-100">
       {% if show_team_ytd %}
       <div class="chart-title">
-        <i class="bi bi-diagram-3 text-primary me-2"></i>Takım Bazlı Ciro / Kar
-        <span class="text-muted fw-normal ms-2" style="font-size:11px;">YTD · Yılbaşından bugüne</span>
+        <i class="bi bi-diagram-3 text-primary me-2"></i>Takım Bazlı
+        <span class="text-muted fw-normal ms-2" style="font-size:11px;">YTD</span>
       </div>
-      <canvas id="teamYtdChart" style="max-height:260px;"></canvas>
+      <canvas id="teamYtdChart" style="max-height:240px;"></canvas>
       {% else %}
       <div class="chart-title">
         <i class="bi bi-speedometer2 text-warning me-2"></i>İş Durumu
       </div>
-
-      {% if current_user.role in ('yonetici', 'asistan') %}
       <div class="d-flex flex-column gap-2">
         <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#eff6ff;">
           <span style="font-size:13px;"><i class="bi bi-files me-2 text-primary"></i>Toplam Taleplerim</span>
@@ -187,34 +186,31 @@
           <span class="fw-bold text-success">{{ stats.my_confirmed }}</span>
         </div>
       </div>
-
       {% endif %}
-      {% endif %}{# /show_team_ytd #}
-
     </div>
   </div>
+  {% endif %}
+
+  {# MÜŞTERİ YTD #}
+  {% if show_customer_ytd %}
+  <div class="col-lg-4 col-md-6">
+    <div class="chart-card h-100">
+      <div class="chart-title">
+        <i class="bi bi-buildings text-success me-2"></i>Müşteri Bazlı
+        <span class="text-muted fw-normal ms-2" style="font-size:11px;">
+          YTD · İlk 10
+          {%- if current_user.is_gm or current_user.role == 'admin' %} · Tümü
+          {%- elif current_user.role == 'mudur' %} · Takım
+          {%- else %} · Kendi{% endif %}
+        </span>
+      </div>
+      <canvas id="customerYtdChart" style="max-height:240px;"></canvas>
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 {% endif %}{# /e_dem gizle #}
-
-{# ══════════════════ MÜŞTERİ YTD GRAFİĞİ ══════════════════ #}
-{% if show_customer_ytd %}
-<div class="chart-card mb-4">
-  <div class="chart-title">
-    <i class="bi bi-buildings text-success me-2"></i>Müşteri Bazlı Ciro / Kar
-    <span class="text-muted fw-normal ms-2" style="font-size:11px;">
-      YTD · Yılbaşından bugüne
-      {% if current_user.is_gm or current_user.role == 'admin' %}
-        · Tüm müşteriler
-      {% elif current_user.role == 'mudur' %}
-        · Takımımın müşterileri
-      {% else %}
-        · Benim referanslarım
-      {% endif %}
-      · İlk 10
-    </span>
-  </div>
-  <canvas id="customerYtdChart" style="max-height:300px;"></canvas>
-</div>
 {% endif %}
 
 {# ══════════════════ BEKLEYENLERİM ══════════════════ #}

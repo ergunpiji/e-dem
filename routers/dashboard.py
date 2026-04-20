@@ -19,11 +19,11 @@ router = APIRouter()
 from templates_config import templates
 
 
-def _last_12_months() -> list[str]:
-    """Son 12 ayın YYYY-MM listesini döner (en eski → en yeni)"""
+def _last_n_months(n: int = 6) -> list[str]:
+    """Son n ayın YYYY-MM listesini döner (en eski → en yeni)"""
     now = datetime.utcnow()
     months = []
-    for i in range(11, -1, -1):
+    for i in range(n - 1, -1, -1):
         m = now.month - i
         y = now.year + (m - 1) // 12
         m = ((m - 1) % 12) + 1
@@ -99,7 +99,7 @@ def _build_financial_stats(db: Session, req_id_filter=None):
     total_revenue = total_sale + total_komisyon
     karlilik = round(kar / total_revenue * 100, 1) if total_revenue > 0 else 0.0
 
-    labels = _last_12_months()
+    labels = _last_n_months(6)
     chart_sale = [round(monthly[m]["sale"], 0) for m in labels]
     chart_cost = [round(monthly[m]["cost"], 0) for m in labels]
     chart_labels = [m[5:] + "/" + m[2:4] for m in labels]
