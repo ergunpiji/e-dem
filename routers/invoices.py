@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, User, _uuid, _now
+from models import Budget, Invoice, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
 from routers.library import log_activity
 from templates_config import templates
 
@@ -319,6 +319,8 @@ async def invoices_create(
     due_date:            str = Form(""),
     vendor_id:           str = Form(""),
     vendor_name:         str = Form(""),
+    define_vendor:       str = Form("no"),   # "yes" → yeni FinancialVendor oluştur
+    vendor_payment_term: str = Form("60"),   # gün
     description:         str = Form(""),
     lines_json:          str = Form("[]"),
     belgesiz_amount:     str = Form(""),
@@ -401,6 +403,41 @@ async def invoices_create(
 
     db.add(inv)
     db.flush()
+
+    # ── Tanımlı tedarikçi oluştur / bağla ──────────────────────────────────
+    _resolved_vendor_id = vendor_id.strip() or None
+    if define_vendor == "yes" and not _resolved_vendor_id and vendor_name.strip():
+        # Aynı isimde zaten var mı kontrol et (case-insensitive)
+        existing_fv = db.query(FinancialVendor).filter(
+            FinancialVendor.name.ilike(vendor_name.strip())
+        ).first()
+        if existing_fv:
+            _resolved_vendor_id = existing_fv.id
+        else:
+            _pt = max(1, int(vendor_payment_term or 60))
+            new_fv = FinancialVendor(
+                id           = _uuid(),
+                name         = vendor_name.strip(),
+                payment_term = _pt,
+                is_active    = True,
+                created_by   = current_user.id,
+                created_at   = _now(),
+                updated_at   = _now(),
+            )
+            db.add(new_fv)
+            db.flush()
+            _resolved_vendor_id = new_fv.id
+
+        # Bu faturayı ilişkilendir
+        inv.vendor_id = _resolved_vendor_id
+
+        # Aynı vendor_name sahip geçmiş faturaları da backfill et
+        if _resolved_vendor_id:
+            db.query(Invoice).filter(
+                Invoice.vendor_name.ilike(vendor_name.strip()),
+                Invoice.vendor_id == None,
+                Invoice.id != inv.id,
+            ).update({"vendor_id": _resolved_vendor_id}, synchronize_session=False)
 
     # Kütüphane: fatura girişi logu
     from models import INVOICE_TYPE_LABELS as _ITL

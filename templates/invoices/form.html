@@ -198,6 +198,8 @@
               <label class="form-label fw-semibold">Tedarikçi / Müşteri</label>
               <input type="hidden" name="vendor_id" id="fVendorId"
                      value="{{ invoice.vendor_id if invoice and invoice.vendor_id else '' }}">
+              <input type="hidden" name="define_vendor" id="fDefineVendor" value="no">
+              <input type="hidden" name="vendor_payment_term" id="fVendorPaymentTerm" value="60">
               <div style="position:relative;">
                 <input type="text" name="vendor_name" id="fVendorName" class="form-control"
                        value="{{ invoice.vendor_name if invoice else '' }}"
@@ -210,7 +212,44 @@
                             overflow-y:auto; z-index:1000; background:#fff; border:1px solid #e2e8f0;
                             border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.1); font-size:13px;"></div>
               </div>
-              <div style="font-size:11px;color:#64748b;margin-top:3px;">Tedarikçi seçilirse vade otomatik dolar.</div>
+              <div style="font-size:11px;color:#64748b;margin-top:3px;">Seçili tedarikçi varsa vade otomatik hesaplanır.</div>
+            </div>
+          </div>
+
+          {# ── Tanımlı Tedarikçi Prompt ── #}
+          <div id="defineVendorBox" style="display:none; margin-bottom:14px;">
+            <div style="background:#fefce8; border:1px solid #fde047; border-radius:8px; padding:12px 16px;">
+              <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-building-add text-warning mt-1"></i>
+                <div class="flex-grow-1">
+                  <div class="fw-semibold" style="font-size:13px; color:#713f12;">
+                    Bu tedarikçiyi tanımlı tedarikçi olarak kayıt edeyim mi?
+                  </div>
+                  <div style="font-size:12px; color:#92400e; margin-bottom:8px;">
+                    Kaydederseniz, bu tedarikçiye ait tüm faturalar otomatik ilişkilendirilir ve işlem hacmi kümülatif takip edilir.
+                  </div>
+                  <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <label style="font-size:12px;font-weight:600;color:#713f12;">Ödeme Vadesi (gün):</label>
+                      <input type="number" id="fDefinePaymentTerm" min="1" max="365" value="60"
+                             style="width:70px; font-size:13px; padding:3px 8px; border:1px solid #fde047;
+                                    border-radius:5px; background:#fff;"
+                             oninput="onDefineTermChange(this.value)">
+                      <span id="defineVadeTarih" style="font-size:11px;color:#92400e;"></span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-warning"
+                            onclick="confirmDefineVendor()"
+                            style="font-size:12px; font-weight:600;">
+                      <i class="bi bi-check me-1"></i> Evet, Kayıt Et
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            onclick="dismissDefineVendor()"
+                            style="font-size:12px;">
+                      Hayır
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -397,18 +436,50 @@ function clearReqSelection() {
   document.querySelectorAll('.req-drop-item').forEach(el => el.style.display = '');
 }
 
+// ── Çarşamba vade hesabı ────────────────────────────────────────────────────
+// days gün sonraki veya sonrasındaki ilk Çarşamba
+function nextWednesdayFrom(dateStr, days) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + (days || 60));
+  const dow = d.getDay(); // 0=Pz, 1=Pzt, 2=Sal, 3=Çar, 4=Per, 5=Cum, 6=Cmt
+  // Çarşamba=3; perşembe/cuma/cmt/pazar → sonraki çarşamba
+  const toWed = dow <= 3 ? (3 - dow) : (10 - dow);
+  d.setDate(d.getDate() + toWed);
+  return d.toISOString().split('T')[0];
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
 // ── Tedarikçi autocomplete ───────────────────────────────────────────────────
 let _vendorPaymentTerm = null;
 let _vendorSearchTimer = null;
+let _defineVendorDismissed = false;
+
 function vendorSearch(q) {
   clearTimeout(_vendorSearchTimer);
   const dd = document.getElementById('vendorDropdown');
-  if (!q.trim()) { dd.style.display = 'none'; document.getElementById('fVendorId').value = ''; return; }
+  if (!q.trim()) {
+    dd.style.display = 'none';
+    document.getElementById('fVendorId').value = '';
+    document.getElementById('defineVendorBox').style.display = 'none';
+    _defineVendorDismissed = false;
+    return;
+  }
   _vendorSearchTimer = setTimeout(async () => {
     try {
       const res = await fetch('/vendors/autocomplete?q=' + encodeURIComponent(q));
       const data = await res.json();
-      if (!data.length) { dd.style.display = 'none'; return; }
+      if (!data.length) {
+        dd.style.display = 'none';
+        // Tanımlı tedarikçi yok — prompt göster (eğer daha önce kapatılmadıysa)
+        if (!_defineVendorDismissed && !document.getElementById('fVendorId').value) {
+          showDefineVendorBox();
+        }
+        return;
+      }
       dd.innerHTML = data.map(v =>
         `<div class="px-3 py-2 border-bottom" style="cursor:pointer;"
               onmousedown="selectVendor('${v.id}','${v.name.replace(/'/g,"\\'")}',${v.payment_term})"
@@ -418,29 +489,72 @@ function vendorSearch(q) {
          </div>`
       ).join('');
       dd.style.display = '';
+      document.getElementById('defineVendorBox').style.display = 'none';
     } catch(e) {}
-  }, 200);
+  }, 300);
 }
+
 function selectVendor(id, name, paymentTerm) {
   document.getElementById('fVendorId').value = id;
   document.getElementById('fVendorName').value = name;
   document.getElementById('vendorDropdown').style.display = 'none';
+  document.getElementById('defineVendorBox').style.display = 'none';
   _vendorPaymentTerm = paymentTerm;
   autoFillDueDate();
 }
+
 function hideVendorDrop() {
   const dd = document.getElementById('vendorDropdown');
   if (dd) dd.style.display = 'none';
 }
+
+// ── Tanımlı tedarikçi prompt ─────────────────────────────────────────────────
+function showDefineVendorBox() {
+  const box = document.getElementById('defineVendorBox');
+  box.style.display = '';
+  updateDefineVadeTarih();
+}
+
+function onDefineTermChange(val) {
+  document.getElementById('fVendorPaymentTerm').value = val || 60;
+  updateDefineVadeTarih();
+}
+
+function updateDefineVadeTarih() {
+  const dateVal = document.getElementById('fInvoiceDate').value;
+  const term = parseInt(document.getElementById('fDefinePaymentTerm').value) || 60;
+  const lbl = document.getElementById('defineVadeTarih');
+  if (dateVal) {
+    lbl.textContent = '→ ' + fmtDate(nextWednesdayFrom(dateVal, term));
+  } else {
+    lbl.textContent = '(fatura tarihi girilince hesaplanır)';
+  }
+}
+
+function confirmDefineVendor() {
+  const term = parseInt(document.getElementById('fDefinePaymentTerm').value) || 60;
+  document.getElementById('fDefineVendor').value = 'yes';
+  document.getElementById('fVendorPaymentTerm').value = term;
+  document.getElementById('defineVendorBox').style.display = 'none';
+  _vendorPaymentTerm = term;
+  autoFillDueDate();
+}
+
+function dismissDefineVendor() {
+  document.getElementById('defineVendorBox').style.display = 'none';
+  _defineVendorDismissed = true;
+}
+
+// ── Vade tarihi otomatik hesapla ─────────────────────────────────────────────
 function autoFillDueDate() {
-  if (!_vendorPaymentTerm) return;
   const dateVal = document.getElementById('fInvoiceDate').value;
   if (!dateVal) return;
   const due = document.getElementById('fDueDate');
   if (due.value) return;  // kullanıcı zaten doldurmuşsa dokunma
-  const d = new Date(dateVal);
-  d.setDate(d.getDate() + _vendorPaymentTerm);
-  due.value = d.toISOString().split('T')[0];
+  const term = _vendorPaymentTerm || 60;
+  due.value = nextWednesdayFrom(dateVal, term);
+  // define vendor box'taki tarih etiketini de güncelle
+  updateDefineVadeTarih();
 }
 
 // ── Başlangıç verileri ───────────────────────────────────────────────────────
