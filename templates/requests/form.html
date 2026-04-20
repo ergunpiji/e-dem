@@ -241,6 +241,29 @@
                  value="{{ req.quote_deadline if req and req.quote_deadline else '' }}">
         </div>
 
+        {# Fon / Sponsor #}
+        <div class="col-md-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">
+            Fon Desteği
+            <span class="text-muted fw-normal" style="font-size:11px;">(sponsor/grant)</span>
+          </label>
+          <div class="border rounded p-2 d-flex align-items-center gap-2" style="min-height:42px; background:white;">
+            <input type="checkbox" class="form-check-input m-0" id="isFunded" name="is_funded" value="on"
+                   {% if req and req.is_funded %}checked{% endif %}
+                   onchange="document.getElementById('fundingSourceWrap').style.display=this.checked?'':'none'">
+            <label for="isFunded" class="m-0" style="font-size:13px; cursor:pointer;">Fon destekli etkinlik</label>
+          </div>
+        </div>
+        <div class="col-md-6" id="fundingSourceWrap"
+             style="{% if not (req and req.is_funded) %}display:none;{% endif %}">
+          <label class="form-label fw-semibold" style="font-size:13px;">
+            Fon Kaynağı <span class="text-muted fw-normal" style="font-size:11px;">(opsiyonel)</span>
+          </label>
+          <input type="text" name="funding_source" class="form-control"
+                 value="{{ req.funding_source if req else '' }}"
+                 placeholder="Örn: TÜBİTAK / Sponsor firma adı / AB grant…">
+        </div>
+
         {# Şehirler #}
         <div class="col-md-6">
           <label class="form-label fw-semibold" style="font-size:13px;">Etkinlik Şehri (çoklu)</label>

@@ -144,6 +144,15 @@ async def nav_counts_middleware(request: Request, call_next):
                 counts["inv_unlinked"] = db.execute(
                     _text("SELECT COUNT(*) FROM invoices WHERE request_id IS NULL AND status != 'cancelled'")
                 ).scalar() or 0
+                # Kapama talebi bekleyenler — etkinliği tamamlanmış ama henüz closure açılmamış
+                if role in ("mudur", "admin", "muhasebe_muduru", "yonetici") or _is_gm:
+                    counts["completed_awaiting_closure"] = db.execute(
+                        _text(
+                            "SELECT COUNT(*) FROM requests r "
+                            "WHERE r.status='completed' "
+                            "AND NOT EXISTS (SELECT 1 FROM closure_requests c WHERE c.request_id=r.id)"
+                        )
+                    ).scalar() or 0
                 # Ön ödeme talepleri — GM için bekleyen
                 if _is_gm:
                     counts["prepayment_pending_gm"] = db.execute(

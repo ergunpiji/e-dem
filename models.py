@@ -549,6 +549,8 @@ class Request(Base):
     confirmed_budget_id   = Column(String(36), nullable=True)  # onaylanan bütçe id
     cancellation_reason   = Column(Text, default="")
     revision_count        = Column(Integer, default=0)
+    is_funded             = Column(Boolean, default=False, nullable=False)   # fon/sponsor destekli mi
+    funding_source        = Column(String(255), default="")                   # fon kaynağı (opsiyonel serbest metin)
     team_id          = Column(String(36), ForeignKey("teams.id"), nullable=True)
     created_by       = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at       = Column(DateTime, default=_now, nullable=False)

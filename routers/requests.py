@@ -127,7 +127,19 @@ async def requests_list(
         page_title = "Yeni & İşlemdeki Talepler"
     elif view == "awaiting":
         query = query.filter(ReqModel.status.in_(["offer_sent", "revision", "postponed"]))
-        page_title = "Karar Bekleyenler"
+        page_title = "Referans Onaylama"
+    elif view == "funded":
+        query = query.filter(ReqModel.is_funded == True)
+        page_title = "Fon Referansları"
+    elif view == "awaiting_closure":
+        from models import ClosureRequest
+        # status=completed olanlar arasında henüz closure_request oluşturulmamışlar
+        existing_closure_reqs = db.query(ClosureRequest.request_id).subquery()
+        query = query.filter(
+            ReqModel.status == "completed",
+            ~ReqModel.id.in_(existing_closure_reqs),
+        )
+        page_title = "Referans Kapatma"
 
     # Sayfa başlığı (view yoksa role bazlı)
     if not page_title:
@@ -256,6 +268,8 @@ async def requests_create(
     items_json:           str = Form("{}"),
     preferred_venues_json: str = Form("[]"),
     contact_person_json:  str = Form("{}"),
+    is_funded:            str = Form(""),     # checkbox: "on" veya boş
+    funding_source:       str = Form(""),
     action:               str = Form("draft"),  # 'draft' veya 'send'
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -312,6 +326,8 @@ async def requests_create(
         preferred_venues_json=preferred_venues_json,
         selected_venues_json="[]",
         contact_person_json=contact_person_json,
+        is_funded=(is_funded == "on"),
+        funding_source=funding_source.strip(),
         team_id=_team_id,
         created_by=current_user.id,
         created_at=_now(),
@@ -833,6 +849,8 @@ async def requests_update(
     items_json:           str = Form("{}"),
     preferred_venues_json: str = Form("[]"),
     contact_person_json:  str = Form("{}"),
+    is_funded:            str = Form(""),
+    funding_source:       str = Form(""),
     action:               str = Form("draft"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -875,6 +893,8 @@ async def requests_update(
     req.items_json            = items_json
     req.preferred_venues_json = preferred_venues_json
     req.contact_person_json   = contact_person_json
+    req.is_funded             = (is_funded == "on")
+    req.funding_source        = funding_source.strip()
     req.updated_at            = _now()
 
     went_pending = False

@@ -621,6 +621,11 @@ def migrate_db():
         _safe_add_column(conn, "requests", "confirmed_budget_id", "TEXT")
         _safe_add_column(conn, "requests", "cancellation_reason", "TEXT",    "''")
         _safe_add_column(conn, "requests", "revision_count",      "INTEGER", "0")
+        # Requests — fon / sponsor destekli etkinlik işaretleri
+        _bool_type    = "INTEGER" if _is_sqlite else "BOOLEAN"
+        _bool_default = "0" if _is_sqlite else "FALSE"
+        _safe_add_column(conn, "requests", "is_funded",      _bool_type, _bool_default)
+        _safe_add_column(conn, "requests", "funding_source", "TEXT",     "''")
 
         # Customers
         _safe_add_column(conn, "customers", "excel_template_path", "TEXT", "''")
