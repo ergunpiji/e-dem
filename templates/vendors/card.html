@@ -87,16 +87,18 @@
   <div class="card border-0 shadow-sm">
     <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between py-2">
       <span class="fw-semibold" style="font-size:14px;">Faturalar ({{ invoices|length }})</span>
-      {% if can_edit %}
       <div class="d-flex gap-2">
+        {% if can_request_prepayment %}
         <button type="button" class="btn btn-outline-warning btn-sm" onclick="openPrepaymentModal()">
-          <i class="bi bi-arrow-up-circle me-1"></i>Ön Ödeme
+          <i class="bi bi-arrow-up-circle me-1"></i>Ön Ödeme Talebi
         </button>
+        {% endif %}
+        {% if can_edit %}
         <a href="/invoices/new" class="btn btn-outline-primary btn-sm">
           <i class="bi bi-plus-lg me-1"></i>Fatura Ekle
         </a>
+        {% endif %}
       </div>
-      {% endif %}
     </div>
     <div class="card-body p-0">
       <div class="table-responsive">

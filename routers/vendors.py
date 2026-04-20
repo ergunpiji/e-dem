@@ -298,8 +298,9 @@ async def vendors_card(
         "unpaid_amount":         round(unpaid_amount,  2),
         "overdue_amount":        round(overdue_amount, 2),
         "today_str":             today_str,
-        "can_edit":              current_user.role in FINANCE_ROLES,
-        "prepayment_statuses":   PREPAYMENT_STATUSES,
+        "can_edit":                current_user.role in FINANCE_ROLES,
+        "can_request_prepayment":  current_user.role in {*FINANCE_ROLES, "mudur", "yonetici", "asistan"} or current_user.is_gm,
+        "prepayment_statuses":     PREPAYMENT_STATUSES,
     })
 
 

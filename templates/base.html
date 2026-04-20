@@ -563,9 +563,13 @@
              class="sidebar-link {% if cp.startswith('/vendors') and 'cash-flow' not in cp %}active{% endif %}">
             <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
           </a>
+          <a href="/prepayment-requests/new"
+             class="sidebar-link {% if cp == '/prepayment-requests/new' %}active{% endif %}">
+            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talebi Oluştur
+          </a>
           <a href="/prepayment-requests"
-             class="sidebar-link {% if '/prepayment-requests' in cp %}active{% endif %}">
-            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talepleri
+             class="sidebar-link {% if '/prepayment-requests' in cp and cp != '/prepayment-requests/new' %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Ön Ödeme Talepleri
             {{ nb((nc.prepayment_pending_gm or 0) + (nc.prepayment_approved or 0)) }}
           </a>
           <a href="/vendors/cash-flow/view"
@@ -679,6 +683,14 @@
             <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
             {{ nb(nc.inv_unlinked) }}
           </a>
+          <a href="/prepayment-requests/new"
+             class="sidebar-link {% if cp == '/prepayment-requests/new' %}active{% endif %}">
+            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talebi
+          </a>
+          <a href="/prepayment-requests"
+             class="sidebar-link {% if '/prepayment-requests' in cp and cp != '/prepayment-requests/new' %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Taleplerim
+          </a>
           <a href="/expenses/new"
              class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
             <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
@@ -734,6 +746,14 @@
              class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
             <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
             {{ nb(nc.inv_unlinked) }}
+          </a>
+          <a href="/prepayment-requests/new"
+             class="sidebar-link {% if cp == '/prepayment-requests/new' %}active{% endif %}">
+            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talebi
+          </a>
+          <a href="/prepayment-requests"
+             class="sidebar-link {% if '/prepayment-requests' in cp and cp != '/prepayment-requests/new' %}active{% endif %}">
+            <i class="bi bi-list-ul nav-icon"></i> Taleplerim
           </a>
           <a href="/expenses/new"
              class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
