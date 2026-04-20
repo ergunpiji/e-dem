@@ -51,8 +51,10 @@ def _require_approval_permission(current_user: User, inv):
         return
     if inv.current_approver_id and current_user.id == inv.current_approver_id:
         return
-    # Eski sistemden kalan veya bağlantısız faturalar: mudur/GM
+    # current_approver_id NULL: req sahibine izin ver (eski fatura veya backfill bekliyor)
     if not inv.current_approver_id:
+        if inv.request and inv.request.created_by == current_user.id:
+            return
         if _is_gm(current_user) or current_user.role == "mudur":
             return
     raise HTTPException(status_code=403, detail="Bu faturayı onaylamak için yetkiniz yok.")
