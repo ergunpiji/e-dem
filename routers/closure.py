@@ -150,8 +150,8 @@ async def closure_list(
     from models import Request as ReqModel, User as UserModel
     query = db.query(ClosureRequest)
 
-    # Birim müdürü: sadece kendi takımının kapama talepleri
-    if current_user.role == "mudur" and current_user.team_id:
+    # Birim müdürü: sadece kendi takımının kapama talepleri (GM hariç)
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         _team_ids = [u.id for u in db.query(UserModel).filter(
             UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
         _team_req_ids = [r.id for r in db.query(ReqModel).filter(
@@ -166,7 +166,7 @@ async def closure_list(
     pend_q = db.query(ClosureRequest).filter(
         ClosureRequest.status.in_(["pending_manager", "pending_gm", "pending_finance"])
     )
-    if current_user.role == "mudur" and current_user.team_id:
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         pend_q = pend_q.filter(ClosureRequest.request_id.in_(_team_req_ids))
     pending_count = pend_q.count()
 

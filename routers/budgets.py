@@ -123,7 +123,7 @@ async def budgets_list(
     query = db.query(Budget)
     if current_user.role == "e_dem":
         query = query.filter(Budget.created_by == current_user.id)
-    elif current_user.role == "mudur" and current_user.team_id:
+    elif current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         # Birim müdürü: sadece takımının talep bütçeleri (request.team_id üzerinden)
         query = query.join(ReqModel, Budget.request_id == ReqModel.id).filter(
             ReqModel.team_id == current_user.team_id

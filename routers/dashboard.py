@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Invoice, Request as ReqModel, Service, User, Venue, ClosureRequest
+from models import Budget, Customer, Invoice, Request as ReqModel, Service, Team, User, Venue, ClosureRequest
 
 router = APIRouter()
 from templates_config import templates
@@ -113,6 +113,47 @@ def _build_financial_stats(db: Session, req_id_filter=None):
         "chart_sale":      chart_sale,
         "chart_cost":      chart_cost,
     }
+
+
+def _build_ytd_team_stats(db: Session) -> list[dict]:
+    """Yılbaşından bugüne takım bazlı ciro/kar (tüm takımlar — GM/admin için)."""
+    year_start = date(date.today().year, 1, 1).isoformat()
+
+    reqs = db.query(ReqModel).filter(ReqModel.check_in >= year_start).all()
+    if not reqs:
+        return []
+    req_team_map = {r.id: r.team_id for r in reqs}
+    req_ids = list(req_team_map.keys())
+
+    invoices = db.query(Invoice).filter(
+        Invoice.status.in_(["approved", "gm_approved", "active"]),
+        Invoice.request_id.in_(req_ids),
+    ).all()
+
+    team_name_map = {t.id: t.name for t in db.query(Team).all()}
+
+    agg: dict[str, dict] = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0, "komisyon": 0.0})
+    for inv in invoices:
+        tid  = req_team_map.get(inv.request_id)
+        name = team_name_map.get(tid, "Takımsız") if tid else "Takımsız"
+        if inv.invoice_type == "kesilen":
+            agg[name]["ciro"] += inv.amount
+        elif inv.invoice_type == "iade_kesilen":
+            agg[name]["ciro"] -= inv.amount
+        elif inv.invoice_type == "komisyon":
+            agg[name]["komisyon"] += inv.amount
+        elif inv.invoice_type == "gelen":
+            agg[name]["maliyet"] += inv.amount
+        elif inv.invoice_type == "iade_gelen":
+            agg[name]["maliyet"] -= inv.amount
+
+    rows = []
+    for name, v in agg.items():
+        ciro = v["ciro"] + v["komisyon"]
+        kar  = ciro - v["maliyet"]
+        rows.append({"name": name, "ciro": round(ciro, 0), "kar": round(kar, 0)})
+    rows.sort(key=lambda r: r["ciro"], reverse=True)
+    return rows
 
 
 def _build_pending_tasks(db: Session, current_user) -> list[dict]:
@@ -281,8 +322,8 @@ async def dashboard(
     recent_requests = []
 
     if current_user.role in ("admin", "mudur", "muhasebe_muduru"):
-        # Müdür: takımındaki referanslar; takımsız veya admin/muhasebe_muduru: tümü
-        if current_user.role == "mudur" and current_user.team_id:
+        # Birim müdürü: takımındaki referanslar; GM/admin/muhasebe_muduru: tümü
+        if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
             team_ids = [u.id for u in db.query(User).filter(
                 User.team_id == current_user.team_id, User.active == True).all()]
             req_filter = ReqModel.created_by.in_(team_ids + [current_user.id])
@@ -381,6 +422,12 @@ async def dashboard(
 
     pending_tasks = _build_pending_tasks(db, current_user)
 
+    # Takım YTD grafiği — GM ve admin için (tüm takımları görür)
+    team_ytd = []
+    show_team_ytd = current_user.is_gm or current_user.role == "admin"
+    if show_team_ytd:
+        team_ytd = _build_ytd_team_stats(db)
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -395,6 +442,12 @@ async def dashboard(
                 "labels": financial.get("chart_labels", []),
                 "sale":   financial.get("chart_sale", []),
                 "cost":   financial.get("chart_cost", []),
+            }),
+            "show_team_ytd":   show_team_ytd,
+            "team_ytd_json":   json.dumps({
+                "labels": [t["name"] for t in team_ytd],
+                "ciro":   [t["ciro"]  for t in team_ytd],
+                "kar":    [t["kar"]   for t in team_ytd],
             }),
         },
     )

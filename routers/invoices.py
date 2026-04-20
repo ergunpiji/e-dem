@@ -249,7 +249,7 @@ async def invoices_list(
     if current_user.role in ("yonetici", "asistan"):
         from models import Request as ReqModel
         _count_base = _count_base.filter(ReqModel.created_by == current_user.id)
-    elif current_user.role == "mudur" and current_user.team_id:
+    elif current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         from models import Request as ReqModel
         _count_base = _count_base.filter(ReqModel.team_id == current_user.team_id)
 
@@ -308,7 +308,7 @@ async def invoices_new_form(
     _req_q = db.query(ReqModel).filter(
         ReqModel.status.notin_(["cancelled", "closing", "closed"])
     )
-    if current_user.role == "mudur" and current_user.team_id:
+    if current_user.role == "mudur" and current_user.team_id and not current_user.is_gm:
         _req_q = _req_q.filter(ReqModel.team_id == current_user.team_id)
     elif current_user.role in ("yonetici", "asistan"):
         _req_q = _req_q.filter(ReqModel.created_by == current_user.id)

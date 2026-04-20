@@ -150,38 +150,21 @@
     </div>
   </div>
 
-  {# DURUM ÖZET KARTLARI #}
+  {# DURUM ÖZET KARTLARI — GM/admin için takım YTD grafiği, diğerleri için klasik özet #}
   <div class="col-lg-5">
     <div class="chart-card h-100">
+      {% if show_team_ytd %}
+      <div class="chart-title">
+        <i class="bi bi-diagram-3 text-primary me-2"></i>Takım Bazlı Ciro / Kar
+        <span class="text-muted fw-normal ms-2" style="font-size:11px;">YTD · Yılbaşından bugüne</span>
+      </div>
+      <canvas id="teamYtdChart" style="max-height:260px;"></canvas>
+      {% else %}
       <div class="chart-title">
         <i class="bi bi-speedometer2 text-warning me-2"></i>İş Durumu
       </div>
 
-      {% if current_user.role == 'admin' %}
-      <div class="d-flex flex-column gap-2">
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#eff6ff;">
-          <span style="font-size:13px;"><i class="bi bi-building me-2 text-primary"></i>Aktif Tedarikçi</span>
-          <span class="fw-bold text-primary">{{ stats.total_venues }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f0fdf4;">
-          <span style="font-size:13px;"><i class="bi bi-people me-2 text-success"></i>Aktif Kullanıcı</span>
-          <span class="fw-bold text-success">{{ stats.total_users }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#fefce8;">
-          <span style="font-size:13px;"><i class="bi bi-building-check me-2 text-warning"></i>Müşteri</span>
-          <span class="fw-bold text-warning">{{ stats.total_customers }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#f5f3ff;">
-          <span style="font-size:13px;"><i class="bi bi-files me-2" style="color:#7c3aed;"></i>Toplam Talep</span>
-          <span class="fw-bold" style="color:#7c3aed;">{{ stats.total_requests }}</span>
-        </div>
-        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#fff1f2;">
-          <span style="font-size:13px;"><i class="bi bi-calculator me-2 text-danger"></i>Hazırlanan Bütçe</span>
-          <span class="fw-bold text-danger">{{ stats.total_budgets }}</span>
-        </div>
-      </div>
-
-      {% elif current_user.role in ('yonetici', 'asistan') %}
+      {% if current_user.role in ('yonetici', 'asistan') %}
       <div class="d-flex flex-column gap-2">
         <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:#eff6ff;">
           <span style="font-size:13px;"><i class="bi bi-files me-2 text-primary"></i>Toplam Taleplerim</span>
@@ -206,6 +189,7 @@
       </div>
 
       {% endif %}
+      {% endif %}{# /show_team_ytd #}
 
     </div>
   </div>
@@ -369,5 +353,47 @@
   });
 })();
 </script>
+
+{% if show_team_ytd %}
+<script>
+(function() {
+  const team = {{ team_ytd_json | safe }};
+  const ctx = document.getElementById('teamYtdChart');
+  if (!ctx || !team.labels || !team.labels.length) return;
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: team.labels,
+      datasets: [
+        { label: 'Ciro', data: team.ciro, backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4 },
+        { label: 'Kar',  data: team.kar,  backgroundColor: 'rgba(22,163,74,0.8)',  borderRadius: 4 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₺${new Intl.NumberFormat('tr-TR').format(Math.round(ctx.parsed.y))}`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 30 }, grid: { display: false } },
+        y: {
+          ticks: {
+            font: { size: 10 },
+            callback: v => '₺' + new Intl.NumberFormat('tr-TR', {notation:'compact'}).format(v)
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endif %}
 {% endblock %}
