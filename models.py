@@ -1089,17 +1089,19 @@ class Invoice(Base):
     status           = Column(String(20), default="pending") # pending|mudur_approved|gm_approved|approved|rejected|cancelled
     payment_status   = Column(String(20), default="unpaid")  # unpaid|paid|partial
     paid_at          = Column(String(10), nullable=True)      # YYYY-MM-DD
-    rejection_note   = Column(String(300), default="")
-    approved_by      = Column(String(36), ForeignKey("users.id"), nullable=True)
-    approved_at      = Column(DateTime, nullable=True)
-    created_by       = Column(String(36), ForeignKey("users.id"), nullable=False)
-    created_at       = Column(DateTime, default=_now, nullable=False)
-    updated_at       = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    rejection_note       = Column(String(300), default="")
+    approved_by          = Column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at          = Column(DateTime, nullable=True)
+    current_approver_id  = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_by           = Column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at           = Column(DateTime, default=_now, nullable=False)
+    updated_at           = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
-    request  = relationship("Request", back_populates="invoices")
-    vendor   = relationship("FinancialVendor", back_populates="invoices", foreign_keys=[vendor_id])
-    creator  = relationship("User", foreign_keys=[created_by])
-    approver = relationship("User", foreign_keys=[approved_by])
+    request          = relationship("Request", back_populates="invoices")
+    vendor           = relationship("FinancialVendor", back_populates="invoices", foreign_keys=[vendor_id])
+    creator          = relationship("User", foreign_keys=[created_by])
+    approver         = relationship("User", foreign_keys=[approved_by])
+    current_approver = relationship("User", foreign_keys=[current_approver_id])
 
     @property
     def lines(self) -> list:

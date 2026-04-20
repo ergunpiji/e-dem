@@ -586,9 +586,17 @@ async def requests_detail(
 
     can_manage_invoices  = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
     can_manage_undoc     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
-    # Adım 1 — GM/Müdür onayı (pending → gm_approved)
-    can_approve_invoices = current_user.role in ("admin", "mudur", "muhasebe_muduru")
-    # Adım 2 — Muhasebe keser (gm_approved → approved)
+    # Limit tabanlı zincirleme onay: current_approver_id eşleşen kullanıcı onaylayabilir
+    _pending_approver_ids = {
+        inv.current_approver_id
+        for inv in (req.invoices or [])
+        if inv.status == "pending" and inv.current_approver_id
+    }
+    can_approve_invoices = (
+        current_user.role in ("admin", "muhasebe_muduru") or
+        current_user.id in _pending_approver_ids
+    )
+    # Adım 2 — Muhasebe keser (approved → final)
     can_cut_invoices     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe")
 
     # Kapanan dosyada tüm aksiyon izinleri devre dışı (salt görüntüleme)

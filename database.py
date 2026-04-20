@@ -1055,9 +1055,10 @@ def migrate_db():
         conn.commit()
 
         # ── Invoice — yeni sütunlar (vendor_id, payment_status, paid_at) ──
-        _safe_add_column(conn, "invoices", "vendor_id",      "TEXT")
-        _safe_add_column(conn, "invoices", "payment_status", "TEXT", "'unpaid'")
-        _safe_add_column(conn, "invoices", "paid_at",        "TEXT")
+        _safe_add_column(conn, "invoices", "vendor_id",           "TEXT")
+        _safe_add_column(conn, "invoices", "payment_status",      "TEXT", "'unpaid'")
+        _safe_add_column(conn, "invoices", "paid_at",             "TEXT")
+        _safe_add_column(conn, "invoices", "current_approver_id", "TEXT")
 
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()

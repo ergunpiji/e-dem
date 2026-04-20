@@ -43,14 +43,28 @@ def _is_gm(user: User) -> bool:
 def _require_approval_permission(current_user: User, inv):
     """
     Onay/red için yetki:
-    - pending        → mudur veya GM onaylayabilir
-    - mudur_approved → sadece GM (admin veya Genel Müdür unvanlı) onaylayabilir
+    - admin / muhasebe_muduru → her zaman
+    - current_approver_id eşleşiyorsa → onaylayabilir
+    - current_approver_id yoksa (eski/bağlantısız fatura) → mudur/GM legacy fallback
     """
-    if _is_gm(current_user):
-        return  # GM her adımda onaylayabilir
-    if current_user.role == "mudur" and getattr(inv, "status", "") == "pending":
-        return  # Müdür sadece pending'i onaylayabilir
-    raise HTTPException(status_code=403, detail="Bu faturayı onaylamak/reddetmek için yetkiniz yok.")
+    if current_user.role in ("admin", "muhasebe_muduru"):
+        return
+    if inv.current_approver_id and current_user.id == inv.current_approver_id:
+        return
+    # Eski sistemden kalan veya bağlantısız faturalar: mudur/GM
+    if not inv.current_approver_id:
+        if _is_gm(current_user) or current_user.role == "mudur":
+            return
+    raise HTTPException(status_code=403, detail="Bu faturayı onaylamak için yetkiniz yok.")
+
+
+def _find_next_approver(db: Session, user_id: str):
+    """Zincirde bir üst onaylayıcıyı (yöneticiyi) döner."""
+    from models import User as _User
+    user = db.query(_User).filter(_User.id == user_id).first()
+    if not user or not user.manager_id:
+        return None
+    return db.query(_User).filter(_User.id == user.manager_id).first()
 
 
 def _get_invoice_or_404(db: Session, invoice_id: str) -> Invoice:
@@ -375,25 +389,31 @@ async def invoices_create(
     # geriye uyumluluk için vat_rate: ilk satırın oranı (veya 0)
     first_vat = float(lines[0].get("vat_rate", 0)) if lines else 0.0
 
+    # Onay zinciri: ilk onaylayıcı = referansın sahibi (PM)
+    _initial_approver_id = None
+    if req:
+        _initial_approver_id = req.created_by
+
     inv = Invoice(
-        id           = _uuid(),
-        request_id   = req_id or None,
-        invoice_type = invoice_type,
-        invoice_no   = invoice_no.strip(),
-        invoice_date = invoice_date or None,
-        due_date     = due_date or None,
-        vendor_id    = vendor_id.strip() or None,
-        vendor_name  = vendor_name.strip(),
-        description  = description.strip(),
-        lines_json   = json.dumps(lines, ensure_ascii=False),
-        amount       = excl,
-        vat_rate     = first_vat,
-        vat_amount   = vat_total,
-        total_amount = incl,
-        status       = "pending",
-        created_by   = current_user.id,
-        created_at   = _now(),
-        updated_at   = _now(),
+        id                  = _uuid(),
+        request_id          = req_id or None,
+        invoice_type        = invoice_type,
+        invoice_no          = invoice_no.strip(),
+        invoice_date        = invoice_date or None,
+        due_date            = due_date or None,
+        vendor_id           = vendor_id.strip() or None,
+        vendor_name         = vendor_name.strip(),
+        description         = description.strip(),
+        lines_json          = json.dumps(lines, ensure_ascii=False),
+        amount              = excl,
+        vat_rate            = first_vat,
+        vat_amount          = vat_total,
+        total_amount        = incl,
+        status              = "pending",
+        current_approver_id = _initial_approver_id,
+        created_by          = current_user.id,
+        created_at          = _now(),
+        updated_at          = _now(),
     )
 
     if document and document.filename:
@@ -450,30 +470,26 @@ async def invoices_create(
         )
     db.commit()
 
-    # Bildirim: ilgili taraflara fatura onay bildirimi gönder
+    # Bildirim: ilk onaylayıcıya (current_approver_id) bildirim gönder
     if req:
         from utils.notifications import create_notification
-        from models import Team as _Team
         vendor = inv.vendor_name or inv.invoice_no or "—"
 
-        # Takımın müdürüne bildirim (onay yetkisi olan kişi)
+        # İlk onaylayıcı = PM (req.created_by) — kendisi değilse bildir
         _notified_ids = set()
-        if req.team_id:
-            _team = db.query(_Team).filter(_Team.id == req.team_id).first()
-            _team_mudur = _team.mudur if _team else None
-            if _team_mudur and _team_mudur.id != current_user.id:
-                create_notification(
-                    db,
-                    user_id    = _team_mudur.id,
-                    notif_type = "invoice_pending",
-                    title      = f"Fatura onayı bekleniyor — {vendor}",
-                    message    = f"{req.request_no} referansına ait fatura onayınızı bekliyor.",
-                    link       = f"/requests/{req_id}#tab-financial",
-                    ref_id     = inv.id,
-                )
-                _notified_ids.add(_team_mudur.id)
+        if inv.current_approver_id and inv.current_approver_id != current_user.id:
+            create_notification(
+                db,
+                user_id    = inv.current_approver_id,
+                notif_type = "invoice_pending",
+                title      = f"Fatura onayı bekleniyor — {vendor}",
+                message    = f"{req.request_no} referansına ait fatura onayınızı bekliyor.",
+                link       = f"/requests/{req_id}#tab-financial",
+                ref_id     = inv.id,
+            )
+            _notified_ids.add(inv.current_approver_id)
 
-        # Talebi oluşturan PM'e bildirim (müdür değilse + kendisi değilse)
+        # Talebi oluşturan PM'e bildirim (zaten bildirilmediyse + kendisi değilse)
         if req.created_by and req.created_by not in _notified_ids and req.created_by != current_user.id:
             create_notification(
                 db,
@@ -672,47 +688,91 @@ async def invoices_approve(
     inv = _get_invoice_or_404(db, invoice_id)
     _require_approval_permission(current_user, inv)
 
-    if inv.status == "pending":
-        if _is_gm(current_user):
-            # GM direkt onaylar → approved (muhasebe adımı yok)
-            inv.status = "approved"
-        elif current_user.role == "mudur":
-            # Müdür onayı: limit kontrolü
-            from models import Settings
-            settings = db.query(Settings).filter(Settings.id == 1).first()
-            limit = getattr(settings, "invoice_mudur_limit", None) if settings else None
-            if limit is not None and (inv.total_amount or 0) <= limit:
-                # Tutar limit dahilinde → GM onayı gerekmez, doğrudan onaylandı
-                inv.status = "approved"
-            else:
-                # Limit yok veya tutar limiti aşıyor → GM onayı gerekli
-                inv.status = "mudur_approved"
-        else:
-            raise HTTPException(status_code=403, detail="Bu aşamada onay yetkiniz yok.")
-    elif inv.status == "mudur_approved":
-        if _is_gm(current_user):
-            # GM onayı: mudur_approved → approved (doğrudan)
-            inv.status = "approved"
-        else:
-            raise HTTPException(status_code=403, detail="Bu aşamada sadece GM onaylayabilir.")
-    elif inv.status == "gm_approved":
-        # Eski kayıtlar için geriye dönük uyumluluk
-        if _is_gm(current_user) or current_user.role in ("muhasebe_muduru", "muhasebe"):
-            inv.status = "approved"
-        else:
-            raise HTTPException(status_code=403, detail="Bu aşamada yetkiniz yok.")
-    else:
+    if inv.status not in ("pending", "mudur_approved", "gm_approved"):
         raise HTTPException(status_code=400, detail="Bu fatura onay için uygun durumda değil.")
 
-    inv.approved_by    = current_user.id
-    inv.approved_at    = _now()
-    inv.rejection_note = ""
-    inv.updated_at     = _now()
-    db.commit()
+    # Eski gm_approved kayıtlar — doğrudan approved
+    if inv.status == "gm_approved":
+        inv.status              = "approved"
+        inv.current_approver_id = None
+        inv.approved_by         = current_user.id
+        inv.approved_at         = _now()
+        inv.rejection_note      = ""
+        inv.updated_at          = _now()
+        db.commit()
+        if inv.request_id:
+            return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+        return RedirectResponse(url="/invoices?status_filter=approved", status_code=303)
 
-    if inv.status == "mudur_approved":
-        return RedirectResponse(url="/invoices?status_filter=pending", status_code=303)
-    return RedirectResponse(url="/invoices?status_filter=approved", status_code=303)
+    # Admin / muhasebe_muduru → zinciri atla, direkt onayla
+    if current_user.role in ("admin", "muhasebe_muduru"):
+        inv.status              = "approved"
+        inv.current_approver_id = None
+        inv.approved_by         = current_user.id
+        inv.approved_at         = _now()
+        inv.rejection_note      = ""
+        inv.updated_at          = _now()
+        db.commit()
+        if inv.request_id:
+            return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+        return RedirectResponse(url="/invoices?status_filter=approved", status_code=303)
+
+    # Zincirleme onay: current_approver_id == current_user.id
+    approver_user = db.query(User).filter(User.id == current_user.id).first()
+    limit = approver_user.org_title.budget_limit if (approver_user and approver_user.org_title) else None
+
+    if limit is None or (inv.total_amount or 0) <= limit:
+        # Limit yeterli → tamamen onaylandı
+        inv.status              = "approved"
+        inv.current_approver_id = None
+        inv.approved_by         = current_user.id
+        inv.approved_at         = _now()
+        inv.rejection_note      = ""
+        inv.updated_at          = _now()
+        db.commit()
+        if inv.request_id:
+            return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+        return RedirectResponse(url="/invoices?status_filter=approved", status_code=303)
+    else:
+        # Limit yetersiz → bir üst yöneticiye eskalasyon
+        next_approver = _find_next_approver(db, current_user.id)
+        if next_approver:
+            inv.current_approver_id = next_approver.id
+            inv.rejection_note      = ""
+            inv.updated_at          = _now()
+            db.commit()
+            # Bir üst onaylayıcıya bildirim
+            if inv.request_id:
+                from utils.notifications import create_notification
+                _req_obj = inv.request
+                create_notification(
+                    db,
+                    user_id    = next_approver.id,
+                    notif_type = "invoice_pending",
+                    title      = f"Fatura onayı bekleniyor — {inv.vendor_name or inv.invoice_no or '—'}",
+                    message    = (
+                        f"{_req_obj.request_no if _req_obj else inv.request_id} referansına ait fatura "
+                        f"onayınızı bekliyor. ({current_user.full_name} onayladı, limit aşımı nedeniyle yönlendirildi)"
+                    ),
+                    link  = f"/requests/{inv.request_id}#tab-financial",
+                    ref_id= inv.id,
+                )
+                db.commit()
+            if inv.request_id:
+                return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+            return RedirectResponse(url="/invoices?status_filter=pending", status_code=303)
+        else:
+            # Zincirde üst yönetici yok → üst kademedeyiz, direkt onayla
+            inv.status              = "approved"
+            inv.current_approver_id = None
+            inv.approved_by         = current_user.id
+            inv.approved_at         = _now()
+            inv.rejection_note      = ""
+            inv.updated_at          = _now()
+            db.commit()
+            if inv.request_id:
+                return RedirectResponse(url=f"/requests/{inv.request_id}#tab-financial", status_code=303)
+            return RedirectResponse(url="/invoices?status_filter=approved", status_code=303)
 
 
 # ---------------------------------------------------------------------------

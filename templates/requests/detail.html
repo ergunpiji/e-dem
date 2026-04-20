@@ -1399,8 +1399,11 @@ document.addEventListener('DOMContentLoaded', function() {
         </button>
         {% endif %}
         {# Onay/red butonları #}
-        {% if inv.status in ('pending', 'mudur_approved') and show_approve %}
-          {# Müdür/GM onaylar → doğrudan approved #}
+        {% set _can_approve_this = inv.status in ('pending', 'mudur_approved') and (
+            current_user.role in ('admin', 'muhasebe_muduru') or
+            (inv.current_approver_id and inv.current_approver_id == current_user.id)
+        ) %}
+        {% if _can_approve_this %}
           <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
             <button type="submit" class="btn btn-sm btn-primary py-0 px-2"
                     title="Onayla" onclick="return confirm('Fatura talebini onaylıyor musunuz?')">
@@ -1468,17 +1471,13 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     <div class="collapse" id="invoicesTableCollapse">
 
-    {# ── Adım 1: GM Onayı Bekleyen Fatura Talepleri — sadece onay yetkisi olanlar görür ── #}
-    {% if pending_invoices and can_approve_invoices %}
+    {# ── Onay Bekleyen Fatura Talepleri — onay yetkisi olan veya beklenen kişiler görür ── #}
+    {% if pending_invoices %}
     <div class="mb-3 p-3" style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px;">
       <div class="fw-semibold mb-2" style="font-size:13px; color:#92400e;">
         <i class="bi bi-hourglass-split me-1"></i>
-        GM Onayı Bekleyen Fatura Talepleri ({{ pending_invoices | length }})
-        {% if can_approve_invoices %}
-        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Onayladıktan sonra muhasebe kesmesi bekleyecek</span>
-        {% else %}
-        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Genel Müdür/Müdür onayı bekleniyor</span>
-        {% endif %}
+        Onay Bekleyen Fatura Talepleri ({{ pending_invoices | length }})
+        <span class="text-muted fw-normal ms-2" style="font-size:12px;">— Onaylayan kişinin limitine göre işlem yapılır</span>
       </div>
       <div class="table-responsive">
         <table class="table table-sm mb-0" style="font-size:13px;">
@@ -1487,12 +1486,75 @@ document.addEventListener('DOMContentLoaded', function() {
               <th>Tip</th><th>Fatura No</th><th>Tarih</th><th>Tedarikçi / Müşteri</th>
               <th>Açıklama</th>
               <th class="text-end">Tutar (KDV Hariç)</th><th class="text-end">KDV</th>
-              <th class="text-end">Toplam</th><th>Belge</th><th class="text-end">İşlem</th>
+              <th class="text-end">Toplam</th><th>Belge</th>
+              <th>Onaylayacak</th>
+              <th class="text-end">İşlem</th>
             </tr>
           </thead>
           <tbody>
             {% for inv in pending_invoices %}
-              {{ invoice_row(inv, show_actions=can_manage_invoices, show_approve=can_approve_invoices, show_cut=false) }}
+            {% set _row_approve = (
+                current_user.role in ('admin', 'muhasebe_muduru') or
+                (inv.current_approver_id and inv.current_approver_id == current_user.id)
+            ) %}
+            {% set _approver = inv.current_approver %}
+            <tr>
+              {% set type_colors = {
+                'kesilen':      ('bg-success',  'text-success'),
+                'gelen':        ('bg-danger',   'text-danger'),
+                'komisyon':     ('bg-success',  'text-success'),
+                'iade_kesilen': ('bg-info',     'text-info'),
+                'iade_gelen':   ('bg-secondary','text-secondary')
+              } %}
+              {% set tcls = type_colors.get(inv.invoice_type, ('bg-secondary', 'text-secondary')) %}
+              <td><span class="badge {{ tcls[0] }} bg-opacity-10 {{ tcls[1] }}" style="font-size:11px;">{{ inv.type_label }}</span></td>
+              <td class="text-muted">{{ inv.invoice_no or '—' }}</td>
+              <td style="white-space:nowrap; color:#64748b;">{{ inv.invoice_date | date_tr if inv.invoice_date else '—' }}</td>
+              <td>{{ inv.vendor_name or '—' }}</td>
+              <td style="color:#64748b; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ inv.description or '' }}</td>
+              <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.amount).replace(',', '.') }}</td>
+              <td class="text-end text-muted">%{{ inv.vat_rate | int }}<br><small>₺{{ '{:,.2f}'.format(inv.vat_amount).replace(',', '.') }}</small></td>
+              <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}</td>
+              <td>
+                {% if inv.document_path %}
+                <a href="/invoices/{{ inv.id }}/document" target="_blank" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:11px;">
+                  <i class="bi bi-file-earmark"></i>
+                </a>
+                {% else %}<span class="text-muted" style="font-size:11px;">—</span>{% endif %}
+              </td>
+              <td style="white-space:nowrap;">
+                {% if _approver %}
+                <span style="font-size:11px; color:#92400e;">
+                  <i class="bi bi-person-fill me-1"></i>{{ _approver.full_name }}
+                  {% if _approver.org_title %}
+                  <br><span class="text-muted">{{ _approver.org_title.name }}</span>
+                  {% endif %}
+                </span>
+                {% else %}
+                <span class="text-muted" style="font-size:11px;">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end" style="white-space:nowrap;">
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 me-1"
+                        title="Fatura İçeriğini Görüntüle"
+                        data-invoice='{{ inv.to_dict() | tojson }}'
+                        onclick="openInvoiceDetailModal(JSON.parse(this.dataset.invoice))">
+                  <i class="bi bi-eye"></i>
+                </button>
+                {% if _row_approve %}
+                <form method="post" action="/invoices/{{ inv.id }}/approve" class="d-inline">
+                  <button type="submit" class="btn btn-sm btn-primary py-0 px-2"
+                          onclick="return confirm('Fatura talebini onaylıyor musunuz?')">
+                    <i class="bi bi-check-lg me-1"></i>Onayla
+                  </button>
+                </form>
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                        onclick="openRejectModal('{{ inv.id }}')">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+                {% endif %}
+              </td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
@@ -1556,7 +1618,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </tfoot>
       </table>
     </div>
-    {% elif not pending_invoices %}
+    {% elif not pending_invoices and not gm_approved_invoices %}
     <div class="text-center py-4 text-muted">
       <i class="bi bi-receipt" style="font-size:2.5rem; opacity:.3;"></i>
       <p class="mt-2 mb-0" style="font-size:13px;">Henüz fatura girilmemiş.</p>
@@ -1565,41 +1627,6 @@ document.addEventListener('DOMContentLoaded', function() {
         <i class="bi bi-plus me-1"></i>İlk Faturayı Ekle
       </a>
       {% endif %}
-    </div>
-    {% elif not can_approve_invoices and pending_invoices %}
-    {# PM ve yöneticiler: onay bekleyen faturalar var ama onaylama yetkisi yok — sadece sayı göster #}
-    <div class="py-3 px-1">
-      <div class="d-flex align-items-center gap-2" style="font-size:13px; color:#92400e;">
-        <i class="bi bi-hourglass-split text-warning"></i>
-        <span>
-          <strong>{{ pending_invoices | length }}</strong> fatura GM / müdür onayı bekliyor.
-        </span>
-      </div>
-      <div class="table-responsive mt-2">
-        <table class="table table-sm mb-0" style="font-size:13px;">
-          <thead style="background:#fef9c3;">
-            <tr>
-              <th>Tip</th><th>Fatura No</th><th>Tarih</th>
-              <th>Tedarikçi / Müşteri</th>
-              <th class="text-end">Toplam (KDV dahil)</th><th>Durum</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for inv in pending_invoices %}
-            <tr>
-              {% set _tc = {'kesilen':('bg-success','text-success'),'gelen':('bg-danger','text-danger'),'komisyon':('bg-success','text-success'),'iade_kesilen':('bg-info','text-info'),'iade_gelen':('bg-secondary','text-secondary')} %}
-              {% set _c = _tc.get(inv.invoice_type, ('bg-secondary','text-secondary')) %}
-              <td><span class="badge {{ _c[0] }} bg-opacity-10 {{ _c[1] }}" style="font-size:10px;">{{ inv.type_label }}</span></td>
-              <td class="text-muted">{{ inv.invoice_no or '—' }}</td>
-              <td style="white-space:nowrap; color:#64748b;">{{ inv.invoice_date | date_tr if inv.invoice_date else '—' }}</td>
-              <td>{{ inv.vendor_name or '—' }}</td>
-              <td class="text-end fw-semibold">₺{{ '{:,.2f}'.format(inv.total_amount).replace(',', '.') }}</td>
-              <td><span class="badge bg-warning bg-opacity-20 text-warning" style="font-size:10px;">Onay Bekliyor</span></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
     </div>
     {% endif %}
 
