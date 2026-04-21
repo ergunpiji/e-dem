@@ -135,12 +135,6 @@ async def requests_list(
     elif view == "awaiting":
         query = query.filter(ReqModel.status.in_(["offer_sent", "revision", "postponed"]))
         page_title = "Referans Onaylama"
-    elif view == "funded":
-        query = query.filter(
-            ReqModel.is_funded == True,
-            ReqModel.is_fund_pool == False,   # ana havuzları hariç tut
-        )
-        page_title = "Fon Referansları"
     elif view == "fund_pools":
         query = query.filter(ReqModel.is_fund_pool == True)
         page_title = "Fon Havuzları"
@@ -353,6 +347,10 @@ async def fund_pool_export(
     db: Session = Depends(get_db),
 ):
     """Fon havuzunun T cetveli + alt referans özeti — Excel."""
+    # Sadece fon yöneticileri veya hesabı görüntüleyebilen finans rolleri
+    from utils.funds import can_manage_funds
+    if not can_manage_funds(current_user) and current_user.role not in ("muhasebe",):
+        raise HTTPException(403, "Fon raporunu indirme yetkiniz yok.")
     fund = db.query(ReqModel).filter(ReqModel.id == fund_id).first()
     if not fund or not fund.is_fund_pool:
         raise HTTPException(404, "Fon havuzu bulunamadı.")
@@ -478,6 +476,11 @@ async def get_customer_contacts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Sadece talep oluşturabilen / yönetebilen roller müşteri kontaktlarını çekebilir
+    # (e-posta + telefon bilgisi içeriyor → bilgi sızıntısı korunur)
+    if current_user.role not in ("admin", "mudur", "yonetici", "asistan", "e_dem", "muhasebe", "muhasebe_muduru") \
+       and not current_user.is_gm:
+        raise HTTPException(403)
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         return JSONResponse([])
@@ -491,6 +494,9 @@ async def get_customer_fund_pools(
     db: Session = Depends(get_db),
 ):
     """Müşteriye ait aktif fon havuzları (form'daki alt referans dropdown'ı için)."""
+    # Sadece talep oluşturma yetkisi olanlar — fon havuzu seçmek için
+    if current_user.role not in ("admin", "mudur", "yonetici", "asistan") and not current_user.is_gm:
+        raise HTTPException(403)
     from utils.funds import get_customer_fund_pools as _cfp
     pools = _cfp(customer_id, db)
     return JSONResponse([{
@@ -659,7 +665,16 @@ async def requests_detail(
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
 
-    # mudur (Etkinlik Süreç Müdürü) ve GM tüm referansları görebilir — takım engeli yok
+    # Erişim kontrolü — admin/GM/mudur/muhasebe_muduru tümünü görür;
+    # yonetici sadece kendi alt ağacının referanslarını; asistan sadece kendi referansını;
+    # e_dem ve muhasebe ise iş akışı gereği tüm referansları görür.
+    if current_user.role == "yonetici":
+        sub_ids = _get_subtree_ids(current_user.id, db)
+        if req.created_by not in [current_user.id] + sub_ids:
+            raise HTTPException(403, "Bu referansa erişim yetkiniz yok.")
+    elif current_user.role == "asistan":
+        if req.created_by != current_user.id:
+            raise HTTPException(403, "Bu referansa erişim yetkiniz yok.")
 
     # Fon havuzu referansı → özel detay sayfası
     if req.is_fund_pool:

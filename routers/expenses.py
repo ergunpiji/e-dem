@@ -494,15 +494,7 @@ async def undocumented_list(
     if type_filter != "all":
         query = query.filter(UndocumentedEntry.entry_type == type_filter)
 
-    # Birim müdürü: sadece kendi takımının referansları (GM hariç — tüm takımlar)
-    is_birim_mgr = current_user.role == "mudur" and bool(current_user.team_id) and not current_user.is_gm
-    if is_birim_mgr:
-        from models import User as UserModel
-        team_ids = [u.id for u in db.query(UserModel).filter(
-            UserModel.team_id == current_user.team_id, UserModel.active == True).all()]
-        team_req_ids = [r.id for r in db.query(ReqModel).filter(
-            ReqModel.created_by.in_(team_ids)).all()]
-        query = query.filter(UndocumentedEntry.request_id.in_(team_req_ids))
+    # mudur (Etkinlik Süreç Müdürü), GM, admin, muhasebe_muduru: tüm belgesiz kayıtları görür
 
     entries = query.order_by(UndocumentedEntry.entry_date.desc(), UndocumentedEntry.created_at.desc()).all()
 

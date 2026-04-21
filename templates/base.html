@@ -226,6 +226,10 @@
     .badge-status-revision         { background: #fef3c7; color: #92400e; }
     .badge-status-completed        { background: #bbf7d0; color: #14532d; }
     .badge-status-cancelled        { background: #fee2e2; color: #991b1b; }
+    .badge-status-closing          { background: #ede9fe; color: #6d28d9; }
+    .badge-status-closed           { background: #e2e8f0; color: #1e293b; }
+    .badge-status-postponed        { background: #fef3c7; color: #78350f; }
+    .badge-status-fund_pool        { background: #dbeafe; color: #1e3a8a; font-weight:700; }
 
     /* ── Flash messages ── */
     .flash-container { position: fixed; top: 70px; right: 20px; z-index: 9999; min-width: 300px; }
@@ -474,135 +478,6 @@
         </div>
       </div>
       {% endif %}{# /Yönetim+Ayarlar #}
-
-    {# ── MÜDÜR (mudur) ── Tüm referanslar + kapama onayı + tüm PM yetkileri #}
-    {% elif current_user.role == 'mudur' %}
-
-      {# ── DOSYA TAKİP — tek grup ── #}
-      {% set _mud_closure = (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) %}
-      {% set _mud_awaiting_closure = (nc.completed_awaiting_closure or 0) %}
-      <div class="tree-group" id="grp-dosya">
-        <div class="tree-header" onclick="toggleTree('grp-dosya')">
-          <i class="bi bi-folder2-open tree-icon"></i> Dosya Takip
-          {{ tb(_mud_closure + _mud_awaiting_closure) }}
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
-          <a href="/requests/new"
-             class="sidebar-link {% if cp == '/requests/new' %}active{% endif %}">
-            <i class="bi bi-plus-circle nav-icon"></i> Yeni Talep Oluştur
-          </a>
-          <a href="/requests"
-             class="sidebar-link {% if cp == '/requests' and not cq %}active{% endif %}">
-            <i class="bi bi-list-ul nav-icon"></i> Referans Listesi
-          </a>
-          <a href="/requests?view=pending_work"
-             class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
-            <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
-          </a>
-          <a href="/requests?view=awaiting"
-             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
-          </a>
-          <a href="/requests?view=ongoing"
-             class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
-            <i class="bi bi-play-circle nav-icon"></i> Aktif Referanslar
-          </a>
-          <a href="/requests?view=fund_pools"
-             class="sidebar-link {% if 'view=fund_pools' in cq %}active{% endif %}">
-            <i class="bi bi-bank2 nav-icon"></i> Fon Havuzları
-          </a>
-          <a href="/requests?view=awaiting_closure"
-             class="sidebar-link {% if 'view=awaiting_closure' in cq %}active{% endif %}">
-            <i class="bi bi-folder-symlink nav-icon"></i> Referans Kapatma
-            {{ nb(_mud_awaiting_closure) }}
-          </a>
-          <a href="/requests?view=closing"
-             class="sidebar-link {% if 'view=closing' in cq %}active{% endif %}">
-            <i class="bi bi-hourglass-split nav-icon"></i> Kapama Onayında
-            {{ nb(_mud_closure) }}
-          </a>
-          <a href="/requests?view=closed"
-             class="sidebar-link {% if 'view=closed' in cq %}active{% endif %}">
-            <i class="bi bi-lock nav-icon"></i> Kapalı Referanslar
-          </a>
-          <a href="/requests?view=cancelled"
-             class="sidebar-link {% if 'view=cancelled' in cq %}active{% endif %}">
-            <i class="bi bi-x-circle nav-icon"></i> İptal Olan İşler
-          </a>
-        </div>
-      </div>
-
-      {% set _onay_total = (nc.closure_pending_manager or 0) + (nc.closure_pending_gm or 0) %}
-      <div class="tree-group" id="grp-onay">
-        <div class="tree-header" onclick="toggleTree('grp-onay')">
-          <i class="bi bi-check2-square tree-icon"></i> Onaylar
-          {{ tb(_onay_total) }}
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
-          <a href="/closure"
-             class="sidebar-link {% if cp == '/closure' %}active{% endif %}">
-            <i class="bi bi-lock-fill nav-icon"></i> Dosya Kapama
-            {{ nb(_onay_total) }}
-          </a>
-        </div>
-      </div>
-
-      {% set _mudur_fin = (nc.inv_pending_gm or 0) %}
-      <div class="tree-group" id="grp-finans">
-        <div class="tree-header" onclick="toggleTree('grp-finans')">
-          <i class="bi bi-wallet2 tree-icon"></i> Finans
-          {{ tb(_mudur_fin) }}
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
-          <a href="/invoices"
-             class="sidebar-link {% if cp == '/invoices' %}active{% endif %}">
-            <i class="bi bi-receipt nav-icon"></i> Faturalar
-            {{ nb(_mudur_fin) }}
-          </a>
-          <a href="/invoices/unlinked"
-             class="sidebar-link {% if cp == '/invoices/unlinked' %}active{% endif %}">
-            <i class="bi bi-link-45deg nav-icon"></i> Referans Bekleyenler
-            {{ nb(nc.inv_unlinked) }}
-          </a>
-          <a href="/vendors"
-             class="sidebar-link {% if cp.startswith('/vendors') and 'cash-flow' not in cp %}active{% endif %}">
-            <i class="bi bi-building-check nav-icon"></i> Tedarikçiler
-          </a>
-          <a href="/prepayment-requests/new"
-             class="sidebar-link {% if cp == '/prepayment-requests/new' %}active{% endif %}">
-            <i class="bi bi-arrow-up-circle nav-icon"></i> Ön Ödeme Talebi Oluştur
-          </a>
-          <a href="/prepayment-requests"
-             class="sidebar-link {% if '/prepayment-requests' in cp and cp != '/prepayment-requests/new' %}active{% endif %}">
-            <i class="bi bi-list-ul nav-icon"></i> Ön Ödeme Talepleri
-            {{ nb((nc.prepayment_pending_gm or 0) + (nc.prepayment_approved or 0)) }}
-          </a>
-          <a href="/expenses/new"
-             class="sidebar-link {% if cp == '/expenses/new' %}active{% endif %}">
-            <i class="bi bi-plus-circle nav-icon"></i> HBF Oluştur
-          </a>
-          <a href="/expenses"
-             class="sidebar-link {% if cp == '/expenses' %}active{% endif %}">
-            <i class="bi bi-clipboard-check nav-icon"></i> Harcama Formları
-          </a>
-        </div>
-      </div>
-
-      <div class="tree-group" id="grp-bilgi">
-        <div class="tree-header" onclick="toggleTree('grp-bilgi')">
-          <i class="bi bi-building tree-icon"></i> Bilgi
-          <i class="bi bi-chevron-right tree-arrow"></i>
-        </div>
-        <div class="tree-children">
-          <a href="/venues"
-             class="sidebar-link {% if '/venues' in cp %}active{% endif %}">
-            <i class="bi bi-building nav-icon"></i> Tedarikçi Havuzu
-          </a>
-        </div>
-      </div>
 
     {# ── YÖNETİCİ (yonetici) ── Kendi referansları + teklif + bütçe onayı #}
     {% elif current_user.role == 'yonetici' %}
