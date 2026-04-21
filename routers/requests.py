@@ -1780,11 +1780,14 @@ async def requests_export(
 
     entries = []
     for b in budgets:
+        venue_obj = (db.query(Venue).filter(Venue.id == b.venue_id).first()
+                     if b.venue_id else None)
         entries.append({
             "budget":   b,
             "request":  req,
             "customer": customer,
             "creator":  manager_user,
+            "venue":    venue_obj,
         })
 
     # ── Template & cell_map hazırlığı (HTTPException'ları try dışında) ──────────

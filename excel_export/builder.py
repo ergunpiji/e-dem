@@ -650,6 +650,160 @@ def build_standard(
     return output
 
 
+# ── Bütçe toplamlarını Python'da hesapla (özet sayfası için) ─────────────────
+def _calc_totals(budget, vat_mode: str = "exclusive") -> dict:
+    """
+    Bir bütçenin KDV hariç ve dahil toplamlarını Python'da hesaplar.
+    Döner: {"excl": float, "incl": float, "currency": str}
+    """
+    currency = (budget.offer_currency or "TRY").upper()
+    rate     = budget.rate_to_try(currency) or 1.0
+    is_mixed = vat_mode == "mixed" and currency != "TRY"
+
+    excl_total = 0.0
+    vat_total  = 0.0
+    sf_pct     = float(getattr(budget, "service_fee_pct", 0) or 0)
+    sf_row     = None
+
+    for r in budget.rows:
+        if r.get("is_service_fee"):
+            sf_row = r
+            continue
+        if r.get("is_accommodation_tax"):
+            continue
+
+        sale  = float(r.get("sale_price", 0) or 0)
+        qty   = float(r.get("qty", 1) or 1)
+        night = float(r.get("nights", 1) or 1) or 1.0
+        vat   = float(r.get("vat_rate", 20) or 20)
+        line  = sale * qty * night
+        if is_mixed:
+            line = line * rate
+        excl_total += line
+        vat_total  += line * vat / 100
+
+    # Hizmet bedeli
+    if sf_pct:
+        sf_val = excl_total * sf_pct / 100
+    elif sf_row:
+        sf_val = float(sf_row.get("sale_price", 0) or 0)
+        if is_mixed:
+            sf_val *= rate
+    else:
+        sf_val = 0.0
+
+    sf_vat = float((sf_row or {}).get("vat_rate", 20) or 20) if sf_row else 20.0
+    vat_total += sf_val * sf_vat / 100
+    excl_total += sf_val
+
+    incl_total = excl_total + vat_total
+    return {"excl": round(excl_total, 2), "incl": round(incl_total, 2), "currency": currency}
+
+
+def _write_summary_sheet(wb, entries: list, vat_mode: str, sheet_titles: list[str]) -> None:
+    """
+    wb'ye 'Özet' sheet'i ekler (ilk konuma).
+    entries: [{"budget": ..., "request": ..., "venue": ..., "sheet_title": str}, ...]
+    """
+    ws = wb.create_sheet(title="Özet", index=0)
+
+    # Sütun genişlikleri
+    ws.column_dimensions["A"].width = 30   # Otel Adı
+    ws.column_dimensions["B"].width = 18   # KDV Hariç
+    ws.column_dimensions["C"].width = 18   # KDV Dahil
+    ws.column_dimensions["D"].width = 28   # Web Sitesi
+    ws.column_dimensions["E"].width = 40   # Notlar
+
+    # ── Başlık satırı ──────────────────────────────────────────────────────────
+    ws.merge_cells("A1:E1")
+    c = ws.cell(row=1, column=1, value="OTEL / MEKAN KARŞILAŞTIRMA ÖZETİ")
+    c.font      = _font(bold=True, size=13, white=True)
+    c.fill      = _fill(C_HEADER_DARK)
+    c.alignment = _align(h="center")
+    c.border    = _border()
+    ws.row_dimensions[1].height = 30
+
+    # ── Sütun başlıkları ───────────────────────────────────────────────────────
+    headers = ["Otel / Mekan Adı", "KDV Hariç Teklif", "KDV Dahil Teklif", "Web Sitesi", "Notlar"]
+    for ci, hdr in enumerate(headers, 1):
+        c = ws.cell(row=2, column=ci, value=hdr)
+        c.font      = _font(bold=True, size=9, white=True)
+        c.fill      = _fill(C_HEADER_MED)
+        c.alignment = _align(h="center")
+        c.border    = _border()
+    ws.row_dimensions[2].height = 20
+
+    # ── Veri satırları ─────────────────────────────────────────────────────────
+    for row_i, entry in enumerate(entries, 3):
+        b        = entry["budget"]
+        venue    = entry.get("venue")
+        stitle   = entry.get("sheet_title", b.venue_name or "")
+        totals   = _calc_totals(b, vat_mode)
+        currency = totals["currency"]
+        ci_info  = CURRENCY_INFO.get(currency, CURRENCY_INFO["TRY"])
+        sym      = ci_info["symbol"]
+        num_fmt  = ci_info["fmt"]
+
+        website  = (getattr(venue, "website", None) or "").strip()
+        notes    = (b.manager_notes or "").strip()
+
+        fill_bg  = C_WHITE if row_i % 2 == 1 else C_ROW_ALT
+
+        # A: Otel adı — tıklanabilir (sheet'e hyperlink)
+        name_cell = ws.cell(row=row_i, column=1, value=b.venue_name or "—")
+        name_cell.font      = _font(bold=True, size=9, color=C_HEADER_DARK)
+        name_cell.fill      = _fill(fill_bg)
+        name_cell.border    = _border()
+        name_cell.alignment = _align(h="left", indent=1)
+        if stitle:
+            try:
+                name_cell.hyperlink = f"#{stitle}!A1"
+                name_cell.style = "Hyperlink"
+                name_cell.font = _font(bold=True, size=9, color="1D4ED8")
+            except Exception:
+                pass
+
+        # B: KDV Hariç
+        ec = ws.cell(row=row_i, column=2, value=totals["excl"])
+        ec.font          = _font(size=9)
+        ec.fill          = _fill(fill_bg)
+        ec.border        = _border()
+        ec.number_format = num_fmt
+        ec.alignment     = _align(h="right")
+
+        # C: KDV Dahil
+        ic = ws.cell(row=row_i, column=3, value=totals["incl"])
+        ic.font          = _font(bold=True, size=9)
+        ic.fill          = _fill(fill_bg)
+        ic.border        = _border()
+        ic.number_format = num_fmt
+        ic.alignment     = _align(h="right")
+
+        # D: Web Sitesi
+        wc = ws.cell(row=row_i, column=4, value=website or "—")
+        wc.font      = _font(size=9, color="1D4ED8" if website else C_TEXT)
+        wc.fill      = _fill(fill_bg)
+        wc.border    = _border()
+        wc.alignment = _align(h="left", indent=1)
+        if website:
+            try:
+                wc.hyperlink  = website if website.startswith("http") else f"https://{website}"
+                wc.style = "Hyperlink"
+            except Exception:
+                pass
+
+        # E: Notlar
+        nc = ws.cell(row=row_i, column=5, value=notes or "—")
+        nc.font      = _font(size=9)
+        nc.fill      = _fill(fill_bg)
+        nc.border    = _border()
+        nc.alignment = _align(h="left", indent=1, wrap=True)
+
+        ws.row_dimensions[row_i].height = 18
+
+    ws.freeze_panes = "A3"
+
+
 # ── Çoklu bütçe → tek Excel, her bütçe ayrı sheet ────────────────────────────
 def build_multi_sheet(
     budgets: list,
@@ -658,11 +812,12 @@ def build_multi_sheet(
 ) -> io.BytesIO:
     """
     Birden fazla bütçeyi tek Excel dosyasında birleştirir.
-    Her bütçe ayrı bir sheet olur, sheet adı venue_name'den gelir.
+    - 2+ bütçe varsa ilk sheet 'Özet' olur (otel adı, KDV hariç/dahil, web, notlar)
+    - Her bütçe ayrı bir sheet olur, sheet adı venue_name'den gelir.
 
     Args:
         budgets: list of dicts:
-            [{"budget": ..., "request": ..., "customer": ..., "creator": ...}, ...]
+            [{"budget": ..., "request": ..., "customer": ..., "creator": ..., "venue": ...}, ...]
         vat_mode: 'exclusive' | 'inclusive'
         custom_sections: Admin özel kategorileri
 
@@ -676,6 +831,7 @@ def build_multi_sheet(
     wb.remove(wb.active)   # boş default sheet'i kaldır
 
     used_titles: list[str] = []
+    summary_entries: list[dict] = []
 
     for i, entry in enumerate(budgets, 1):
         b   = entry["budget"]
@@ -694,6 +850,17 @@ def build_multi_sheet(
 
         ws = wb.create_sheet(title=title)
         _write_sheet(ws, b, req, cus, cre, vat_mode, custom_sections)
+
+        summary_entries.append({
+            "budget":      b,
+            "request":     req,
+            "venue":       entry.get("venue"),
+            "sheet_title": title,
+        })
+
+    # Özet sayfası: sadece 2+ bütçe varsa ekle
+    if len(summary_entries) >= 2:
+        _write_summary_sheet(wb, summary_entries, vat_mode, used_titles)
 
     output = io.BytesIO()
     wb.save(output)

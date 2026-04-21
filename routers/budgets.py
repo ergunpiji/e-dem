@@ -638,7 +638,7 @@ async def budgets_price(
         "statement_mode":      False,
         "statement_status":    None,
         "statement_sent_label": None,
-        "customer_email":      customer.email if customer else "",
+        "customer_email":      (next((c.get("email","") for c in (customer.contacts or []) if c.get("email")), "") or customer.email) if customer else "",
     })
 
 
@@ -1193,9 +1193,10 @@ async def budgets_statement_editor(
 
     customer_email = ""
     if customer:
-        customer_email = customer.email or ""
-    elif req:
-        customer_email = ""  # fallback: client_name only, no email
+        # Önce ilk kişisel kontağın emailini kullan, yoksa firma emaili
+        contacts = customer.contacts or []
+        contact_email = next((c.get("email", "") for c in contacts if c.get("email")), "")
+        customer_email = contact_email or customer.email or ""
 
     return templates.TemplateResponse("budgets/manager_editor.html", {
         "request":             request,
