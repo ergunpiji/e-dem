@@ -703,53 +703,145 @@ def _calc_totals(budget, vat_mode: str = "exclusive") -> dict:
 def _write_summary_sheet(wb, entries: list, vat_mode: str, sheet_titles: list[str]) -> None:
     """
     wb'ye 'Özet' sheet'i ekler (ilk konuma).
-    entries: [{"budget": ..., "request": ..., "venue": ..., "sheet_title": str}, ...]
+    entries: [{"budget":…, "request":…, "customer":…, "creator":…, "venue":…, "sheet_title":…}, …]
+    İlk 5 satır diğer sheet'lerle aynı (ETKİNLİK TEKLİFİ başlığı + meta), ardından karşılaştırma tablosu.
     """
+    import datetime as _dt
+
     ws = wb.create_sheet(title="Özet", index=0)
 
-    # Sütun genişlikleri
+    LAST_COL = "E"
     ws.column_dimensions["A"].width = 30   # Otel Adı
     ws.column_dimensions["B"].width = 18   # KDV Hariç
     ws.column_dimensions["C"].width = 18   # KDV Dahil
     ws.column_dimensions["D"].width = 28   # Web Sitesi
     ws.column_dimensions["E"].width = 40   # Notlar
 
-    # ── Başlık satırı ──────────────────────────────────────────────────────────
-    ws.merge_cells("A1:E1")
-    c = ws.cell(row=1, column=1, value="OTEL / MEKAN KARŞILAŞTIRMA ÖZETİ")
-    c.font      = _font(bold=True, size=13, white=True)
-    c.fill      = _fill(C_HEADER_DARK)
-    c.alignment = _align(h="center")
-    c.border    = _border()
-    ws.row_dimensions[1].height = 30
+    # İlk entry'den etkinlik bilgilerini al (tüm entry'ler aynı referansa ait)
+    first   = entries[0]
+    req     = first.get("request")
+    cus     = first.get("customer")
+    creator = first.get("creator")
 
-    # ── Sütun başlıkları ───────────────────────────────────────────────────────
-    headers = ["Otel / Mekan Adı", "KDV Hariç Teklif", "KDV Dahil Teklif", "Web Sitesi", "Notlar"]
-    for ci, hdr in enumerate(headers, 1):
-        c = ws.cell(row=2, column=ci, value=hdr)
+    ref_no     = getattr(req, "request_no", "") or ""
+    ev_name    = getattr(req, "event_name",  "") or ""
+    cust_nm    = (getattr(cus, "name", None) or getattr(req, "client_name", None) or "") if (cus or req) else ""
+    creator_nm = ""
+    if creator:
+        creator_nm = f"{getattr(creator, 'name', '')} {getattr(creator, 'surname', '')}".strip()
+
+    contact_nm = ""
+    if cus:
+        contacts = getattr(cus, "contacts", None)
+        if callable(contacts):
+            contacts = contacts()
+        if contacts and isinstance(contacts, list) and contacts:
+            c0 = contacts[0]
+            parts = [c0.get("name", ""), c0.get("title", ""), c0.get("phone", "")]
+            contact_nm = "  |  ".join(p for p in parts if p)
+
+    def _fmt_date(d) -> str:
+        if not d:
+            return ""
+        if isinstance(d, str):
+            try:
+                from datetime import date as _date
+                return _date.fromisoformat(d[:10]).strftime("%d.%m.%Y")
+            except Exception:
+                return d
+        try:
+            return d.strftime("%d.%m.%Y")
+        except Exception:
+            return str(d)
+
+    date_str = ""
+    if req:
+        ci_d = getattr(req, "check_in",  None)
+        co_d = getattr(req, "check_out", None)
+        if ci_d:
+            date_str = _fmt_date(ci_d)
+            if co_d and co_d != ci_d:
+                date_str += f" – {_fmt_date(co_d)}"
+
+    # ── Satır 1: ETKİNLİK TEKLİFİ başlığı ────────────────────────────────────
+    ws.merge_cells(f"A1:{LAST_COL}1")
+    h = ws.cell(row=1, column=1, value="ETKİNLİK TEKLİFİ")
+    h.font      = _font(bold=True, size=14, white=True)
+    h.fill      = _fill(C_HEADER_DARK)
+    h.alignment = _align(h="center")
+    h.border    = _border()
+    ws.row_dimensions[1].height = 32
+
+    # ── Satırlar 2–5: Meta bilgiler (diğer sheetlerle aynı yapı, 5 sütuna uyarlandı) ─
+    # A: etiket sol | B-C: değer sol | D: etiket sağ | E: değer sağ
+    meta = [
+        ("Referans No :", ref_no,    "Müşteri :",     cust_nm),
+        ("Etkinlik :",   ev_name,    "Kontak Kişi :", contact_nm),
+        ("Tarih :",      date_str,   "Hazırlayan :",  creator_nm),
+        ("",             "",         "",               ""),          # boş satır (5. sıra)
+    ]
+    for offset, (lbl_l, val_l, lbl_r, val_r) in enumerate(meta, start=2):
+        r = offset
+        # Sol: A etiket, B-C değer
+        cl = ws.cell(row=r, column=1, value=lbl_l)
+        cl.font = _font(bold=True, size=9); cl.fill = _fill(C_LABEL_BG)
+        cl.border = _border(); cl.alignment = _align(indent=1)
+
+        ws.merge_cells(f"B{r}:C{r}")
+        cv = ws.cell(row=r, column=2, value=val_l)
+        cv.font = _font(size=9); cv.fill = _fill(C_WHITE)
+        cv.border = _border(); cv.alignment = _align(indent=1)
+
+        # Sağ: D etiket, E değer
+        cr2 = ws.cell(row=r, column=4, value=lbl_r)
+        cr2.font = _font(bold=True, size=9); cr2.fill = _fill(C_LABEL_BG)
+        cr2.border = _border(); cr2.alignment = _align(indent=1)
+
+        vr2 = ws.cell(row=r, column=5, value=val_r)
+        vr2.font = _font(size=9); vr2.fill = _fill(C_WHITE)
+        vr2.border = _border(); vr2.alignment = _align(indent=1)
+
+        ws.row_dimensions[r].height = 16
+
+    # ── Satır 6: ince ayraç ───────────────────────────────────────────────────
+    ws.row_dimensions[6].height = 6
+
+    # ── Satır 7: "OTEL / MEKAN KARŞILAŞTIRMA ÖZETİ" alt başlık ───────────────
+    ws.merge_cells(f"A7:{LAST_COL}7")
+    sh = ws.cell(row=7, column=1, value="OTEL / MEKAN KARŞILAŞTIRMA ÖZETİ")
+    sh.font      = _font(bold=True, size=11, white=True)
+    sh.fill      = _fill(C_HEADER_MED)
+    sh.alignment = _align(h="center")
+    sh.border    = _border()
+    ws.row_dimensions[7].height = 22
+
+    # ── Satır 8: Sütun başlıkları ──────────────────────────────────────────────
+    col_headers = ["Otel / Mekan Adı", "KDV Hariç Teklif", "KDV Dahil Teklif", "Web Sitesi", "Notlar"]
+    for ci_i, hdr in enumerate(col_headers, 1):
+        c = ws.cell(row=8, column=ci_i, value=hdr)
         c.font      = _font(bold=True, size=9, white=True)
-        c.fill      = _fill(C_HEADER_MED)
+        c.fill      = _fill(C_HEADER_DARK)
         c.alignment = _align(h="center")
         c.border    = _border()
-    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[8].height = 20
 
-    # ── Veri satırları ─────────────────────────────────────────────────────────
-    for row_i, entry in enumerate(entries, 3):
+    # ── Satır 9+: Veri satırları ───────────────────────────────────────────────
+    for row_i, entry in enumerate(entries, 9):
         b        = entry["budget"]
         venue    = entry.get("venue")
         stitle   = entry.get("sheet_title", b.venue_name or "")
         totals   = _calc_totals(b, vat_mode)
         currency = totals["currency"]
         ci_info  = CURRENCY_INFO.get(currency, CURRENCY_INFO["TRY"])
-        sym      = ci_info["symbol"]
         num_fmt  = ci_info["fmt"]
 
-        website  = (getattr(venue, "website", None) or "").strip()
-        notes    = (b.manager_notes or "").strip()
+        # Web sitesi: Venue modelinden (tedarikçi listesi), yoksa boş
+        website = (getattr(venue, "website", None) or "").strip()
+        notes   = (getattr(b, "manager_notes", None) or "").strip()
 
-        fill_bg  = C_WHITE if row_i % 2 == 1 else C_ROW_ALT
+        fill_bg = C_WHITE if row_i % 2 == 1 else C_ROW_ALT
 
-        # A: Otel adı — tıklanabilir (sheet'e hyperlink)
+        # A: Otel adı — ilgili sheet'e hyperlink
         name_cell = ws.cell(row=row_i, column=1, value=b.venue_name or "—")
         name_cell.font      = _font(bold=True, size=9, color=C_HEADER_DARK)
         name_cell.fill      = _fill(fill_bg)
@@ -759,49 +851,43 @@ def _write_summary_sheet(wb, entries: list, vat_mode: str, sheet_titles: list[st
             try:
                 name_cell.hyperlink = f"#{stitle}!A1"
                 name_cell.style = "Hyperlink"
-                name_cell.font = _font(bold=True, size=9, color="1D4ED8")
+                name_cell.font  = _font(bold=True, size=9, color="1D4ED8")
             except Exception:
                 pass
 
         # B: KDV Hariç
         ec = ws.cell(row=row_i, column=2, value=totals["excl"])
-        ec.font          = _font(size=9)
-        ec.fill          = _fill(fill_bg)
-        ec.border        = _border()
-        ec.number_format = num_fmt
-        ec.alignment     = _align(h="right")
+        ec.font = _font(size=9); ec.fill = _fill(fill_bg)
+        ec.border = _border(); ec.number_format = num_fmt
+        ec.alignment = _align(h="right")
 
         # C: KDV Dahil
         ic = ws.cell(row=row_i, column=3, value=totals["incl"])
-        ic.font          = _font(bold=True, size=9)
-        ic.fill          = _fill(fill_bg)
-        ic.border        = _border()
-        ic.number_format = num_fmt
-        ic.alignment     = _align(h="right")
+        ic.font = _font(bold=True, size=9); ic.fill = _fill(fill_bg)
+        ic.border = _border(); ic.number_format = num_fmt
+        ic.alignment = _align(h="right")
 
-        # D: Web Sitesi
+        # D: Web Sitesi (Venue modelinden)
         wc = ws.cell(row=row_i, column=4, value=website or "—")
         wc.font      = _font(size=9, color="1D4ED8" if website else C_TEXT)
-        wc.fill      = _fill(fill_bg)
-        wc.border    = _border()
+        wc.fill      = _fill(fill_bg); wc.border = _border()
         wc.alignment = _align(h="left", indent=1)
         if website:
             try:
-                wc.hyperlink  = website if website.startswith("http") else f"https://{website}"
+                wc.hyperlink = website if website.startswith("http") else f"https://{website}"
                 wc.style = "Hyperlink"
             except Exception:
                 pass
 
         # E: Notlar
         nc = ws.cell(row=row_i, column=5, value=notes or "—")
-        nc.font      = _font(size=9)
-        nc.fill      = _fill(fill_bg)
-        nc.border    = _border()
+        nc.font = _font(size=9); nc.fill = _fill(fill_bg)
+        nc.border = _border()
         nc.alignment = _align(h="left", indent=1, wrap=True)
 
         ws.row_dimensions[row_i].height = 18
 
-    ws.freeze_panes = "A3"
+    ws.freeze_panes = "A9"
 
 
 # ── Çoklu bütçe → tek Excel, her bütçe ayrı sheet ────────────────────────────
@@ -854,6 +940,8 @@ def build_multi_sheet(
         summary_entries.append({
             "budget":      b,
             "request":     req,
+            "customer":    cus,
+            "creator":     cre,
             "venue":       entry.get("venue"),
             "sheet_title": title,
         })
