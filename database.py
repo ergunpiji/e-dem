@@ -1029,7 +1029,12 @@ def migrate_db():
         _safe_add_column(conn, "teams", "code", "TEXT", "''")
         _safe_add_column(conn, "users", "team_id",    "TEXT")
         _safe_add_column(conn, "users", "manager_id", "TEXT")
-        _safe_add_column(conn, "settings", "invoice_mudur_limit", "REAL")
+        _safe_add_column(conn, "settings", "invoice_mudur_limit",  "REAL")
+        _safe_add_column(conn, "settings", "company_trade_name",  "TEXT", "''")
+        _safe_add_column(conn, "settings", "tax_number",          "VARCHAR(30)", "''")
+        _safe_add_column(conn, "settings", "tax_office",          "VARCHAR(100)", "''")
+        _safe_add_column(conn, "settings", "logo_path",           "VARCHAR(500)", "''")
+        _safe_add_column(conn, "settings", "logo_b64",            "TEXT", "''")
 
         # Takım tabanlı erişim: customers ve requests tablolarına team_id ekle
         _safe_add_column(conn, "customers", "team_id", "TEXT")

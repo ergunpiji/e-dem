@@ -1534,18 +1534,23 @@ class Settings(Base):
     """Sistem ayarları — tek satır (id=1)"""
     __tablename__ = "settings"
 
-    id              = Column(Integer, primary_key=True, default=1)
-    company_name    = Column(String(200), default="E-dem Etkinlik Yönetimi")
-    company_address = Column(Text, default="")
-    company_phone   = Column(String(50), default="")
-    company_email   = Column(String(200), default="")
-    logo_url        = Column(String(500), default="")
-    email_signature = Column(Text, default="")
-    rfq_subject_tpl = Column(String(300),
-                             default="{event_name} Fiyat Teklifi - {request_no}")
-    currency        = Column(String(10), default="₺")
-    invoice_mudur_limit = Column(Float, nullable=True)   # None = her zaman GM onayı gerekli
-    updated_at      = Column(DateTime, default=_now, onupdate=_now)
+    id                  = Column(Integer, primary_key=True, default=1)
+    company_name        = Column(String(200), default="E-dem Etkinlik Yönetimi")
+    company_trade_name  = Column(String(500), default="")   # tam ticari unvan
+    tax_number          = Column(String(30),  default="")   # VKN
+    tax_office          = Column(String(100), default="")   # vergi dairesi
+    company_address     = Column(Text, default="")
+    company_phone       = Column(String(50), default="")
+    company_email       = Column(String(200), default="")
+    logo_url            = Column(String(500), default="")   # URL (eski alan, geriye uyum)
+    logo_path           = Column(String(500), default="")   # yüklenen dosya yolu
+    logo_b64            = Column(Text,        default="")   # base64 (Railway kalıcılığı)
+    email_signature     = Column(Text, default="")
+    rfq_subject_tpl     = Column(String(300),
+                                 default="{event_name} Fiyat Teklifi - {request_no}")
+    currency            = Column(String(10), default="₺")
+    invoice_mudur_limit = Column(Float, nullable=True)
+    updated_at          = Column(DateTime, default=_now, onupdate=_now)
 
     def to_dict(self) -> dict:
         return {
