@@ -517,11 +517,7 @@
       <i class="bi bi-eye me-1"></i> Önizle
     </button>
     <button type="submit" name="action" value="send" class="btn btn-primary">
-      <i class="bi bi-send me-1"></i> E-dem'e Gönder
-    </button>
-    <button type="submit" name="action" value="direct" class="btn btn-success"
-            title="E-dem'e göndermeden siz doğrudan tedarikçileri kontrol edip bütçe oluşturabilirsiniz">
-      <i class="bi bi-lightning-charge me-1"></i> Direkt Yönet
+      <i class="bi bi-check-circle me-1"></i> Aktifleştir & Kaydet
     </button>
     <a href="{{ '/requests/' + req.id if req else '/requests' }}" class="btn btn-outline-secondary">İptal</a>
   </div>
@@ -567,7 +563,7 @@
             <i class="bi bi-printer me-1"></i>Yazdır
           </button>
           <button type="button" class="btn btn-sm btn-success" onclick="sendFromPreview()">
-            <i class="bi bi-send me-1"></i>E-dem'e Gönder
+            <i class="bi bi-check-circle me-1"></i>Aktifleştir & Kaydet
           </button>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>

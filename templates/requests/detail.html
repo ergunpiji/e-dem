@@ -152,14 +152,6 @@
       <div class="d-flex flex-column gap-2 align-items-end">
         {# E-dem işlemleri #}
         {% if can_edit_status %}
-          {% if req.status == 'pending' %}
-          <form method="post" action="/requests/{{ req.id }}/status">
-            <input type="hidden" name="new_status" value="in_progress">
-            <button type="submit" class="btn btn-primary btn-sm">
-              <i class="bi bi-play-circle me-1"></i> İşleme Al
-            </button>
-          </form>
-          {% endif %}
           {# E-dem/Admin bütçe oluşturabilir #}
           {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready', 'revision') %}
           <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">

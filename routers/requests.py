@@ -591,9 +591,7 @@ async def requests_create(
     # Resolve event_type_code
     event_type_code = event_type  # already a code like 'yi'
 
-    if action == "send":
-        ref_status = "pending"
-    elif action == "direct":
+    if action in ("send", "direct"):
         ref_status = "in_progress"
     else:
         ref_status = "draft"
@@ -1304,17 +1302,15 @@ async def requests_update(
     req.parent_fund_request_id = parent_fund_request_id or None
     req.updated_at            = _now()
 
-    went_pending = False
-    if action == "send" and req.status == "draft":
-        req.status   = "pending"
-        went_pending = True
-    elif action == "direct" and req.status == "draft":
-        req.status = "in_progress"
+    went_active = False
+    if action in ("send", "direct") and req.status == "draft":
+        req.status  = "in_progress"
+        went_active = True
 
     db.commit()
 
-    # Bildirim: tüm e_dem kullanıcılarına yeni referans
-    if went_pending:
+    # Bildirim: tüm e_dem kullanıcılarına yeni aktif referans
+    if went_active:
         from utils.notifications import create_notification
         edem_users = db.query(User).filter(
             User.role == "e_dem", User.active == True  # noqa: E712

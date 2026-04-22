@@ -305,11 +305,6 @@
              class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
           </a>
-          <a href="/requests?view=awaiting"
-             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
-            {{ nb(_adm_talepler) }}
-          </a>
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
             <i class="bi bi-play-circle nav-icon"></i> Aktif Referanslar
@@ -504,11 +499,6 @@
              class="sidebar-link {% if 'view=pending_work' in cq %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
           </a>
-          <a href="/requests?view=awaiting"
-             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
-            {{ nb(_pm_talepler) }}
-          </a>
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
             <i class="bi bi-play-circle nav-icon"></i> Aktif Referanslar
@@ -664,10 +654,6 @@
              class="sidebar-link {% if 'view=pending_work' in cq or (cp == '/requests' and 'view=' not in cq) %}active{% endif %}">
             <i class="bi bi-hourglass-split nav-icon"></i> Yeni & İşlemdekiler
             {{ nb(_edem_pending) }}
-          </a>
-          <a href="/requests?view=awaiting"
-             class="sidebar-link {% if 'view=awaiting' in cq %}active{% endif %}">
-            <i class="bi bi-clock-history nav-icon"></i> Referans Onaylama
           </a>
           <a href="/requests?view=ongoing"
              class="sidebar-link {% if 'view=ongoing' in cq %}active{% endif %}">
