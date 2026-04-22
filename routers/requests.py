@@ -747,25 +747,6 @@ async def requests_detail(
          (req.created_by == current_user.id or current_user.role == "mudur")) or
         (current_user.role == "asistan" and req.created_by == current_user.id)
     )
-    # Teklif gönderme ve bütçe onayı: admin, mudur, yonetici (asistan yapamaz)
-    can_send_offer    = current_user.role in ("admin", "mudur", "yonetici")
-    can_approve_budget = current_user.role in ("admin", "mudur", "yonetici")
-    # Bütçeye fiyat girme: asistan dahil tüm PM tarafı
-    can_price_budget  = current_user.role in ("admin", "mudur", "yonetici", "asistan")
-    # PM kendi talebini direkt yönetiyorsa (in_progress) RFQ ve bütçe oluşturabilir
-    can_direct_manage = (
-        current_user.role in ("admin", "mudur", "yonetici") and
-        req.status in ("in_progress", "venues_contacted", "budget_ready") and
-        (req.created_by == current_user.id or current_user.role in ("admin", "mudur"))
-    )
-    # Bütçe oluşturma/düzenleme: asistan da yapabilir (durum güncelleme/RFQ hariç)
-    can_budget_ops = (
-        can_direct_manage or (
-            current_user.role == "asistan" and
-            req.status in ("in_progress", "venues_contacted", "budget_ready")
-        )
-    )
-
     # Onay bekleyen kişi bilgisi
     def _find_next_approver(user_id: str | None) -> User | None:
         """Bir kullanıcının zincirindeki ilk mudur'u bul."""
@@ -804,95 +785,10 @@ async def requests_detail(
     elif req.closure_request and req.closure_request.status == "pending_finance":
         closure_pending_approver = _find_muhasebe_muduru()
 
-    # Bütçeler için beklenen onaylayıcı (pending_manager)
-    budget_pending_approvers: dict = {}  # budget_id → User
-    for b in req.budgets:
-        if b.budget_status == "pending_manager":
-            budget_pending_approvers[b.id] = _find_next_approver(req.created_by)
-
-    # venue id → supplier_type map (RFQ filtrelemesi için)
+    # venue id → supplier_type map
     venues_map = {v.id: {"name": v.name, "city": v.city,
                           "supplier_type": v.supplier_type,
                           "contacts": v.contacts} for v in venues}
-
-    # Her bütçe için rows_by_section + totals hesapla
-    _CURR_SYMS = {"TRY": "₺", "EUR": "€", "USD": "$"}
-
-    def _budget_totals(b):
-        SECTION_ORDER = ["accommodation", "meeting", "fb", "teknik", "dekor", "transfer", "tasarim", "other"]
-        offer_curr  = b.offer_currency or "TRY"
-        ex_rates    = b.exchange_rates  # {'EUR': 38.5, 'USD': 32.1}
-        offer_rate  = float(ex_rates.get(offer_curr, 1.0) or 1.0) if offer_curr != "TRY" else 1.0
-        offer_sym   = _CURR_SYMS.get(offer_curr, offer_curr)
-
-        sec_totals = {}
-        cost_ex = sale_ex = vat_total = 0.0
-        for row in b.rows:
-            if row.get("is_service_fee") or row.get("is_accommodation_tax"):
-                continue
-            sec      = row.get("section", "other")
-            qty      = float(row.get("qty", 1)  or 1)
-            nts      = float(row.get("nights", 1) or 1)
-            cost     = float(row.get("cost_price", 0) or 0)
-            sale     = float(row.get("sale_price", 0) or 0)
-            vat      = float(row.get("vat_rate", 0) or 0)
-            row_curr = row.get("currency", "TRY") or "TRY"
-            row_rate = float(ex_rates.get(row_curr, 1.0) or 1.0) if row_curr != "TRY" else 1.0
-            # Her satırı offer_currency'ye çevir: TRY'ye çevir, sonra offer_currency'ye
-            # row_curr → TRY: × row_rate; TRY → offer_curr: ÷ offer_rate
-            conv = (row_rate / offer_rate) if offer_rate else 1.0
-            cost_sub = cost * qty * nts * conv
-            sale_sub = sale * qty * nts * conv
-            cost_ex  += cost_sub
-            sale_ex  += sale_sub
-            vat_total += sale_sub * (vat / 100)
-            if sec not in sec_totals:
-                sec_totals[sec] = {"cost": 0.0, "sale": 0.0}
-            sec_totals[sec]["cost"] += cost_sub
-            sec_totals[sec]["sale"] += sale_sub
-        sf_pct    = float(b.service_fee_pct or 0)
-        sf_amount = round(sale_ex * sf_pct / 100, 2)
-        sf_vat    = round(sf_amount * 0.20, 2)
-        grand     = round(sale_ex + vat_total + sf_amount + sf_vat, 2)  # offer_currency cinsinden
-        grand_try = round(grand * offer_rate, 2)                         # TRY cinsinden
-        base      = sale_ex + sf_amount
-        margin    = round((sale_ex - cost_ex + sf_amount) / base * 100, 1) if base > 0 else 0.0
-        # sections listesi: SECTION_ORDER sırasına göre sadece veri olanlar
-        ordered_secs = [(s, sec_totals[s]) for s in SECTION_ORDER if s in sec_totals]
-        return {
-            "cost_ex":        cost_ex,
-            "sale_ex":        sale_ex,
-            "vat":            vat_total,
-            "sf_pct":         sf_pct,
-            "sf_amount":      sf_amount,
-            "sf_vat":         sf_vat,
-            "grand":          grand,       # offer_currency cinsinden
-            "grand_try":      grand_try,   # TRY cinsinden (karşılaştırma + alt satır için)
-            "margin":         margin,
-            "sections":       ordered_secs,
-            "offer_currency": offer_curr,
-            "offer_sym":      offer_sym,
-            "offer_rate":     offer_rate,
-        }
-
-    budgets_data = []
-    for b in req.budgets:
-        rbs = {}
-        for row in b.rows:
-            if row.get("is_service_fee") or row.get("is_accommodation_tax"):
-                continue
-            sec = row.get("section", "other")
-            rbs.setdefault(sec, []).append(row)
-        budgets_data.append({"budget": b, "rows_by_section": rbs, "totals": _budget_totals(b)})
-
-    # Özet sekmesi için tüm benzersiz sectionlar (en az bir bütçede var olanlar)
-    all_sections_set = []
-    seen = set()
-    for bd in budgets_data:
-        for sec, _ in bd["totals"]["sections"]:
-            if sec not in seen:
-                seen.add(sec)
-                all_sections_set.append(sec)
 
     customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
                 if req.customer_id else None)
@@ -912,29 +808,6 @@ async def requests_detail(
         "company_phone":   settings.company_phone   if settings else "",
         "email_signature": settings.email_signature if settings else "",
     }
-
-    # Email taslakları için bütçe + venue kontakt bilgileri
-    # İsim bazlı fallback lookup için: {normalize(name): contacts}
-    _venues_by_name = {
-        v["name"].strip().lower(): v.get("contacts", []) or []
-        for v in venues_map.values()
-    }
-
-    budgets_json = []
-    for b in req.budgets:
-        contacts = []
-        if b.venue_id and b.venue_id in venues_map:
-            contacts = venues_map[b.venue_id].get("contacts", []) or []
-        elif b.venue_name:
-            # venue_id bağlantısı yoksa isme göre eşleştir
-            contacts = _venues_by_name.get(b.venue_name.strip().lower(), [])
-        budgets_json.append({
-            "id":         b.id,
-            "venue_name": b.venue_name or "",
-            "venue_id":   b.venue_id or "",
-            "contacts":   contacts,
-            "status":     b.budget_status,
-        })
 
     # ── Finansal veriler ──
     approved_invoices    = [inv for inv in (req.invoices or []) if inv.status == "approved"]
@@ -991,14 +864,6 @@ async def requests_detail(
     if req.parent_fund_request_id:
         parent_fund = db.query(ReqModel).filter(ReqModel.id == req.parent_fund_request_id).first()
 
-    confirmed_budget = None
-    for b in req.budgets:
-        if b.id == req.confirmed_budget_id:
-            confirmed_budget = b
-            break
-    budget_sale_excl = confirmed_budget.grand_sale_excl_vat if confirmed_budget else 0.0
-    budget_cost_excl = confirmed_budget.grand_cost_excl_vat if confirmed_budget else 0.0
-
     can_manage_invoices  = current_user.role in ("admin", "muhasebe_muduru", "muhasebe") or current_user.is_gm
     can_manage_undoc     = current_user.role in ("admin", "muhasebe_muduru", "muhasebe") or current_user.is_gm
     # Limit tabanlı zincirleme onay: approver veya hiyerarşik üstü onaylayabilir
@@ -1044,8 +909,6 @@ async def requests_detail(
     if req.status == "closed":
         can_edit_req        = False
         can_edit_status     = False
-        can_direct_manage   = False
-        can_budget_ops      = False
         can_manage_invoices = False
         can_approve_invoices = False
         can_cut_invoices    = False
@@ -1127,18 +990,9 @@ async def requests_detail(
             "et_map":           et_map,
             "can_edit_status":   can_edit_status,
             "can_edit_req":      can_edit_req,
-            "can_send_offer":    can_send_offer,
-            "can_approve_budget": can_approve_budget,
-            "can_price_budget":  can_price_budget,
-            "can_direct_manage": can_direct_manage,
-            "can_budget_ops":    can_budget_ops,
             "closure_pending_approver":  closure_pending_approver,
-            "budget_pending_approvers":  budget_pending_approvers,
             "request_tabs":     REQUEST_TABS,
-            "budgets_data":     budgets_data,
-            "all_sections":     all_sections_set,
             "customer":         customer,
-            "budgets_json":     budgets_json,
             # Finansal
             "active_invoices":        active_invoices,
             "pending_invoices":       pending_invoices,
@@ -1149,8 +1003,6 @@ async def requests_detail(
             "invoice_maliyet":       round(invoice_maliyet, 2),
             "invoice_net_maliyet":   round(invoice_net_maliyet, 2),
             "invoice_kar":           round(invoice_kar, 2),
-            "budget_sale_excl":  budget_sale_excl,
-            "budget_cost_excl":  budget_cost_excl,
             "can_manage_invoices":      can_manage_invoices,
             "can_approve_invoices":     can_approve_invoices,
             "approvable_invoice_ids":   approvable_invoice_ids,

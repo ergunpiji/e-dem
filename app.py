@@ -218,7 +218,6 @@ from routers import venues as venues_router
 from routers import customers as customers_router
 from routers import services as services_router
 from routers import requests as requests_router
-from routers import budgets as budgets_router
 from routers import event_types as event_types_router
 from routers import settings as settings_router
 from routers import reports as reports_router
@@ -243,7 +242,6 @@ app.include_router(venues_router.router)
 app.include_router(customers_router.router)
 app.include_router(services_router.router)
 app.include_router(requests_router.router)
-app.include_router(budgets_router.router)
 app.include_router(event_types_router.router)
 app.include_router(settings_router.router)
 app.include_router(reports_router.router)

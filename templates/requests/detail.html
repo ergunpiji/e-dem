@@ -4,15 +4,13 @@
 
 {% block topbar_actions %}
 {# ── Compact durum güncelle ── #}
-{% if can_edit_status or can_direct_manage %}
+{% if can_edit_status %}
 <form method="post" action="/requests/{{ req.id }}/status"
       class="d-flex align-items-center gap-1">
   <select name="new_status" class="form-select form-select-sm"
           style="width:auto; min-width:150px; font-size:12px;">
     {% for s in statuses %}
-    {% if can_edit_status or s.value in ('in_progress','venues_contacted','budget_ready','completed','cancelled') %}
     <option value="{{ s.value }}" {% if req.status == s.value %}selected{% endif %}>{{ s.label }}</option>
-    {% endif %}
     {% endfor %}
   </select>
   <button type="submit" class="btn btn-warning btn-sm" style="font-size:12px; white-space:nowrap;">
@@ -150,64 +148,17 @@
       </div>
 
       <div class="d-flex flex-column gap-2 align-items-end">
-        {# E-dem işlemleri #}
-        {% if can_edit_status %}
-          {# E-dem/Admin bütçe oluşturabilir #}
-          {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready', 'revision') %}
-          <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">
-            <i class="bi bi-calculator me-1"></i>
-            {% if req.budgets %}Yeni Bütçe{% else %}Bütçe Oluştur{% endif %}
+        {# Fatura oluştur — muhasebe direkt, diğerleri talep #}
+        {% if req.status in ('in_progress','confirmed','completed') %}
+          {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
+          <a href="/invoices/new?request_id={{ req.id }}" class="btn btn-success btn-sm">
+            <i class="bi bi-file-earmark-text me-1"></i> Fatura Girişi
+          </a>
+          {% elif current_user.role in ('mudur', 'yonetici') %}
+          <a href="/invoices/new?request_id={{ req.id }}" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-file-earmark-plus me-1"></i> Fatura Talebi
           </a>
           {% endif %}
-          {# Teklif gönder butonu #}
-          {% if req.status in ('budget_ready', 'in_progress', 'venues_contacted') %}
-          <form method="post" action="/requests/{{ req.id }}/offer-sent">
-            <button type="submit" class="btn btn-outline-teal btn-sm"
-                    onclick="return confirm('Teklif müşteriye gönderildi olarak işaretlensin mi?')"
-                    style="color:#0d9488; border-color:#0d9488;">
-              <i class="bi bi-send me-1"></i> Teklif Gönderildi
-            </button>
-          </form>
-          {% endif %}
-        {% endif %}
-        {# Müşteriye Teklif Gönder — manager onayladıktan sonra, henüz confirmed değilse #}
-        {% if req.status not in ('cancelled', 'completed', 'confirmed') %}
-        {% set ns_approv2 = namespace(found=false) %}
-        {% for b in req.budgets %}{% if b.budget_status == 'approved' %}{% set ns_approv2.found = true %}{% endif %}{% endfor %}
-        {% if ns_approv2.found %}
-        <button type="button" class="btn btn-primary btn-sm"
-                onclick="sendOfferEmail('{{ req.id }}', '{{ (customer.email if customer else '') | e }}', '{{ req.event_name | e }}', '{{ req.request_no | e }}')">
-          <i class="bi bi-envelope-arrow-up me-1"></i> Müşteriye Teklif Gönder
-        </button>
-        {% endif %}
-        {% endif %}
-        {# Manager / Asistan bütçe oluşturma #}
-        {% if can_budget_ops %}
-          {% if req.status in ('in_progress', 'venues_contacted', 'budget_ready', 'revision') %}
-          <a href="/budgets/new?req_id={{ req.id }}" class="btn btn-success btn-sm">
-            <i class="bi bi-calculator me-1"></i>
-            {% if req.budgets %}Yeni Bütçe{% else %}Bütçe Oluştur{% endif %}
-          </a>
-          {% endif %}
-          {# Tüm taslak bütçeleri toplu manager'a gönder #}
-          {% set ns_draft = namespace(count=0) %}
-          {% for b in req.budgets %}{% if b.budget_status == 'draft_edem' %}{% set ns_draft.count = ns_draft.count + 1 %}{% endif %}{% endfor %}
-          {% if ns_draft.count > 0 %}
-          <form method="post" action="/requests/{{ req.id }}/send-all-to-manager" style="margin:0;">
-            <button type="submit" class="btn btn-primary btn-sm"
-                    onclick="return confirm('{{ ns_draft.count }} taslak bütçe manager onayına gönderilsin mi?')">
-              <i class="bi bi-send me-1"></i> Manager'a Gönder
-              {% if ns_draft.count > 1 %}<span class="badge bg-white text-primary ms-1">{{ ns_draft.count }}</span>{% endif %}
-            </button>
-          </form>
-          {% endif %}
-        {% endif %}
-        {# Tüm roller: bütçe listesi — birden fazlaysa görüntüle butonu #}
-        {% if req.budgets and req.budgets | length == 1 %}
-          {% set b = req.budgets[0] %}
-          <a href="/budgets/{{ b.id }}" class="btn btn-outline-info btn-sm">
-            <i class="bi bi-file-earmark-spreadsheet me-1"></i> Bütçeyi Görüntüle
-          </a>
         {% endif %}
 
         {# Proje Durumu — aktif statülerde göster, kapama ve sonrasında gizle #}
@@ -216,67 +167,6 @@
                 data-bs-toggle="modal" data-bs-target="#projectStatusModal">
           <i class="bi bi-flag me-1"></i> Proje Durumu
         </button>
-        {% endif %}
-
-        {# Etkinliği Tamamla kaldırıldı — Dosyayı Kapat o işi yapıyor #}
-
-        {# Hesap Dökümü — confirmed/completed/closing/closed, onaylı bütçe varsa #}
-        {% set ns_offer_bgt = namespace(found=false) %}
-        {% for b in req.budgets %}
-          {% if b.budget_status in ('approved','confirmed') and b.budget_type != 'statement' %}
-            {% set ns_offer_bgt.found = true %}
-          {% endif %}
-        {% endfor %}
-        {% if req.status in ('confirmed','completed')
-              and current_user.role in ('admin','mudur','yonetici')
-              and ns_offer_bgt.found %}
-        {% set ns_stmt = namespace(existing=none) %}
-        {% for b in req.budgets %}{% if b.budget_type == 'statement' %}{% set ns_stmt.existing = b %}{% endif %}{% endfor %}
-        {% if ns_stmt.existing %}
-          {% set stmt = ns_stmt.existing %}
-          {% if stmt.statement_status == 'customer_approved' %}
-          {# Onaylandı — fatura oluştur #}
-          <a href="/budgets/{{ stmt.id }}/statement"
-             class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
-            <i class="bi bi-receipt me-1"></i> Hesap Dökümü
-          </a>
-          {# Fatura: muhasebe direkt oluşturur; PM/mudur/yonetici fatura talebi oluşturur #}
-          {% if current_user.role in ('admin', 'muhasebe_muduru', 'muhasebe') %}
-          <a href="/invoices/new?request_id={{ req.id }}&statement_id={{ stmt.id }}"
-             class="btn btn-success btn-sm">
-            <i class="bi bi-file-earmark-text me-1"></i> Fatura Oluştur
-          </a>
-          {% elif current_user.role in ('mudur', 'yonetici') %}
-          <a href="/invoices/new?request_id={{ req.id }}&statement_id={{ stmt.id }}"
-             class="btn btn-outline-success btn-sm">
-            <i class="bi bi-file-earmark-plus me-1"></i> Fatura Talebi Oluştur
-          </a>
-          {% else %}
-          <span class="badge bg-success px-2 py-2" style="font-size:11px;">
-            <i class="bi bi-check2-circle me-1"></i>Müşteri Onayladı
-          </span>
-          {% endif %}
-          {% elif stmt.statement_status == 'sent' %}
-          {# Gönderildi — düzenle veya onay al #}
-          <a href="/budgets/{{ stmt.id }}/statement"
-             class="btn btn-sm" style="background:#0d9488; color:white; border-color:#0d9488;">
-            <i class="bi bi-send-check me-1"></i> Hesap Dökümü Gönderildi
-          </a>
-          {% else %}
-          {# Taslak — düzenle #}
-          <a href="/budgets/{{ stmt.id }}/statement"
-             class="btn btn-sm" style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
-            <i class="bi bi-receipt me-1"></i> Hesap Dökümü Düzenle
-          </a>
-          {% endif %}
-        {% else %}
-        <form method="post" action="/requests/{{ req.id }}/create-statement" style="display:inline;">
-          <button type="submit" class="btn btn-sm"
-                  style="background:#1a3a5c; color:white; border-color:#1a3a5c;">
-            <i class="bi bi-receipt me-1"></i> Hesap Dökümü Hazırla
-          </button>
-        </form>
-        {% endif %}
         {% endif %}
 
         {# Dosyayı Kapat — confirmed veya completed, PM/mudur/admin #}
@@ -450,7 +340,6 @@ document.addEventListener('DOMContentLoaded', function() {
     {# Talep Edilen Hizmetler #}
     {% set items = req.items %}
     {% set pref_venues = req.preferred_venues %}
-    {% set can_rfq = (can_edit_status or can_direct_manage) and req.status in ('in_progress', 'venues_contacted', 'budget_ready') %}
 
     <div class="card mb-4">
       <div class="card-header d-flex align-items-center justify-content-between py-2"
@@ -533,9 +422,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1 mb-1"
                   style="font-size:11px; padding:4px 10px;">
               <i class="bi bi-building me-1"></i>{{ venue.name }}
-              {% if can_rfq %}
               <span class="text-muted"> · {{ venue.city }}</span>
-              {% endif %}
             </span>
             {% endif %}
             {% endif %}
@@ -590,14 +477,6 @@ document.addEventListener('DOMContentLoaded', function() {
               </table>
             </div>
 
-            {% if can_rfq %}
-            <div class="mt-2 text-end">
-              <button type="button" class="btn btn-sm btn-outline-warning"
-                      onclick="openRfqModal('{{ section }}')">
-                <i class="bi bi-envelope me-1"></i>Bu Sekmenin Tedarikçilerine Mail Hazırla
-              </button>
-            </div>
-            {% endif %}
           </div>
           {% endif %}
           {% endfor %}
@@ -654,7 +533,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </form>
     {% endif %}
 
-    {# Seçilen Tedarikçiler (kompakt, aktif sekmeye göre filtrelenir) #}
+    {# Seçilen Tedarikçiler — sadece görüntüleme #}
     {% if pref_venues %}
     <div class="card mb-4" id="selectedVenuesCard">
       <div class="card-body py-2">
@@ -676,68 +555,10 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     {% endif %}
 
-    {# RFQ Modal (her zaman render et, JS ile kontrol edilir) #}
-    {% if can_rfq %}
-    <div class="modal fade" id="rfqModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header" style="background:#1e293b; color:#fff; border:none;">
-            <div>
-              <h5 class="modal-title mb-0">
-                <i class="bi bi-envelope-open me-2"></i>Teklif İstek E-postaları
-              </h5>
-              <div id="rfqSectionLabel" class="mt-1" style="font-size:12px; opacity:.8;"></div>
-            </div>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body p-0">
-            <div class="alert alert-info py-2 mx-3 mt-3 mb-0" style="font-size:12px;">
-              <i class="bi bi-info-circle me-1"></i>
-              Her tedarikçi için e-posta içeriği otomatik oluşturulur.
-              <strong>Zengin Metin Kopyala</strong> ile Outlook/Gmail'e yapıştırabilirsiniz.
-            </div>
-            {# Inline tedarikçi ekleme alanı (başta gizli) #}
-            <div id="rfqAddVenueArea" class="px-3 pt-3" style="display:none;">
-              <div class="border rounded p-3" style="background:#f8fafc;">
-                <div class="fw-semibold mb-2" style="font-size:12px; color:#1e293b;">
-                  <i class="bi bi-plus-circle me-1 text-primary"></i>Tedarikçi Ekle
-                </div>
-                <div class="vs-wrapper mb-2">
-                  <div class="position-relative">
-                    <i class="bi bi-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:12px;pointer-events:none;"></i>
-                    <input type="text" id="rfqAddSearch" class="form-control form-control-sm"
-                           style="padding-left:30px;"
-                           placeholder="Tedarikçi ara..."
-                           oninput="filterRfqAddDrop(this.value)"
-                           onfocus="openRfqAddDrop()">
-                  </div>
-                  <div class="vs-dropdown" id="rfqAddDrop" style="display:none;"></div>
-                </div>
-                <button type="button" class="btn btn-outline-secondary btn-sm mt-1"
-                        onclick="document.getElementById('rfqAddVenueArea').style.display='none';">
-                  İptal
-                </button>
-              </div>
-            </div>
-            <div id="rfqVenueCards" class="p-3"></div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-primary btn-sm me-auto"
-                    onclick="toggleRfqAddVenueArea()">
-              <i class="bi bi-plus-circle me-1"></i>Tedarikçi Ekle
-            </button>
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
   </div>
 </div>
 
-{# ─── İKİ SÜTUN ─── #}
-{# ─── BÜTÇE TABLARI (birden fazlaysa yan yana) ─── #}
+{% if false %}{# BÜTÇE KARŞILAŞTIRMA — kaldırıldı #}
 {% if budgets_data and budgets_data | length > 1 %}
 {% set compare_collapsed = req.confirmed_budget_id is not none %}
 {% set SECTION_LABELS = {
@@ -1198,50 +1019,7 @@ document.addEventListener('DOMContentLoaded', function() {
       {% endfor %}
     </div>
 
-  </div>
-  </div>
-</div>
-{% endif %}
-
-{# ─── Tab kalıcılığı: sekme seçimini localStorage + URL hash ile koru ─── #}
-{% if budgets_data and budgets_data | length > 1 %}
-<script>
-(function () {
-  const TAB_KEY = 'req_tab_{{ req.id }}';
-  const tabsEl  = document.getElementById('budgetTabs');
-  if (!tabsEl) return;
-
-  // 1) Aktif sekmeyi kaydet (hash + localStorage)
-  tabsEl.addEventListener('shown.bs.tab', function (e) {
-    const target = e.target.getAttribute('data-bs-target');
-    if (target) {
-      const id = target.slice(1);   // '#btpane-...' → 'btpane-...'
-      localStorage.setItem(TAB_KEY, id);
-      history.replaceState(null, '', '#' + id);
-    }
-  });
-
-  // 2) Sayfa yüklenince: URL hash → localStorage → varsayılan (özet)
-  function restore() {
-    const fromHash  = location.hash ? location.hash.slice(1) : null;
-    const fromStore = localStorage.getItem(TAB_KEY);
-    const targetId  = fromHash || fromStore || 'btpane-summary';
-
-    const btn = tabsEl.querySelector(`[data-bs-target="#${targetId}"]`);
-    if (btn && !btn.classList.contains('active')) {
-      bootstrap.Tab.getOrCreateInstance(btn).show();
-    }
-  }
-
-  // Bootstrap tab'ları DOM'a hazır olduğunda çalıştır
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', restore);
-  } else {
-    restore();
-  }
-})();
-</script>
-{% endif %}
+{% endif %}{# /BÜTÇE KARŞILAŞTIRMA sonu #}
 
 
 {# ─── FİNANSAL SEKME ─── #}
@@ -1282,9 +1060,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <div class="col-sm-6 col-lg-3">
       <div class="p-3 rounded border" style="background:#f8fafc;">
         <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">{{ label }}</div>
-        <div class="mt-1" style="font-size:13px; color:#94a3b8;">
-          Bütçe: <span class="fw-semibold text-dark">{{ '₺{:,.0f}'.format(bgt_val).replace(',', '.') }}</span>
-        </div>
+        <div class="mt-1" style="font-size:13px; color:#94a3b8;"></div>
         <div style="font-size:20px; font-weight:800; color:{{ color }}; line-height:1.2;">
           ₺{{ '{:,.0f}'.format(real_val).replace(',', '.') }}
         </div>
@@ -1293,13 +1069,11 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     {% endmacro %}
     <div class="row g-3 mb-4">
-      {{ fin_card('Ciro',    budget_sale_excl, invoice_ciro,    '#2563eb') }}
+      {{ fin_card('Ciro',    0, invoice_ciro,    '#2563eb') }}
       <div class="col-sm-6 col-lg-3">
         <div class="p-3 rounded border" style="background:#f8fafc;">
           <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">Gider</div>
-          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
-            Bütçe: <span class="fw-semibold text-dark">{{ '₺{:,.0f}'.format(budget_cost_excl).replace(',', '.') }}</span>
-          </div>
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;"></div>
           <div style="font-size:20px; font-weight:800; color:#dc2626; line-height:1.2;">
             ₺{{ '{:,.0f}'.format(invoice_net_maliyet).replace(',', '.') }}
           </div>
@@ -1314,9 +1088,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="col-sm-6 col-lg-3">
         <div class="p-3 rounded border" style="background:#f8fafc;">
           <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">Kar</div>
-          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
-            Bütçe: <span class="fw-semibold text-dark">₺{{ '{:,.0f}'.format(budget_sale_excl - budget_cost_excl).replace(',', '.') }}</span>
-          </div>
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;"></div>
           <div style="font-size:20px; font-weight:800; color:{% if invoice_kar >= 0 %}#16a34a{% else %}#dc2626{% endif %}; line-height:1.2;">
             ₺{{ '{:,.0f}'.format(invoice_kar).replace(',', '.') }}
           </div>
@@ -1334,13 +1106,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="col-sm-6 col-lg-3">
         <div class="p-3 rounded border" style="background:#f8fafc;">
           <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px;">Karlılık</div>
-          {% if budget_sale_excl > 0 %}
-          <div class="mt-1" style="font-size:13px; color:#94a3b8;">
-            Bütçe: <span class="fw-semibold text-dark">%{{ '{:.1f}'.format((budget_sale_excl - budget_cost_excl) / budget_sale_excl * 100) }}</span>
-          </div>
-          {% else %}
-          <div class="mt-1" style="font-size:13px; color:#94a3b8;">Bütçe: <span class="text-muted">—</span></div>
-          {% endif %}
+          <div class="mt-1" style="font-size:13px; color:#94a3b8;"></div>
           {% set total_revenue = invoice_ciro + invoice_komisyon %}
           {% if total_revenue > 0 %}
           <div style="font-size:20px; font-weight:800; color:{% if invoice_kar / total_revenue >= 0.15 %}#16a34a{% elif invoice_kar >= 0 %}#d97706{% else %}#dc2626{% endif %}; line-height:1.2;">
@@ -2656,7 +2422,7 @@ function showToast(msg) {
 }
 
 // ─── Bütçe + venue kontakt verisi (email taslakları için) ───
-const budgetsJson = {{ budgets_json | tojson }};
+const budgetsJson = [];
 const REQ_EVENT_NAME = {{ req.event_name | tojson }};
 const REQ_REF_NO     = {{ req.request_no | tojson }};
 const REQ_CHECK_IN   = "{{ req.check_in or '' }}";
