@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block page_title %}Referanslar{% endblock %}
+
+{% block topbar_actions %}
+<a href="/references/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Referans</a>
+{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent border-0">
+    <form class="row g-2 align-items-end" method="get">
+      <div class="col-auto">
+        <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Ara...">
+      </div>
+      <div class="col-auto">
+        <select name="status_filter" class="form-select form-select-sm">
+          <option value="">Tüm Durumlar</option>
+          <option value="aktif" {% if status_filter=='aktif' %}selected{% endif %}>Aktif</option>
+          <option value="tamamlandi" {% if status_filter=='tamamlandi' %}selected{% endif %}>Tamamlandı</option>
+          <option value="iptal" {% if status_filter=='iptal' %}selected{% endif %}>İptal</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrele</button>
+        <a href="/references" class="btn btn-sm btn-link">Temizle</a>
+      </div>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Ref No</th>
+          <th>Başlık</th>
+          <th>Müşteri</th>
+          <th>Tarih</th>
+          <th>Durum</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in refs %}
+        <tr>
+          <td><a href="/references/{{ r.id }}" class="fw-semibold text-decoration-none">{{ r.ref_no }}</a></td>
+          <td>{{ r.title }}</td>
+          <td>{{ r.customer.name if r.customer else "—" }}</td>
+          <td>{{ r.check_in | date_tr }}</td>
+          <td>
+            <span class="badge {% if r.status == 'aktif' %}bg-success{% elif r.status == 'tamamlandi' %}bg-secondary{% else %}bg-danger{% endif %}">{{ r.status }}</span>
+          </td>
+          <td class="text-end">
+            <a href="/references/{{ r.id }}/edit" class="btn btn-xs btn-outline-secondary btn-sm py-0">Düzenle</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Referans bulunamadı.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

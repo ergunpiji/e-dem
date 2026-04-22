@@ -1,311 +1,248 @@
 """
-E-dem — Raporlar (Admin only)
-GET /reports  → özet istatistikler, aylık trend, müşteri bazlı tablo
+Raporlar
 """
+
+from datetime import date
 from collections import defaultdict
-from datetime import date, datetime, timedelta
-
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import func
 from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
 
-from auth import get_current_user
+from auth import get_current_user, require_admin
 from database import get_db
-from models import Budget, Customer, Invoice, Request as ReqModel, Team, User
+from models import (
+    Invoice, GeneralExpense, CashEntry, BankMovement,
+    CreditCardStatement, Cheque, Customer, FinancialVendor,
+    Employee, SalaryPayment, EmployeeBenefit, User
+)
 from templates_config import templates
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-FINANCE_ROLES = {"admin", "muhasebe_muduru", "muhasebe"}
-
-
-def _require_admin(current_user: User):
-    """Admin veya GM erişebilir."""
-    if current_user.role == "admin" or current_user.is_gm:
-        return
-    raise HTTPException(status_code=403, detail="Bu sayfa yalnızca Admin ve Genel Müdür'e özeldir.")
-
-
-def _require_finance(current_user: User):
-    if (current_user.role not in FINANCE_ROLES
-            and current_user.role not in ("mudur", "yonetici", "asistan")
-            and not current_user.is_gm):
-        raise HTTPException(status_code=403, detail="Bu sayfa için yetkiniz yok.")
-
-
-def _is_gm(user: User) -> bool:
-    return user.is_gm
-
-
-# /reports endpoint Dashboard ile değiştirildiği için kaldırıldı.
-# /reports/financial hâlâ mevcut (Finans grubu altından erişilir).
-
-
-# ---------------------------------------------------------------------------
-# Finansal Rapor
-# ---------------------------------------------------------------------------
-
-@router.get("/financial", response_class=HTMLResponse, name="reports_financial")
-async def reports_financial(
+@router.get("/pl", response_class=HTMLResponse, name="report_pl")
+async def report_pl(
     request: Request,
-    date_from:  str = "",
-    date_to:    str = "",
-    manager_id: str = "",
-    team_id:    str = "",
-    current_user: User = Depends(get_current_user),
+    year: int = None,
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    _require_finance(current_user)
+    if not year:
+        year = date.today().year
 
-    import json as _json
-    from collections import defaultdict
+    invoices = db.query(Invoice).filter(
+        Invoice.status.in_(["approved", "paid"]),
+        extract("year", Invoice.invoice_date) == year,
+    ).all()
 
+    kesilen = sum(i.amount for i in invoices if i.invoice_type in ("kesilen", "komisyon"))
+    iade_kesilen = sum(i.amount for i in invoices if i.invoice_type == "iade_kesilen")
+    gelen = sum(i.amount for i in invoices if i.invoice_type == "gelen")
+    iade_gelen = sum(i.amount for i in invoices if i.invoice_type == "iade_gelen")
+
+    net_gelir = (kesilen - iade_kesilen)
+    net_maliyet = (gelen - iade_gelen)
+
+    expenses = db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year
+    ).all()
+    personel_gider = sum(e.amount for e in expenses if e.source in ("salary", "benefit"))
+    diger_gider = sum(e.amount for e in expenses if e.source not in ("salary", "benefit"))
+
+    gross_profit = net_gelir - net_maliyet
+    net_profit = gross_profit - personel_gider - diger_gider
+
+    return templates.TemplateResponse(
+        "reports/pl.html",
+        {
+            "request": request, "current_user": current_user,
+            "year": year,
+            "kesilen": kesilen, "iade_kesilen": iade_kesilen,
+            "net_gelir": net_gelir,
+            "gelen": gelen, "iade_gelen": iade_gelen,
+            "net_maliyet": net_maliyet,
+            "gross_profit": gross_profit,
+            "personel_gider": personel_gider,
+            "diger_gider": diger_gider,
+            "net_profit": net_profit,
+            "page_title": f"P&L — {year}",
+        },
+    )
+
+
+@router.get("/cash-flow", response_class=HTMLResponse, name="report_cash_flow")
+async def report_cash_flow(
+    request: Request,
+    start: str = None,
+    end: str = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     today = date.today()
+    start_date = date.fromisoformat(start) if start else date(today.year, 1, 1)
+    end_date = date.fromisoformat(end) if end else today
 
-    # Tarih aralığı — varsayılan: bu yılın başı → bugün
-    try:
-        d_from = date.fromisoformat(date_from) if date_from else today.replace(month=1, day=1)
-    except ValueError:
-        d_from = today.replace(month=1, day=1)
-    try:
-        d_to = date.fromisoformat(date_to) if date_to else today
-    except ValueError:
-        d_to = today
+    events = []
 
-    is_gm_user   = _is_gm(current_user)
-    is_birim_mgr = (current_user.role == "mudur" and not is_gm_user)
+    # Kasa hareketleri
+    for e in db.query(CashEntry).filter(
+        CashEntry.entry_date >= start_date, CashEntry.entry_date <= end_date
+    ).all():
+        sign = 1 if e.entry_type == "giris" else -1
+        events.append({"date": e.entry_date, "amount": sign * e.amount,
+                        "description": e.description or "", "source": "Kasa"})
 
-    # PM/yönetici: sadece kendi
-    if current_user.role in ("yonetici", "asistan"):
-        manager_id = current_user.id
+    # Banka hareketleri
+    for m in db.query(BankMovement).filter(
+        BankMovement.movement_date >= start_date, BankMovement.movement_date <= end_date
+    ).all():
+        sign = 1 if m.movement_type == "giris" else -1
+        events.append({"date": m.movement_date, "amount": sign * m.amount,
+                        "description": m.description or "", "source": "Banka"})
 
-    # Takım listesi (GM için filtre dropdown)
-    all_teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all() if is_gm_user else []
+    # Kredi kartı ekstre ödemeleri → due_date bazlı
+    for stmt in db.query(CreditCardStatement).filter(
+        CreditCardStatement.due_date >= start_date,
+        CreditCardStatement.due_date <= end_date,
+    ).all():
+        events.append({"date": stmt.due_date, "amount": -stmt.total_amount,
+                        "description": f"KK Ekstre — {stmt.card.name if stmt.card else ''}",
+                        "source": "Kredi Kartı"})
 
-    # Takım bazlı kapsam: birim müdürü veya GM takım filtresi
-    scoped_team_id: str | None = None
-    if is_birim_mgr and current_user.team_id:
-        scoped_team_id = current_user.team_id
-        team_id = current_user.team_id  # dropdown override
-    elif is_gm_user and team_id:
-        scoped_team_id = team_id
+    # Verilen çekler → due_date bazlı
+    for c in db.query(Cheque).filter(
+        Cheque.cheque_type == "verilen",
+        Cheque.due_date >= start_date,
+        Cheque.due_date <= end_date,
+        Cheque.status.in_(["beklemede", "tahsil_edildi"]),
+    ).all():
+        events.append({"date": c.due_date, "amount": -c.amount,
+                        "description": f"Çek — {c.cheque_no or c.id}",
+                        "source": "Çek"})
 
-    # Eski user-id bazlı kapsam (manager_id filtresi için hâlâ gerekli)
-    scoped_user_ids: list[str] | None = None
-    if scoped_team_id and not manager_id:
-        pass  # request.team_id üzerinden filtrelenecek
-    elif is_gm_user and team_id and manager_id:
-        pass  # hem takım hem PM filtresi: user-id üzerinden
+    events.sort(key=lambda x: x["date"])
 
-    # PM filtresi (sadece GM/admin/muhasebe için)
-    pm_users = []
-    if current_user.role not in ("yonetici", "asistan", "mudur"):
-        pm_users = db.query(User).filter(
-            User.role.in_(["mudur", "yonetici", "asistan"]), User.active == True
-        ).all()
+    running = 0.0
+    for e in events:
+        running += e["amount"]
+        e["running"] = running
 
-    # Fatura bazlı sorgulama: taleplerin etkinlik başlangıç tarihi (check_in) aralığa göre filtrele.
-    # Gruplama ile tutarlı olması için fatura tarihi değil iş tarihi esas alınır.
-    # Fon havuzu referansları (customer + vendor) tamamen hariç — sahte ref görünmesinler.
-    req_date_q = db.query(ReqModel.id).filter(
-        ReqModel.check_in >= d_from.isoformat(),
-        ReqModel.check_in <= d_to.isoformat(),
-        ReqModel.is_fund_pool == False,                           # noqa: E712
+    return templates.TemplateResponse(
+        "reports/cash_flow.html",
+        {
+            "request": request, "current_user": current_user,
+            "events": events, "start": start_date, "end": end_date,
+            "total": sum(e["amount"] for e in events),
+            "page_title": "Nakit Akışı",
+        },
     )
 
-    if scoped_team_id and not manager_id:
-        # Takım filtresi: request.team_id üzerinden (doğrudan, kullanıcı listesi gerekmez)
-        req_date_q = req_date_q.filter(ReqModel.team_id == scoped_team_id)
-    elif scoped_team_id and manager_id:
-        # Hem takım hem PM filtresi
-        req_date_q = req_date_q.filter(
-            ReqModel.team_id == scoped_team_id,
-            ReqModel.created_by == manager_id,
-        )
-    elif current_user.role in ("yonetici", "asistan"):
-        req_date_q = req_date_q.filter(ReqModel.created_by == current_user.id)
-    elif manager_id:
-        req_date_q = req_date_q.filter(ReqModel.created_by == manager_id)
 
-    in_range_req_ids = [r.id for r in req_date_q.all()]
+@router.get("/ledger/customer/{customer_id}", response_class=HTMLResponse, name="report_customer_ledger")
+async def report_customer_ledger(
+    customer_id: int,
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from models import Reference
+    customer = db.query(Customer).get(customer_id)
+    if not customer:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404)
+    refs = db.query(Reference).filter(Reference.customer_id == customer_id).all()
+    ref_ids = [r.id for r in refs]
+    invoices = db.query(Invoice).filter(
+        Invoice.ref_id.in_(ref_ids),
+        Invoice.status.in_(["approved", "paid"]),
+    ).order_by(Invoice.invoice_date).all()
 
-    from utils.funds import fund_pool_invoice_ids
-    _fund_inv_ids = fund_pool_invoice_ids(db)
-    inv_query = db.query(Invoice).filter(
-        Invoice.status.in_(["approved", "gm_approved", "mudur_approved", "active"]),
-        Invoice.request_id.in_(in_range_req_ids),
+    total_kesilen = sum(i.amount for i in invoices if i.invoice_type == "kesilen")
+    total_paid = sum(i.amount for i in invoices if i.status == "paid" and i.invoice_type == "kesilen")
+    balance = total_kesilen - total_paid
+
+    return templates.TemplateResponse(
+        "reports/ledger.html",
+        {
+            "request": request, "current_user": current_user,
+            "entity": customer, "entity_type": "customer",
+            "invoices": invoices,
+            "total_kesilen": total_kesilen, "total_paid": total_paid,
+            "balance": balance,
+            "page_title": f"Müşteri Cari — {customer.name}",
+        },
     )
-    if _fund_inv_ids:
-        inv_query = inv_query.filter(~Invoice.id.in_(_fund_inv_ids))
 
-    invoices = inv_query.all()
 
-    # Referans bazlı finansal özet
-    ref_fin: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0})
-    for inv in invoices:
-        rid = inv.request_id
-        if inv.invoice_type in ("kesilen", "komisyon"):
-            ref_fin[rid]["ciro"] += inv.amount
-        elif inv.invoice_type == "iade_kesilen":
-            ref_fin[rid]["ciro"] -= inv.amount
-        elif inv.invoice_type == "gelen":
-            ref_fin[rid]["maliyet"] += inv.amount
-        elif inv.invoice_type == "iade_gelen":
-            ref_fin[rid]["maliyet"] -= inv.amount
+@router.get("/ledger/vendor/{vendor_id}", response_class=HTMLResponse, name="report_vendor_ledger")
+async def report_vendor_ledger(
+    vendor_id: int,
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    vendor = db.query(FinancialVendor).get(vendor_id)
+    if not vendor:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404)
+    invoices = db.query(Invoice).filter(
+        Invoice.vendor_id == vendor_id,
+        Invoice.status.in_(["approved", "paid"]),
+    ).order_by(Invoice.invoice_date).all()
 
-    # FundTransfer'ler — in_range referanslarına uygula (KDV hariç TRY)
-    from models import FundTransfer as _FT
-    for t in db.query(_FT).filter(_FT.related_request_id.in_(in_range_req_ids)).all():
-        v = t.amount_try_excl_vat
-        if t.direction == "out":
-            ref_fin[t.related_request_id]["ciro"] += v
-        elif t.direction == "in":
-            ref_fin[t.related_request_id]["ciro"] -= v
+    total_gelen = sum(i.amount for i in invoices if i.invoice_type == "gelen")
+    total_paid = sum(i.amount for i in invoices if i.status == "paid" and i.invoice_type == "gelen")
+    balance = total_gelen - total_paid
 
-    # İlgili talepleri toplu çek
-    req_ids_with_inv = list(ref_fin.keys())
-    reqs = {r.id: r for r in db.query(ReqModel)
-            .filter(ReqModel.id.in_(req_ids_with_inv)).all()} if req_ids_with_inv else {}
+    return templates.TemplateResponse(
+        "reports/ledger.html",
+        {
+            "request": request, "current_user": current_user,
+            "entity": vendor, "entity_type": "vendor",
+            "invoices": invoices,
+            "total_gelen": total_gelen, "total_paid": total_paid,
+            "balance": balance,
+            "page_title": f"Tedarikçi Cari — {vendor.name}",
+        },
+    )
 
-    # Takım adı haritası (GM için takım breakdown — request.team_id üzerinden)
-    team_name_map: dict[str, str] = {}
-    if is_gm_user:
-        team_name_map = {t.id: t.name for t in db.query(Team).all()}
 
-    # Tablo satırları
-    rows = []
-    for rid, fin in ref_fin.items():
-        req = reqs.get(rid)
-        if not req:
-            continue
-        ciro    = round(fin["ciro"], 2)
-        maliyet = round(fin["maliyet"], 2)
-        kar     = round(ciro - maliyet, 2)
-        team_name = team_name_map.get(req.team_id, "Takımsız") if is_gm_user else ""
-        rows.append({
-            "req":          req,
-            "manager_name": req.creator.full_name if req.creator else "—",
-            "customer":     req.client_name or "—",
-            "ciro":         ciro,
-            "maliyet":      maliyet,
-            "kar":          kar,
-            "karlilk":      round(kar / ciro * 100, 1) if ciro > 0 else None,
-            "team_name":    team_name,
-        })
+@router.get("/payroll", response_class=HTMLResponse, name="report_payroll")
+async def report_payroll(
+    request: Request,
+    period: str = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not period:
+        today = date.today()
+        period = today.strftime("%Y-%m")
 
-    rows.sort(key=lambda x: (x["req"].check_in or ""), reverse=True)
+    salaries = db.query(SalaryPayment).filter(SalaryPayment.period == period).all()
+    benefits = db.query(EmployeeBenefit).filter(EmployeeBenefit.period == period).all()
+    total_gross = sum(s.gross_amount for s in salaries)
+    total_net = sum(s.net_amount for s in salaries)
+    total_benefits = sum(b.amount for b in benefits)
 
-    # Genel toplamlar
-    total_ciro    = round(sum(r["ciro"]    for r in rows), 2)
-    total_maliyet = round(sum(r["maliyet"] for r in rows), 2)
-    total_kar     = round(total_ciro - total_maliyet, 2)
-    total_karlilk = round(total_kar / total_ciro * 100, 1) if total_ciro > 0 else None
+    emp_data = {}
+    for s in salaries:
+        emp_data.setdefault(s.employee_id, {"employee": s.employee, "gross": 0, "net": 0, "benefits": 0})
+        emp_data[s.employee_id]["gross"] += s.gross_amount
+        emp_data[s.employee_id]["net"] += s.net_amount
+    for b in benefits:
+        emp_data.setdefault(b.employee_id, {"employee": b.employee, "gross": 0, "net": 0, "benefits": 0})
+        emp_data[b.employee_id]["benefits"] += b.amount
 
-    # Müşteri bazlı özet (bar chart için)
-    cust_map: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
-    for r in rows:
-        k = r["customer"]
-        cust_map[k]["ciro"]    += r["ciro"]
-        cust_map[k]["maliyet"] += r["maliyet"]
-        cust_map[k]["kar"]     += r["kar"]
-    cust_list = sorted(cust_map.items(), key=lambda x: x[1]["ciro"], reverse=True)[:15]
-
-    # Aylık trend — referansın etkinlik başlangıç tarihine (check_in) göre grupla.
-    # Fatura tarihi değil, işin gerçekleştiği ay esas alınır.
-    monthly: dict = defaultdict(lambda: {"ciro": 0.0, "maliyet": 0.0})
-    for inv in invoices:
-        req_r = reqs.get(inv.request_id)
-        ym = None
-        if req_r and req_r.check_in:
-            try:
-                ci = req_r.check_in
-                ym = ci.strftime("%Y-%m") if hasattr(ci, "strftime") else str(ci)[:7]
-            except Exception:
-                pass
-        if not ym and inv.invoice_date:
-            try:
-                ym = inv.invoice_date[:7]
-            except Exception:
-                pass
-        if not ym:
-            continue
-        if inv.invoice_type in ("kesilen", "komisyon"):
-            monthly[ym]["ciro"] += inv.amount
-        elif inv.invoice_type == "iade_kesilen":
-            monthly[ym]["ciro"] -= inv.amount
-        elif inv.invoice_type == "gelen":
-            monthly[ym]["maliyet"] += inv.amount
-        elif inv.invoice_type == "iade_gelen":
-            monthly[ym]["maliyet"] -= inv.amount
-
-    sorted_months = sorted(monthly.keys())
-    monthly_labels  = [f"{m[5:]}/{m[2:4]}" for m in sorted_months]
-    monthly_ciro    = [round(monthly[m]["ciro"], 0) for m in sorted_months]
-    monthly_maliyet = [round(monthly[m]["maliyet"], 0) for m in sorted_months]
-    monthly_kar     = [round(monthly[m]["ciro"] - monthly[m]["maliyet"], 0) for m in sorted_months]
-
-    # ── TAKIM BAZLI BREAKDOWN (GM için) ──────────────────────────────────────
-    team_totals: dict = defaultdict(lambda: {"name": "", "ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
-    if is_gm_user:
-        for r in rows:
-            tname = r["team_name"] or "Takımsız"
-            team_totals[tname]["name"]    = tname
-            team_totals[tname]["ciro"]    += r["ciro"]
-            team_totals[tname]["maliyet"] += r["maliyet"]
-            team_totals[tname]["kar"]     += r["kar"]
-
-    # ── ÜYE BAZLI PERFORMANS (Birim Müdürü için) ─────────────────────────────
-    member_totals: dict = defaultdict(lambda: {"name": "", "ciro": 0.0, "maliyet": 0.0, "kar": 0.0, "count": 0})
-    if is_birim_mgr:
-        for r in rows:
-            mid = r["req"].created_by or "_"
-            member_totals[mid]["name"]    = r["manager_name"]
-            member_totals[mid]["ciro"]    += r["ciro"]
-            member_totals[mid]["maliyet"] += r["maliyet"]
-            member_totals[mid]["kar"]     += r["kar"]
-            member_totals[mid]["count"]   += 1
-
-    # ── ESKI PM BAZLI ÖZET (admin/muhasebe için) ──────────────────────────────
-    mgr_totals: dict = defaultdict(lambda: {"name": "", "ciro": 0.0, "maliyet": 0.0, "kar": 0.0})
-    if current_user.role not in ("yonetici", "asistan", "mudur"):
-        for r in rows:
-            mid = r["req"].created_by or "_"
-            mgr_totals[mid]["name"]    = r["manager_name"]
-            mgr_totals[mid]["ciro"]    += r["ciro"]
-            mgr_totals[mid]["maliyet"] += r["maliyet"]
-            mgr_totals[mid]["kar"]     += r["kar"]
-
-    return templates.TemplateResponse("reports/financial.html", {
-        "request":        request,
-        "current_user":   current_user,
-        "page_title":     "Finansal Rapor",
-        "is_gm":          is_gm_user,
-        "is_birim_mgr":   is_birim_mgr,
-        "rows":           rows,
-        "total_ciro":     total_ciro,
-        "total_maliyet":  total_maliyet,
-        "total_kar":      total_kar,
-        "total_karlilk":  total_karlilk,
-        "mgr_totals":     dict(mgr_totals),
-        "team_totals":    dict(team_totals),
-        "member_totals":  dict(member_totals),
-        "pm_users":       pm_users,
-        "all_teams":      all_teams,
-        "manager_id":     manager_id,
-        "team_id":        team_id,
-        "date_from":      d_from.isoformat(),
-        "date_to":        d_to.isoformat(),
-        "chart_monthly":  _json.dumps({
-            "labels":   monthly_labels,
-            "ciro":     monthly_ciro,
-            "maliyet":  monthly_maliyet,
-            "kar":      monthly_kar,
-        }),
-        "chart_customer": _json.dumps({
-            "labels":   [c[0] for c in cust_list],
-            "ciro":     [round(c[1]["ciro"], 0) for c in cust_list],
-            "kar":      [round(c[1]["kar"], 0) for c in cust_list],
-        }),
-    })
+    return templates.TemplateResponse(
+        "reports/payroll.html",
+        {
+            "request": request, "current_user": current_user,
+            "period": period,
+            "emp_rows": list(emp_data.values()),
+            "total_gross": total_gross, "total_net": total_net,
+            "total_benefits": total_benefits,
+            "grand_total": total_net + total_benefits,
+            "page_title": f"Bordro — {period}",
+        },
+    )

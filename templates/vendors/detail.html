@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block page_title %}{{ vendor.name }}{% endblock %}
+{% block topbar_actions %}
+<a href="/vendors/{{ vendor.id }}/edit" class="btn btn-sm btn-outline-secondary">Düzenle</a>
+<a href="/invoices/new?vendor_id={{ vendor.id }}" class="btn btn-sm btn-primary">+ Fatura Ekle</a>
+{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Tedarikçi Bilgileri</h6>
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal">Tip</th><td>{{ vendor.vendor_type or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">IBAN</th><td class="font-monospace small">{{ vendor.iban or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Vergi No</th><td>{{ vendor.tax_no or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Vergi Dairesi</th><td>{{ vendor.tax_office or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">İletişim</th><td>{{ vendor.contact or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Durum</th><td><span class="badge {% if vendor.active %}bg-success{% else %}bg-secondary{% endif %}">{{ "Aktif" if vendor.active else "Pasif" }}</span></td></tr>
+        </table>
+        {% if vendor.notes %}<div class="mt-2 text-muted small">{{ vendor.notes }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-body">
+        <h6 class="fw-bold">Cari Özet</h6>
+        <div class="d-flex justify-content-between"><span class="text-muted">Toplam Gelen</span><span class="fw-semibold text-danger">{{ total_gelen | money }}</span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Ödenen</span><span class="fw-semibold text-success">{{ total_odenen | money }}</span></div>
+        <hr class="my-2">
+        <div class="d-flex justify-content-between"><span class="fw-semibold">Bakiye</span><span class="fw-bold">{{ (total_gelen - total_odenen) | money }}</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0"><span class="fw-semibold">Faturalar</span></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr><th>No</th><th>Tip</th><th>Tarih</th><th class="text-end">Tutar</th><th>Durum</th></tr></thead>
+          <tbody>
+            {% for inv in invoices %}
+            <tr>
+              <td><a href="/invoices/{{ inv.id }}" class="text-decoration-none">{{ inv.invoice_no or ("#" ~ inv.id) }}</a></td>
+              <td>{{ inv.invoice_type }}</td>
+              <td>{{ inv.invoice_date | date_tr }}</td>
+              <td class="text-end">{{ inv.amount | money }}</td>
+              <td><span class="badge {% if inv.status == 'paid' %}bg-success{% elif inv.status == 'approved' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ inv.status }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">Fatura yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if cheques %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0"><span class="fw-semibold">Çekler</span></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr><th>Çek No</th><th>Tutar</th><th>Vade</th><th>Durum</th></tr></thead>
+          <tbody>
+            {% for c in cheques %}
+            <tr>
+              <td>{{ c.cheque_no or "—" }}</td>
+              <td>{{ c.amount | money }}</td>
+              <td>{{ c.due_date | date_tr }}</td>
+              <td><span class="badge bg-secondary">{{ c.status }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block page_title %}{{ ref.ref_no }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="/references/{{ ref.id }}/edit" class="btn btn-sm btn-outline-secondary">Düzenle</a>
+<a href="/invoices/new?ref_id={{ ref.id }}" class="btn btn-sm btn-primary">+ Fatura Ekle</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Referans Bilgileri</h6>
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal">Ref No</th><td class="fw-semibold">{{ ref.ref_no }}</td></tr>
+          <tr><th class="text-muted fw-normal">Başlık</th><td>{{ ref.title }}</td></tr>
+          <tr><th class="text-muted fw-normal">Müşteri</th><td>{{ ref.customer.name if ref.customer else "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Etkinlik Tipi</th><td>{{ ref.event_type or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Giriş</th><td>{{ ref.check_in | date_tr }}</td></tr>
+          <tr><th class="text-muted fw-normal">Çıkış</th><td>{{ ref.check_out | date_tr }}</td></tr>
+          <tr><th class="text-muted fw-normal">Durum</th><td>
+            <span class="badge {% if ref.status == 'aktif' %}bg-success{% elif ref.status == 'tamamlandi' %}bg-secondary{% else %}bg-danger{% endif %}">{{ ref.status }}</span>
+          </td></tr>
+        </table>
+        {% if ref.notes %}
+        <div class="mt-2 text-muted small">{{ ref.notes }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Durum güncelle -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">Durum Güncelle</h6>
+        <form method="post" action="/references/{{ ref.id }}/status">
+          <div class="d-flex gap-2 flex-wrap">
+            <button name="new_status" value="aktif" class="btn btn-sm {% if ref.status == 'aktif' %}btn-success{% else %}btn-outline-success{% endif %}">Aktif</button>
+            <button name="new_status" value="tamamlandi" class="btn btn-sm {% if ref.status == 'tamamlandi' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">Tamamlandı</button>
+            <button name="new_status" value="iptal" class="btn btn-sm {% if ref.status == 'iptal' %}btn-danger{% else %}btn-outline-danger{% endif %}">İptal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Finansal Özet -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">Finansal Özet</h6>
+        <div class="d-flex justify-content-between"><span class="text-muted">Kesilen Fatura</span><span class="text-success fw-semibold">{{ total_kesilen | money }}</span></div>
+        <div class="d-flex justify-content-between"><span class="text-muted">Gelen Fatura</span><span class="text-danger fw-semibold">{{ total_gelen | money }}</span></div>
+        <hr class="my-2">
+        <div class="d-flex justify-content-between"><span class="fw-semibold">Kar</span><span class="fw-bold {% if kar >= 0 %}text-success{% else %}text-danger{% endif %}">{{ kar | money }}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0 d-flex align-items-center">
+        <span class="fw-semibold">Faturalar</span>
+        <a href="/invoices/new?ref_id={{ ref.id }}" class="ms-auto btn btn-sm btn-primary">+ Fatura Ekle</a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Fatura No</th>
+              <th>Tip</th>
+              <th>Tedarikçi</th>
+              <th>Tarih</th>
+              <th class="text-end">Tutar</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in invoices %}
+            <tr>
+              <td><a href="/invoices/{{ inv.id }}" class="text-decoration-none">{{ inv.invoice_no or ("#" ~ inv.id) }}</a></td>
+              <td><span class="badge bg-light text-dark">{{ inv.invoice_type }}</span></td>
+              <td>{{ inv.vendor.name if inv.vendor else "—" }}</td>
+              <td>{{ inv.invoice_date | date_tr }}</td>
+              <td class="text-end fw-semibold">{{ inv.amount | money }}</td>
+              <td><span class="badge {% if inv.status == 'paid' %}bg-success{% elif inv.status == 'approved' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ inv.status }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-4">Bu referansa ait fatura yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

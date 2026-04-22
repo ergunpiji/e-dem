@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block page_title %}Yeni Çek{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <form method="post">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Çek Tipi</label>
+              <select name="cheque_type" class="form-select" required>
+                <option value="verilen">Verilen</option>
+                <option value="alinan">Alınan</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Çek No</label>
+              <input type="text" name="cheque_no" class="form-control" value="{{ cheque.cheque_no if cheque else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Tedarikçi</label>
+              <select name="vendor_id" class="form-select">
+                <option value="">— Seçiniz —</option>
+                {% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Müşteri</label>
+              <select name="customer_id" class="form-select">
+                <option value="">— Seçiniz —</option>
+                {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Banka</label>
+              <input type="text" name="bank" class="form-control" value="{{ cheque.bank if cheque else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Şube</label>
+              <input type="text" name="branch" class="form-control" value="{{ cheque.branch if cheque else '' }}">
+            </div>
+            <div class="col-md-8">
+              <label class="form-label fw-semibold">Tutar</label>
+              <input type="number" name="amount" step="0.01" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Para Birimi</label>
+              <select name="currency" class="form-select">
+                <option value="TRY">TRY</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Keşide Tarihi</label>
+              <input type="date" name="cheque_date" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Vade Tarihi</label>
+              <input type="date" name="due_date" class="form-control" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Notlar</label>
+              <textarea name="notes" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary">Kaydet</button>
+            <a href="/cheques" class="btn btn-outline-secondary">İptal</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

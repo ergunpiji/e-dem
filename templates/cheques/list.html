@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block page_title %}Çekler{% endblock %}
+{% block topbar_actions %}
+<a href="/cheques/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Çek</a>
+{% endblock %}
+{% block content %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent border-0">
+    <form class="row g-2 align-items-end" method="get">
+      <div class="col-auto">
+        <select name="cheque_type" class="form-select form-select-sm">
+          <option value="">Tüm Tipler</option>
+          <option value="verilen" {% if cheque_type=='verilen' %}selected{% endif %}>Verilen</option>
+          <option value="alinan" {% if cheque_type=='alinan' %}selected{% endif %}>Alınan</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <select name="status_filter" class="form-select form-select-sm">
+          <option value="">Tüm Durumlar</option>
+          <option value="beklemede" {% if status_filter=='beklemede' %}selected{% endif %}>Beklemede</option>
+          <option value="tahsil_edildi" {% if status_filter=='tahsil_edildi' %}selected{% endif %}>Tahsil Edildi</option>
+          <option value="iade" {% if status_filter=='iade' %}selected{% endif %}>İade</option>
+          <option value="karsilıksız" {% if status_filter=='karsilıksız' %}selected{% endif %}>Karşılıksız</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrele</button>
+      </div>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>Çek No</th><th>Tip</th><th>Tedarikçi/Müşteri</th><th>Banka</th><th class="text-end">Tutar</th><th>Vade</th><th>Durum</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for c in cheques %}
+        <tr>
+          <td class="fw-semibold">{{ c.cheque_no or "—" }}</td>
+          <td><span class="badge {% if c.cheque_type == 'verilen' %}bg-danger{% else %}bg-success{% endif %}">{{ c.cheque_type }}</span></td>
+          <td>{% if c.vendor %}{{ c.vendor.name }}{% elif c.customer %}{{ c.customer.name }}{% else %}—{% endif %}</td>
+          <td>{{ c.bank or "—" }}</td>
+          <td class="text-end fw-semibold">{{ c.amount | money }}</td>
+          <td>{{ c.due_date | date_tr }}</td>
+          <td><span class="badge bg-secondary">{{ c.status }}</span></td>
+          <td>
+            {% if c.status == 'beklemede' %}
+            <form method="post" action="/cheques/{{ c.id }}/status" class="d-inline">
+              <input type="hidden" name="new_status" value="tahsil_edildi">
+              <button class="btn btn-xs btn-success btn-sm py-0">Tahsil Et</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Çek bulunamadı.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

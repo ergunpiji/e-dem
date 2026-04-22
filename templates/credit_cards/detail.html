@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block page_title %}{{ card.name }}{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold">Kart Bilgileri</h6>
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal">Banka</th><td>{{ card.bank_name or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Son 4</th><td>*{{ card.last4 or "—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Limit</th><td class="fw-semibold">{{ card.credit_limit | money }}</td></tr>
+          <tr><th class="text-muted fw-normal">Kullanılan</th><td class="text-danger fw-semibold">{{ used | money }}</td></tr>
+          <tr><th class="text-muted fw-normal">Kalan</th><td class="text-success fw-semibold">{{ available | money }}</td></tr>
+          <tr><th class="text-muted fw-normal">Ekstre Günü</th><td>Her ayın {{ card.statement_day }}. günü</td></tr>
+          <tr><th class="text-muted fw-normal">Sonraki Son Ödeme</th><td>{{ next_due_date | date_tr }}</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">İşlem Ekle</h6>
+        <form method="post" action="/credit-cards/{{ card.id }}/txn">
+          <div class="mb-2"><input type="date" name="txn_date" class="form-control form-control-sm" required></div>
+          <div class="mb-2"><input type="number" name="amount" step="0.01" class="form-control form-control-sm" placeholder="Tutar" required></div>
+          <div class="mb-2"><input type="text" name="description" class="form-control form-control-sm" placeholder="Açıklama"></div>
+          <div class="mb-2">
+            <label class="form-check-label small"><input type="checkbox" name="is_refund" value="1" class="form-check-input me-1">İade</label>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm w-100">Ekle</button>
+        </form>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">Ekstre Kapat</h6>
+        <form method="post" action="/credit-cards/{{ card.id }}/statement">
+          <div class="mb-2"><label class="form-label small">Ekstre Tarihi</label><input type="date" name="statement_date" class="form-control form-control-sm" required></div>
+          <div class="mb-2"><label class="form-label small">Son Ödeme</label><input type="date" name="due_date" class="form-control form-control-sm" required value="{{ next_due_date.isoformat() }}"></div>
+          <button type="submit" class="btn btn-warning btn-sm w-100" onclick="return confirm('Ekstre kapatılsın mı?')">Ekstre Kapat</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0"><span class="fw-semibold">Ekstreler</span></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr><th>Ekstre Tarihi</th><th>Son Ödeme</th><th class="text-end">Tutar</th><th>Durum</th><th></th></tr></thead>
+          <tbody>
+            {% for s in statements %}
+            <tr>
+              <td>{{ s.statement_date | date_tr }}</td>
+              <td>{{ s.due_date | date_tr }}</td>
+              <td class="text-end fw-semibold">{{ s.total_amount | money }}</td>
+              <td><span class="badge {% if s.status == 'paid' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ s.status }}</span></td>
+              <td>
+                {% if s.status == 'unpaid' %}
+                <form method="post" action="/credit-cards/{{ card.id }}/statement/{{ s.id }}/pay" style="display:inline">
+                  <button class="btn btn-xs btn-success btn-sm py-0">Öde</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">Ekstre yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0"><span class="fw-semibold">Ekstreye Atanmamış İşlemler</span></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr><th>Tarih</th><th>Açıklama</th><th class="text-end">Tutar</th></tr></thead>
+          <tbody>
+            {% for t in unassigned_txns %}
+            <tr>
+              <td>{{ t.txn_date | date_tr }}</td>
+              <td>{{ t.description or "—" }}{% if t.is_refund %} <span class="badge bg-info text-dark">İade</span>{% endif %}</td>
+              <td class="text-end {% if t.is_refund %}text-success{% else %}text-danger{% endif %}">{{ t.amount | money }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Atanmamış işlem yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block page_title %}Çalışanlar{% endblock %}
+{% block topbar_actions %}
+<a href="/employees/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Çalışan</a>
+{% endblock %}
+{% block content %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent border-0">
+    <form class="d-flex gap-2" method="get">
+      <select name="active_only" class="form-select form-select-sm" style="max-width:160px">
+        <option value="1" {% if active_only=='1' %}selected{% endif %}>Aktif Çalışanlar</option>
+        <option value="0" {% if active_only=='0' %}selected{% endif %}>Tümü</option>
+      </select>
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrele</button>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr><th>Ad Soyad</th><th>Unvan</th><th>Departman</th><th class="text-end">Net Maaş</th><th>Başlangıç</th><th>Durum</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for emp in employees %}
+        <tr>
+          <td><a href="/employees/{{ emp.id }}" class="text-decoration-none fw-semibold">{{ emp.name }}</a></td>
+          <td>{{ emp.title or "—" }}</td>
+          <td>{{ emp.department or "—" }}</td>
+          <td class="text-end">{{ emp.net_salary | money }}</td>
+          <td>{{ emp.start_date | date_tr }}</td>
+          <td><span class="badge {% if emp.active %}bg-success{% else %}bg-secondary{% endif %}">{{ "Aktif" if emp.active else "Pasif" }}</span></td>
+          <td class="text-end"><a href="/employees/{{ emp.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Düzenle</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">Çalışan bulunamadı.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

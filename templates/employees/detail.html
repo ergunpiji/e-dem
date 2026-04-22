@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block page_title %}{{ employee.name }}{% endblock %}
+{% block topbar_actions %}
+{% if current_user.is_admin %}
+<a href="/employees/{{ employee.id }}/edit" class="btn btn-sm btn-outline-secondary">Düzenle</a>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <!-- Sol: Çalışan bilgileri -->
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-center mb-3">
+          <div class="rounded-circle bg-primary bg-opacity-10 d-inline-flex align-items-center justify-content-center mb-2" style="width:64px;height:64px">
+            <span class="fs-4 fw-bold text-primary">{{ employee.name[0] }}</span>
+          </div>
+          <h5 class="mb-0">{{ employee.name }}</h5>
+          <div class="text-muted small">{{ employee.title or "—" }}</div>
+          <span class="badge {% if employee.active %}bg-success{% else %}bg-secondary{% endif %} mt-1">{{ "Aktif" if employee.active else "Pasif" }}</span>
+        </div>
+        <table class="table table-sm mb-0">
+          <tr><td class="text-muted">Departman</td><td>{{ employee.department or "—" }}</td></tr>
+          <tr><td class="text-muted">Başlangıç</td><td>{{ employee.start_date | date_tr }}</td></tr>
+          {% if employee.end_date %}<tr><td class="text-muted">Ayrılış</td><td>{{ employee.end_date | date_tr }}</td></tr>{% endif %}
+          <tr><td class="text-muted">Brüt Maaş</td><td>{{ employee.gross_salary | money }}</td></tr>
+          <tr><td class="text-muted">Net Maaş</td><td class="fw-semibold">{{ employee.net_salary | money }}</td></tr>
+          {% if employee.iban %}<tr><td class="text-muted">IBAN</td><td class="small font-monospace">{{ employee.iban }}</td></tr>{% endif %}
+        </table>
+        {% if employee.notes %}
+        <div class="mt-3 p-2 bg-light rounded small text-muted">{{ employee.notes }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sağ: İşlemler -->
+  <div class="col-md-8">
+    <!-- Maaş Öde -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0 d-flex align-items-center">
+        <span class="fw-semibold">Maaş Öde</span>
+      </div>
+      <div class="card-body py-2">
+        <form method="post" action="/employees/{{ employee.id }}/salary" class="row g-2 align-items-end">
+          <div class="col-auto">
+            <label class="form-label small">Dönem</label>
+            <input type="month" name="period" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Brüt</label>
+            <input type="number" name="gross_amount" step="0.01" class="form-control form-control-sm" value="{{ employee.gross_salary }}" required>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Net</label>
+            <input type="number" name="net_amount" step="0.01" class="form-control form-control-sm" value="{{ employee.net_salary }}" required>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Ödeme</label>
+            <select name="payment_method" class="form-select form-select-sm" id="salaryPayMethod">
+              <option value="banka">Banka</option>
+              <option value="nakit">Nakit</option>
+            </select>
+          </div>
+          <div class="col-auto" id="salaryBankDiv">
+            <label class="form-label small">Banka Hesabı</label>
+            <select name="bank_account_id" class="form-select form-select-sm">
+              <option value="">—</option>
+              {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Not</label>
+            <input type="text" name="notes" class="form-control form-control-sm" placeholder="Opsiyonel">
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-success">Öde</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Maaş Geçmişi -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0 fw-semibold">Maaş Geçmişi</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>Dönem</th><th class="text-end">Brüt</th><th class="text-end">Net</th><th>Ödeme</th><th>Tarih</th></tr>
+          </thead>
+          <tbody>
+            {% for sp in salary_payments %}
+            <tr>
+              <td>{{ sp.period }}</td>
+              <td class="text-end">{{ sp.gross_amount | money }}</td>
+              <td class="text-end fw-semibold">{{ sp.net_amount | money }}</td>
+              <td>{{ sp.payment_method }}</td>
+              <td class="small text-muted">{{ sp.paid_at.strftime('%d.%m.%Y') if sp.paid_at else '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">Maaş kaydı yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Yan Hak Ekle -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0 fw-semibold">Yan Hak Ekle</div>
+      <div class="card-body py-2">
+        <form method="post" action="/employees/{{ employee.id }}/benefit" class="row g-2 align-items-end">
+          <div class="col-auto">
+            <label class="form-label small">Tür</label>
+            <select name="benefit_type" class="form-select form-select-sm">
+              <option value="yemek">Yemek</option>
+              <option value="ulasim">Ulaşım</option>
+              <option value="saglik">Sağlık</option>
+              <option value="diger">Diğer</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Dönem</label>
+            <input type="month" name="period" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Tutar</label>
+            <input type="number" name="amount" step="0.01" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Ödeme</label>
+            <select name="payment_method" class="form-select form-select-sm">
+              <option value="banka">Banka</option>
+              <option value="nakit">Nakit</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-outline-primary">Ekle</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Yan Haklar Listesi -->
+    {% if benefits %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0 fw-semibold">Yan Haklar</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>Dönem</th><th>Tür</th><th class="text-end">Tutar</th><th>Ödeme</th></tr>
+          </thead>
+          <tbody>
+            {% for b in benefits %}
+            <tr>
+              <td>{{ b.period }}</td>
+              <td>{{ b.benefit_type }}</td>
+              <td class="text-end">{{ b.amount | money }}</td>
+              <td>{{ b.payment_method }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Avans Ver -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0 fw-semibold">Avans Ver</div>
+      <div class="card-body py-2">
+        <form method="post" action="/employees/{{ employee.id }}/advance" class="row g-2 align-items-end">
+          <div class="col-auto">
+            <label class="form-label small">Tarih</label>
+            <input type="date" name="advance_date" class="form-control form-control-sm" required value="{{ today }}">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Tutar</label>
+            <input type="number" name="amount" step="0.01" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Ödeme</label>
+            <select name="payment_method" class="form-select form-select-sm" id="advPayMethod">
+              <option value="nakit">Nakit</option>
+              <option value="banka">Banka</option>
+            </select>
+          </div>
+          <div class="col-auto d-none" id="advBankDiv">
+            <label class="form-label small">Banka Hesabı</label>
+            <select name="bank_account_id" class="form-select form-select-sm">
+              <option value="">—</option>
+              {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small">Neden</label>
+            <input type="text" name="reason" class="form-control form-control-sm">
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-warning">Ver</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Avanslar -->
+    {% if advances %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0 fw-semibold">Avanslar</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>Tarih</th><th>Neden</th><th class="text-end">Tutar</th><th class="text-end">Geri Ödenen</th><th>Durum</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for adv in advances %}
+            <tr>
+              <td>{{ adv.advance_date | date_tr }}</td>
+              <td>{{ adv.reason or "—" }}</td>
+              <td class="text-end">{{ adv.amount | money }}</td>
+              <td class="text-end">{{ adv.repaid_amount | money }}</td>
+              <td>
+                <span class="badge {% if adv.status == 'closed' %}bg-success{% elif adv.status == 'partial' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                  {{ adv.status }}
+                </span>
+              </td>
+              <td>
+                {% if adv.status != 'closed' %}
+                <button class="btn btn-xs btn-sm btn-outline-secondary py-0" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#repay{{ adv.id }}">Geri Al</button>
+                <div class="collapse mt-2" id="repay{{ adv.id }}">
+                  <form method="post" action="/employees/{{ employee.id }}/advance/{{ adv.id }}/repay" class="row g-1">
+                    <div class="col-auto"><input type="date" name="repay_date" class="form-control form-control-sm" required></div>
+                    <div class="col-auto"><input type="number" name="repay_amount" step="0.01" class="form-control form-control-sm" placeholder="Tutar" required></div>
+                    <div class="col-auto">
+                      <select name="payment_method" class="form-select form-select-sm">
+                        <option value="nakit">Nakit</option>
+                        <option value="banka">Banka</option>
+                      </select>
+                    </div>
+                    <div class="col-auto">
+                      <select name="bank_account_id" class="form-select form-select-sm">
+                        <option value="">—</option>
+                        {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-auto"><button type="submit" class="btn btn-sm btn-success">Kaydet</button></div>
+                  </form>
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+document.getElementById('salaryPayMethod').addEventListener('change', function() {
+  document.getElementById('salaryBankDiv').style.display = this.value === 'banka' ? '' : 'none';
+});
+document.getElementById('advPayMethod').addEventListener('change', function() {
+  document.getElementById('advBankDiv').classList.toggle('d-none', this.value !== 'banka');
+});
+</script>
+{% endblock %}

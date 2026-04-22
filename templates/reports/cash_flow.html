@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent border-0">
+    <form class="row g-2 align-items-end" method="get">
+      <div class="col-auto">
+        <label class="form-label small">Başlangıç</label>
+        <input type="date" name="start" value="{{ start.isoformat() }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small">Bitiş</label>
+        <input type="date" name="end" value="{{ end.isoformat() }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrele</button>
+      </div>
+      <div class="col-auto ms-auto">
+        <span class="badge fs-6 {% if total >= 0 %}bg-success{% else %}bg-danger{% endif %}">
+          Net: {{ total | money }}
+        </span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Tarih</th>
+          <th>Açıklama</th>
+          <th>Kaynak</th>
+          <th class="text-end">Tutar</th>
+          <th class="text-end">Bakiye</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td>{{ e.date | date_tr }}</td>
+          <td>{{ e.description or "—" }}</td>
+          <td><span class="badge bg-light text-dark border">{{ e.source }}</span></td>
+          <td class="text-end fw-semibold {% if e.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {% if e.amount >= 0 %}+{% endif %}{{ e.amount | money }}
+          </td>
+          <td class="text-end {% if e.running >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {{ e.running | money }}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">Bu dönemde hareket yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
