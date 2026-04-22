@@ -708,9 +708,11 @@ async def requests_detail(
                       .order_by(ReqModel.created_at.desc())
                       .all())
         # Transfer modalı için aktif referans listesi — tüm aktif (taslak/iptal/kapalı hariç)
+        from sqlalchemy import or_ as _or
         eligible_alt_refs = (db.query(ReqModel)
-                               .filter(ReqModel.is_fund_pool == False,            # noqa: E712
-                                       ReqModel.status.notin_(["draft", "cancelled", "closed"]))
+                               .filter(_or(ReqModel.is_fund_pool == False,       # noqa: E712
+                                           ReqModel.is_fund_pool == None),       # noqa: E711
+                                       ReqModel.status.notin_(["draft", "cancelled", "closed", "fund_pool"]))
                                .order_by(ReqModel.created_at.desc())
                                .all())
         current_rate = get_current_exchange_rate(req.fund_currency)
