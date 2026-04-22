@@ -707,18 +707,12 @@ async def requests_detail(
                       .filter(ReqModel.parent_fund_request_id == req.id)
                       .order_by(ReqModel.created_at.desc())
                       .all())
-        # Transfer modalı için aktif referans listesi:
-        # - Customer pool → aynı müşteriye ait aktif refler
-        # - Vendor pool  → TÜM aktif refler (vendor fonu herhangi bir referansa pay edilebilir)
-        eligible_alt_refs = []
-        _base_q = (db.query(ReqModel)
-                     .filter(ReqModel.is_fund_pool == False,            # noqa: E712
-                             ReqModel.status.notin_(["draft", "cancelled", "closed"])))
-        if req.fund_pool_type == "vendor":
-            eligible_alt_refs = _base_q.order_by(ReqModel.created_at.desc()).all()
-        elif req.customer_id:
-            eligible_alt_refs = (_base_q.filter(ReqModel.customer_id == req.customer_id)
-                                       .order_by(ReqModel.created_at.desc()).all())
+        # Transfer modalı için aktif referans listesi — tüm aktif (taslak/iptal/kapalı hariç)
+        eligible_alt_refs = (db.query(ReqModel)
+                               .filter(ReqModel.is_fund_pool == False,            # noqa: E712
+                                       ReqModel.status.notin_(["draft", "cancelled", "closed"]))
+                               .order_by(ReqModel.created_at.desc())
+                               .all())
         current_rate = get_current_exchange_rate(req.fund_currency)
         customer = (db.query(Customer).filter(Customer.id == req.customer_id).first()
                     if req.customer_id else None)

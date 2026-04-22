@@ -312,7 +312,7 @@
               </optgroup>
               {% endif %}
               {% if _unlinked %}
-              <optgroup label="Müşterinin diğer aktif referansları (transfer ile otomatik bağlanır)">
+              <optgroup label="Diğer aktif referanslar (transfer ile otomatik bağlanır)">
                 {% for r in _unlinked %}
                 <option value="{{ r.id }}">{{ r.request_no }} — {{ r.event_name }} ({{ r.status_label }})</option>
                 {% endfor %}
@@ -320,7 +320,7 @@
               {% endif %}
             </select>
             <div class="form-text" style="font-size:11px;">
-              Müşteriye ait taslak/iptal/kapalı dışındaki tüm referanslar listelenir.
+              Taslak/iptal/kapalı dışındaki tüm aktif referanslar listelenir.
               Henüz fona bağlı olmayan bir referans seçerseniz transfer yapılırken otomatik bu fona bağlanır.
             </div>
           </div>
