@@ -58,7 +58,7 @@
   "currency":  {% if invoice %}{{ invoice.currency | tojson }}{% else %}"TRY"{% endif %}
 }</script>
 
-<form method="post" id="invoiceForm" onsubmit="return prepareSubmit()">
+<form method="post" id="invoiceForm">
 <input type="hidden" name="items_json" id="itemsJson">
 
 <!-- PDF Otomatik Doldur -->
@@ -261,6 +261,9 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
 <script>
 (function () {
   'use strict';
