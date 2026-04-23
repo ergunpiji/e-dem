@@ -28,11 +28,12 @@
   .city-ac-item { padding:7px 12px; font-size:13px; cursor:pointer; }
   .city-ac-item:hover { background:#f0f7ff; }
 
-  /* IBAN kartı */
-  .iban-card { border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px; display:flex; align-items:center; gap:12px; }
-  .iban-card i { font-size:18px; color:#3b82f6; }
-  .iban-card .iban-val { font-family:monospace; font-size:14px; font-weight:600; flex:1; }
-  .iban-card .iban-edit { font-size:12px; color:#64748b; }
+  /* Banka hesap kartları */
+  .bank-acct-card { border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px; margin-bottom:12px; }
+  .ba-header { display:flex; align-items:center; margin-bottom:12px; }
+  .ba-num { font-weight:700; font-size:13px; color:#1e293b; }
+  .ba-fields { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-start; }
+  .ba-field { display:flex; flex-direction:column; }
   .iban-empty { color:#94a3b8; font-size:13px; padding:4px 0; }
 
   /* Konum radio */
@@ -171,33 +172,18 @@
 <!-- 3. Banka Hesapları / IBAN -->
 <div class="section-card">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <div class="section-title mb-0"><i class="bi bi-bank"></i> Banka Hesapları / IBAN
+    <div class="section-title mb-0">
+      <i class="bi bi-bank"></i> Banka Hesapları / IBAN
       <span class="text-muted fw-normal" style="font-size:11px;">(en az 1 zorunlu)</span>
     </div>
-    <button type="button" class="btn btn-outline-primary btn-sm" onclick="toggleIbanEdit()">
+    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addBankAccount()">
       <i class="bi bi-plus-lg me-1"></i>Hesap Ekle
     </button>
   </div>
-
-  <div id="ibanDisplay">
-    {% if vendor and vendor.iban %}
-    <div class="iban-card">
-      <i class="bi bi-credit-card-2-front"></i>
-      <div class="iban-val">{{ vendor.iban }}</div>
-      <span class="badge bg-success">Aktif</span>
-    </div>
-    {% else %}
-    <div class="iban-empty">
-      <i class="bi bi-info-circle me-1"></i>Henüz banka hesabı eklenmedi.
-    </div>
-    {% endif %}
-  </div>
-
-  <div id="ibanEdit" style="display:{% if not vendor or not vendor.iban %}block{% else %}none{% endif %}; margin-top:12px;">
-    <label class="form-label">IBAN</label>
-    <input type="text" name="iban" class="form-control font-monospace"
-           placeholder="TR00 0000 0000 0000 0000 0000 00"
-           value="{{ vendor.iban if vendor else '' }}">
+  <input type="hidden" name="bank_accounts_json" id="bankAccountsJson">
+  <div id="bankAccountsList"></div>
+  <div id="bankEmptyMsg" class="iban-empty" style="display:none;">
+    <i class="bi bi-info-circle me-1"></i>Henüz banka hesabı eklenmedi.
   </div>
 </div>
 
@@ -309,29 +295,159 @@ document.addEventListener('click', e => {
 });
 
 function toggleCities(val) {
-  // Yurt dışı seçilince şehir bölümü gizlenebilir, ama gösterelim
-}
-
-function toggleIbanEdit() {
-  const edit = document.getElementById('ibanEdit');
-  edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
+  // reserved
 }
 
 initTags();
 
-// IBAN display toggle: hide "Henüz yok" if input has value
-const ibanInput = document.querySelector('input[name="iban"]');
-if (ibanInput) {
-  ibanInput.addEventListener('input', function() {
-    const disp = document.getElementById('ibanDisplay');
-    if (this.value.trim()) {
-      disp.innerHTML = `<div class="iban-card">
-        <i class="bi bi-credit-card-2-front" style="color:#3b82f6;font-size:18px;"></i>
-        <div class="iban-val font-monospace" style="font-size:14px;font-weight:600;flex:1;">${this.value}</div>
-        <span class="badge bg-success">Aktif</span>
-      </div>`;
-    }
-  });
+/* ================================================================
+   Banka Hesapları
+   ================================================================ */
+const VENDOR_NAME_INIT = {% if vendor %}{{ vendor.name | tojson }}{% else %}null{% endif %};
+const BANK_ACCOUNTS_INIT = {% if vendor and vendor.bank_accounts_json %}{{ vendor.bank_accounts_json | safe }}{% else %}null{% endif %};
+
+let bankAccounts = [];
+let bankCount = 0;
+
+const CURRENCIES = ['TRY','USD','EUR','GBP','CHF','JPY','AED'];
+
+function addBankAccount(data) {
+  const idx = bankCount++;
+  const acct = data || {
+    currency: 'TRY',
+    iban: '',
+    bank_name: '',
+    swift: '',
+    account_holder: VENDOR_NAME_INIT || '',
+    is_primary: bankAccounts.length === 0
+  };
+  bankAccounts.push(acct);
+  renderBankAccounts();
+  // focus new row's IBAN
+  setTimeout(() => {
+    const el = document.getElementById(`ba-iban-${bankAccounts.length - 1}`);
+    if (el) el.focus();
+  }, 50);
 }
+
+function removeBankAccount(i) {
+  bankAccounts.splice(i, 1);
+  if (bankAccounts.length && !bankAccounts.some(a => a.is_primary)) {
+    bankAccounts[0].is_primary = true;
+  }
+  renderBankAccounts();
+}
+
+function setPrimary(i) {
+  bankAccounts.forEach((a, j) => a.is_primary = (j === i));
+  renderBankAccounts();
+}
+
+function renderBankAccounts() {
+  const list = document.getElementById('bankAccountsList');
+  const empty = document.getElementById('bankEmptyMsg');
+  list.innerHTML = '';
+
+  if (!bankAccounts.length) {
+    empty.style.display = 'block';
+    serializeBankAccounts();
+    return;
+  }
+  empty.style.display = 'none';
+
+  bankAccounts.forEach((acct, i) => {
+    const curOpts = CURRENCIES.map(c =>
+      `<option value="${c}" ${acct.currency === c ? 'selected' : ''}>${c}</option>`
+    ).join('');
+    const swiftRequired = acct.currency !== 'TRY';
+
+    const div = document.createElement('div');
+    div.className = 'bank-acct-card';
+    div.innerHTML = `
+      <div class="ba-header">
+        <span class="ba-num">${i+1}. Hesap</span>
+        ${acct.is_primary ? '<span class="badge bg-success ms-2" style="font-size:11px;">Birincil</span>' : `<button type="button" class="btn btn-link btn-sm p-0 ms-2" style="font-size:11px;" onclick="setPrimary(${i})">Birincil Yap</button>`}
+        <button type="button" class="btn btn-link btn-sm text-danger p-0 ms-auto" onclick="removeBankAccount(${i})" title="Kaldır"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="ba-fields">
+        <div class="ba-field" style="width:90px;">
+          <label class="form-label">Para Birimi <span class="req">*</span></label>
+          <select class="form-select form-select-sm" id="ba-cur-${i}" onchange="baChange(${i},'currency',this.value)">${curOpts}</select>
+        </div>
+        <div class="ba-field" style="flex:2;">
+          <label class="form-label">IBAN <span class="req">*</span></label>
+          <input type="text" class="form-control form-control-sm font-monospace" id="ba-iban-${i}"
+                 placeholder="TR + 24 rakam (26 karakter)"
+                 value="${acct.iban || ''}"
+                 oninput="baChange(${i},'iban',this.value);ibanCounter(${i},this.value)">
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px;" id="ba-iban-cnt-${i}">${(acct.iban||'').replace(/\s/g,'').length}/26 karakter</div>
+        </div>
+        <div class="ba-field" style="flex:1.5;">
+          <label class="form-label">Banka Adı</label>
+          <input type="text" class="form-control form-control-sm" placeholder="Örn: Garanti BBVA"
+                 value="${acct.bank_name || ''}"
+                 oninput="baChange(${i},'bank_name',this.value)">
+        </div>
+        <div class="ba-field" style="width:140px;">
+          <label class="form-label">SWIFT/BIC ${swiftRequired ? '<span class="req">*</span>' : ''}</label>
+          <input type="text" class="form-control form-control-sm" id="ba-swift-${i}" placeholder="Örn: TGBATRISXXX"
+                 value="${acct.swift || ''}" ${swiftRequired ? 'required' : ''}
+                 oninput="baChange(${i},'swift',this.value)">
+        </div>
+      </div>
+      <div class="ba-fields mt-2">
+        <div class="ba-field" style="flex:1;">
+          <label class="form-label">Hesap Sahibi</label>
+          <input type="text" class="form-control form-control-sm" placeholder="Tedarikçi resmi adı"
+                 value="${acct.account_holder || ''}"
+                 oninput="baChange(${i},'account_holder',this.value)">
+        </div>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+
+  serializeBankAccounts();
+}
+
+function baChange(i, field, val) {
+  bankAccounts[i][field] = val;
+  // currency değişince SWIFT zorunluluğunu güncelle
+  if (field === 'currency') {
+    renderBankAccounts();
+  } else {
+    serializeBankAccounts();
+  }
+}
+
+function ibanCounter(i, val) {
+  const clean = val.replace(/\s/g,'').length;
+  const el = document.getElementById(`ba-iban-cnt-${i}`);
+  if (el) el.textContent = `${clean}/26 karakter`;
+}
+
+function serializeBankAccounts() {
+  document.getElementById('bankAccountsJson').value = JSON.stringify(bankAccounts);
+}
+
+// init
+(function initBankAccounts() {
+  if (BANK_ACCOUNTS_INIT) {
+    try {
+      const saved = JSON.parse(BANK_ACCOUNTS_INIT);
+      saved.forEach(a => { bankAccounts.push(a); });
+    } catch(e) {}
+  } else if ({% if vendor and vendor.iban %}true{% else %}false{% endif %}) {
+    bankAccounts.push({
+      currency: 'TRY',
+      iban: {% if vendor and vendor.iban %}{{ vendor.iban | tojson }}{% else %}""{% endif %},
+      bank_name: '',
+      swift: '',
+      account_holder: VENDOR_NAME_INIT || '',
+      is_primary: true
+    });
+  }
+  renderBankAccounts();
+})();
 </script>
 {% endblock %}

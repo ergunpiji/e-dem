@@ -71,6 +71,7 @@ class FinancialVendor(Base):
     contact = Column(String(200))
     location_type = Column(String(20), default="turkiye")
     cities = Column(Text)
+    bank_accounts_json = Column(Text, nullable=True)
     notes = Column(Text)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

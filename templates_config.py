@@ -76,8 +76,13 @@ def format_datetime_tr(value: Any) -> str:
         return str(value)[:16]
 
 
+def tojson_filter(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
 templates.env.filters["date_tr"]      = format_date_tr
 templates.env.filters["datetime_tr"]  = format_datetime_tr
 templates.env.filters["money"]        = format_money
 templates.env.filters["role_label"]   = role_label
 templates.env.filters["fromjson"]     = fromjson_filter
+templates.env.filters["tojson"]       = tojson_filter

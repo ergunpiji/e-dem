@@ -13,6 +13,18 @@ from templates_config import templates
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
 
+
+def _primary_iban(bank_accounts_json: str) -> str:
+    import json as _j
+    try:
+        accounts = _j.loads(bank_accounts_json or "[]")
+        if accounts:
+            return (accounts[0].get("iban") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
 VENDOR_TYPES = [
     ("genel", "Genel Tedarikçi"),
     ("otel", "Otel"),
@@ -91,17 +103,20 @@ async def vendor_new_post(
     contact: str = Form(""),
     location_type: str = Form("turkiye"),
     cities: str = Form(""),
+    bank_accounts_json: str = Form("[]"),
     notes: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    primary_iban = _primary_iban(bank_accounts_json) or iban.strip()
     v = FinancialVendor(
         name=name.strip(), vendor_type=vendor_type,
-        iban=iban.strip(), tax_no=tax_no.strip(),
+        iban=primary_iban, tax_no=tax_no.strip(),
         tax_office=tax_office.strip(), address=address.strip(),
         phone=phone.strip(), email=email.strip(),
         payment_term=payment_term, contact=contact.strip(),
         location_type=location_type, cities=cities.strip(),
+        bank_accounts_json=bank_accounts_json if bank_accounts_json != "[]" else None,
         notes=notes.strip(), active=True,
     )
     db.add(v)
@@ -185,6 +200,7 @@ async def vendor_edit_post(
     contact: str = Form(""),
     location_type: str = Form("turkiye"),
     cities: str = Form(""),
+    bank_accounts_json: str = Form("[]"),
     notes: str = Form(""),
     active: str = Form("1"),
     current_user: User = Depends(get_current_user),
@@ -193,9 +209,10 @@ async def vendor_edit_post(
     v = db.query(FinancialVendor).get(vendor_id)
     if not v:
         raise HTTPException(status_code=404)
+    primary_iban = _primary_iban(bank_accounts_json) or iban.strip()
     v.name = name.strip()
     v.vendor_type = vendor_type
-    v.iban = iban.strip()
+    v.iban = primary_iban
     v.tax_no = tax_no.strip()
     v.tax_office = tax_office.strip()
     v.address = address.strip()
@@ -205,6 +222,7 @@ async def vendor_edit_post(
     v.contact = contact.strip()
     v.location_type = location_type
     v.cities = cities.strip()
+    v.bank_accounts_json = bank_accounts_json if bank_accounts_json != "[]" else None
     v.notes = notes.strip()
     v.active = (active == "1")
     db.commit()
