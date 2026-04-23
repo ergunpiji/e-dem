@@ -74,66 +74,167 @@ async def report_pl(
 @router.get("/cash-flow", response_class=HTMLResponse, name="report_cash_flow")
 async def report_cash_flow(
     request: Request,
-    start: str = None,
-    end: str = None,
+    weeks: int = 8,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    from datetime import timedelta
     today = date.today()
-    start_date = date.fromisoformat(start) if start else date(today.year, 1, 1)
-    end_date = date.fromisoformat(end) if end else today
+    week_start = today - timedelta(days=today.weekday())  # bu haftanın Pazartesi'si
 
-    events = []
+    weeks_data = []
+    for i in range(weeks):
+        wstart = week_start + timedelta(weeks=i)
+        wend = wstart + timedelta(days=6)
+        label = f"H{i + 1}" if i > 0 else "Bu Hafta"
 
-    # Kasa hareketleri
-    for e in db.query(CashEntry).filter(
-        CashEntry.entry_date >= start_date, CashEntry.entry_date <= end_date
-    ).all():
-        sign = 1 if e.entry_type == "giris" else -1
-        events.append({"date": e.entry_date, "amount": sign * e.amount,
-                        "description": e.description or "", "source": "Kasa"})
+        incoming = []  # gelir: tahsilat beklenen kesilen faturalar + kasa/banka girişleri
+        outgoing = []  # gider: ödeme bekleyen gelen faturalar, çekler, KK ekstreler, kasa/banka çıkışları
 
-    # Banka hareketleri
-    for m in db.query(BankMovement).filter(
-        BankMovement.movement_date >= start_date, BankMovement.movement_date <= end_date
-    ).all():
-        sign = 1 if m.movement_type == "giris" else -1
-        events.append({"date": m.movement_date, "amount": sign * m.amount,
-                        "description": m.description or "", "source": "Banka"})
+        # Kesilen faturalar → due_date'e göre beklenen tahsilat
+        for inv in db.query(Invoice).filter(
+            Invoice.invoice_type.in_(["kesilen", "komisyon"]),
+            Invoice.status == "approved",
+            Invoice.due_date >= wstart,
+            Invoice.due_date <= wend,
+        ).all():
+            incoming.append({
+                "type": "invoice",
+                "label": inv.reference.ref_no if inv.reference else (inv.invoice_no or f"Fatura #{inv.id}"),
+                "sub": inv.vendor.name if inv.vendor else "",
+                "date": inv.due_date,
+                "amount": inv.amount,
+                "invoice_id": inv.id,
+            })
 
-    # Kredi kartı ekstre ödemeleri → due_date bazlı
-    for stmt in db.query(CreditCardStatement).filter(
-        CreditCardStatement.due_date >= start_date,
-        CreditCardStatement.due_date <= end_date,
-    ).all():
-        events.append({"date": stmt.due_date, "amount": -stmt.total_amount,
-                        "description": f"KK Ekstre — {stmt.card.name if stmt.card else ''}",
-                        "source": "Kredi Kartı"})
+        # Kasa girişleri
+        for e in db.query(CashEntry).filter(
+            CashEntry.entry_type == "giris",
+            CashEntry.entry_date >= wstart,
+            CashEntry.entry_date <= wend,
+        ).all():
+            incoming.append({
+                "type": "cash",
+                "label": e.description or "Kasa Girişi",
+                "sub": "Kasa",
+                "date": e.entry_date,
+                "amount": e.amount,
+            })
 
-    # Verilen çekler → due_date bazlı
-    for c in db.query(Cheque).filter(
-        Cheque.cheque_type == "verilen",
-        Cheque.due_date >= start_date,
-        Cheque.due_date <= end_date,
-        Cheque.status.in_(["beklemede", "tahsil_edildi"]),
-    ).all():
-        events.append({"date": c.due_date, "amount": -c.amount,
-                        "description": f"Çek — {c.cheque_no or c.id}",
-                        "source": "Çek"})
+        # Banka girişleri
+        for m in db.query(BankMovement).filter(
+            BankMovement.movement_type == "giris",
+            BankMovement.movement_date >= wstart,
+            BankMovement.movement_date <= wend,
+        ).all():
+            incoming.append({
+                "type": "bank",
+                "label": m.description or "Banka Girişi",
+                "sub": m.account.name if m.account else "Banka",
+                "date": m.movement_date,
+                "amount": m.amount,
+            })
 
-    events.sort(key=lambda x: x["date"])
+        # Gelen faturalar → due_date'e göre beklenen ödeme
+        for inv in db.query(Invoice).filter(
+            Invoice.invoice_type == "gelen",
+            Invoice.status == "approved",
+            Invoice.due_date >= wstart,
+            Invoice.due_date <= wend,
+        ).all():
+            outgoing.append({
+                "type": "invoice",
+                "label": inv.vendor.name if inv.vendor else (inv.invoice_no or f"Fatura #{inv.id}"),
+                "sub": inv.reference.ref_no if inv.reference else "",
+                "date": inv.due_date,
+                "amount": inv.amount,
+            })
 
-    running = 0.0
-    for e in events:
-        running += e["amount"]
-        e["running"] = running
+        # Verilen çekler → vade tarihine göre
+        for c in db.query(Cheque).filter(
+            Cheque.cheque_type == "verilen",
+            Cheque.status == "beklemede",
+            Cheque.due_date >= wstart,
+            Cheque.due_date <= wend,
+        ).all():
+            outgoing.append({
+                "type": "cheque",
+                "label": f"Çek — {c.cheque_no or c.id}",
+                "sub": c.vendor.name if c.vendor else "",
+                "date": c.due_date,
+                "amount": c.amount,
+            })
+
+        # KK ekstre ödemeleri → due_date'e göre
+        for stmt in db.query(CreditCardStatement).filter(
+            CreditCardStatement.status == "unpaid",
+            CreditCardStatement.due_date >= wstart,
+            CreditCardStatement.due_date <= wend,
+        ).all():
+            outgoing.append({
+                "type": "cc_stmt",
+                "label": f"KK Ekstre — {stmt.card.name if stmt.card else ''}",
+                "sub": stmt.card.bank_name if stmt.card else "",
+                "date": stmt.due_date,
+                "amount": stmt.total_amount,
+            })
+
+        # Kasa çıkışları
+        for e in db.query(CashEntry).filter(
+            CashEntry.entry_type == "cikis",
+            CashEntry.entry_date >= wstart,
+            CashEntry.entry_date <= wend,
+        ).all():
+            outgoing.append({
+                "type": "cash",
+                "label": e.description or "Kasa Çıkışı",
+                "sub": "Kasa",
+                "date": e.entry_date,
+                "amount": e.amount,
+            })
+
+        # Banka çıkışları
+        for m in db.query(BankMovement).filter(
+            BankMovement.movement_type == "cikis",
+            BankMovement.movement_date >= wstart,
+            BankMovement.movement_date <= wend,
+        ).all():
+            outgoing.append({
+                "type": "bank",
+                "label": m.description or "Banka Çıkışı",
+                "sub": m.account.name if m.account else "Banka",
+                "date": m.movement_date,
+                "amount": m.amount,
+            })
+
+        total_in = sum(x["amount"] for x in incoming)
+        total_out = sum(x["amount"] for x in outgoing)
+
+        weeks_data.append({
+            "label": label,
+            "start": wstart.strftime("%d.%m"),
+            "end": wend.strftime("%d.%m"),
+            "total_in": total_in,
+            "total_out": total_out,
+            "incoming": sorted(incoming, key=lambda x: x["date"]),
+            "outgoing": sorted(outgoing, key=lambda x: x["date"]),
+        })
+
+    # Vadesi geçmiş ödenmemiş faturalar (kesilen)
+    overdue = db.query(Invoice).filter(
+        Invoice.invoice_type.in_(["kesilen", "komisyon"]),
+        Invoice.status == "approved",
+        Invoice.due_date < today,
+        Invoice.due_date.isnot(None),
+    ).all()
+    total_overdue = sum(i.amount for i in overdue)
 
     return templates.TemplateResponse(
         "reports/cash_flow.html",
         {
             "request": request, "current_user": current_user,
-            "events": events, "start": start_date, "end": end_date,
-            "total": sum(e["amount"] for e in events),
+            "weeks_data": weeks_data, "weeks": weeks,
+            "overdue": overdue, "total_overdue": total_overdue,
             "page_title": "Nakit Akışı",
         },
     )

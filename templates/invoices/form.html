@@ -20,6 +20,10 @@
               <input type="date" name="invoice_date" class="form-control" required value="{{ invoice.invoice_date.isoformat() if invoice and invoice.invoice_date else '' }}">
             </div>
             <div class="col-md-6">
+              <label class="form-label fw-semibold">Vade Tarihi <span class="text-muted fw-normal small">(tahsilat / ödeme)</span></label>
+              <input type="date" name="due_date" class="form-control" value="{{ invoice.due_date.isoformat() if invoice and invoice.due_date else '' }}">
+            </div>
+            <div class="col-md-6">
               <label class="form-label fw-semibold">Fatura No</label>
               <input type="text" name="invoice_no" class="form-control" value="{{ invoice.invoice_no if invoice else '' }}">
             </div>

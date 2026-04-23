@@ -75,6 +75,7 @@ async def invoice_new_post(
     invoice_type: str = Form(...),
     invoice_no: str = Form(""),
     invoice_date: str = Form(...),
+    due_date: str = Form(""),
     amount: float = Form(...),
     vat_rate: float = Form(0.20),
     currency: str = Form("TRY"),
@@ -88,6 +89,7 @@ async def invoice_new_post(
         invoice_type=invoice_type,
         invoice_no=invoice_no.strip(),
         invoice_date=date.fromisoformat(invoice_date),
+        due_date=date.fromisoformat(due_date) if due_date else None,
         amount=amount,
         vat_rate=vat_rate,
         currency=currency,
@@ -157,6 +159,7 @@ async def invoice_edit_post(
     invoice_type: str = Form(...),
     invoice_no: str = Form(""),
     invoice_date: str = Form(...),
+    due_date: str = Form(""),
     amount: float = Form(...),
     vat_rate: float = Form(0.20),
     currency: str = Form("TRY"),
@@ -172,6 +175,7 @@ async def invoice_edit_post(
     inv.invoice_type = invoice_type
     inv.invoice_no = invoice_no.strip()
     inv.invoice_date = date.fromisoformat(invoice_date)
+    inv.due_date = date.fromisoformat(due_date) if due_date else None
     inv.amount = amount
     inv.vat_rate = vat_rate
     inv.currency = currency
