@@ -55,6 +55,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def nav_counts_middleware(request: Request, call_next):
     path = request.url.path
     if path.startswith("/static") or "." in path.split("/")[-1]:
+        request.state.nav_counts = {}
         return await call_next(request)
 
     counts = {}
