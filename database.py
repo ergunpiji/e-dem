@@ -162,6 +162,8 @@ def _migrate(engine) -> None:
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS email VARCHAR(200)",
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS payment_term INTEGER DEFAULT 30",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS location_type VARCHAR(20) DEFAULT 'turkiye'",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS cities TEXT",
     ]
     with engine.begin() as conn:
         for sql in migrations:

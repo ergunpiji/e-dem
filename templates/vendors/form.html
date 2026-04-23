@@ -1,81 +1,337 @@
 {% extends "base.html" %}
 {% block page_title %}{{ page_title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .section-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:22px 24px; margin-bottom:16px; }
+  .section-title { font-size:14px; font-weight:700; color:#1e293b; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .section-title i { color:#3b82f6; }
+  .form-label { font-weight:600; font-size:13px; color:#374151; margin-bottom:4px; }
+  .form-label .req { color:#ef4444; }
+  .form-control, .form-select { font-size:13px; border-color:#e2e8f0; }
+  .form-control:focus, .form-select:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+
+  /* Şehir etiketleri */
+  .tag-wrap { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 10px;
+    border:1px solid #e2e8f0; border-radius:6px; min-height:40px; cursor:text; background:#fff; }
+  .tag-wrap:focus-within { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+  .tag { display:inline-flex; align-items:center; gap:4px; background:#eff6ff; color:#1d4ed8;
+    border-radius:4px; padding:2px 8px; font-size:12px; font-weight:600; }
+  .tag .rm { cursor:pointer; color:#93c5fd; font-size:14px; line-height:1; }
+  .tag .rm:hover { color:#dc2626; }
+  .tag-input { border:none; outline:none; font-size:13px; color:#374151; min-width:120px; flex:1; }
+
+  .city-ac { position:absolute; top:100%; left:0; right:0; z-index:999; background:#fff;
+    border:1px solid #e2e8f0; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,.1);
+    max-height:200px; overflow-y:auto; display:none; }
+  .city-ac.show { display:block; }
+  .city-ac-item { padding:7px 12px; font-size:13px; cursor:pointer; }
+  .city-ac-item:hover { background:#f0f7ff; }
+
+  /* IBAN kartı */
+  .iban-card { border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px; display:flex; align-items:center; gap:12px; }
+  .iban-card i { font-size:18px; color:#3b82f6; }
+  .iban-card .iban-val { font-family:monospace; font-size:14px; font-weight:600; flex:1; }
+  .iban-card .iban-edit { font-size:12px; color:#64748b; }
+  .iban-empty { color:#94a3b8; font-size:13px; padding:4px 0; }
+
+  /* Konum radio */
+  .loc-radio { display:flex; gap:20px; }
+  .loc-radio label { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; }
+  .loc-radio input[type=radio] { accent-color:#3b82f6; width:16px; height:16px; }
+
+  .vade-wrap { display:flex; align-items:center; gap:8px; }
+  .vade-wrap input { max-width:100px; }
+  .vade-wrap span { font-size:13px; color:#64748b; font-weight:600; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-7">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body p-4">
-        <form method="post">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Ad <span class="text-danger">*</span></label>
-            <input type="text" name="name" class="form-control" required value="{{ vendor.name if vendor else '' }}">
-          </div>
-          <div class="row g-3">
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-semibold">Tip</label>
-              <select name="vendor_type" class="form-select">
-                {% for val, label in vendor_types %}
-                <option value="{{ val }}" {% if vendor and vendor.vendor_type == val %}selected{% elif not vendor and val == 'genel' %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-semibold">Vade (gün)</label>
-              <input type="number" name="payment_term" class="form-control" min="0" value="{{ vendor.payment_term if vendor else '30' }}">
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">IBAN</label>
-            <input type="text" name="iban" class="form-control font-monospace" placeholder="TR00 0000 0000 0000 0000 0000 00" value="{{ vendor.iban if vendor else '' }}">
-          </div>
-          <div class="row g-3">
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-semibold">Vergi No</label>
-              <input type="text" name="tax_no" class="form-control" value="{{ vendor.tax_no if vendor else '' }}">
-            </div>
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-semibold">Vergi Dairesi</label>
-              <input type="text" name="tax_office" class="form-control" value="{{ vendor.tax_office if vendor else '' }}">
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Adres</label>
-            <textarea name="address" class="form-control" rows="2">{{ vendor.address if vendor else '' }}</textarea>
-          </div>
-          <div class="row g-3">
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-semibold">Telefon</label>
-              <input type="text" name="phone" class="form-control" value="{{ vendor.phone if vendor else '' }}">
-            </div>
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-semibold">E-posta</label>
-              <input type="email" name="email" class="form-control" value="{{ vendor.email if vendor else '' }}">
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">İletişim Kişisi</label>
-            <input type="text" name="contact" class="form-control" placeholder="Yetkili adı, unvanı" value="{{ vendor.contact if vendor else '' }}">
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Notlar</label>
-            <textarea name="notes" class="form-control" rows="2">{{ vendor.notes if vendor else '' }}</textarea>
-          </div>
-          {% if vendor %}
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Durum</label>
-            <select name="active" class="form-select">
-              <option value="1" {% if vendor.active %}selected{% endif %}>Aktif</option>
-              <option value="0" {% if not vendor.active %}selected{% endif %}>Pasif</option>
-            </select>
-          </div>
-          {% endif %}
-          <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Kaydet</button>
-            <a href="/vendors{% if vendor %}/{{ vendor.id }}{% endif %}" class="btn btn-outline-secondary">İptal</a>
-          </div>
-        </form>
-      </div>
+<div class="col-md-8">
+
+<form method="post" id="vendorForm">
+
+<!-- 1. Tedarikçi Bilgileri -->
+<div class="section-card">
+  <div class="section-title"><i class="bi bi-building"></i> Tedarikçi Bilgileri</div>
+
+  <div class="mb-3">
+    <label class="form-label">Tedarikçi Adı <span class="req">*</span></label>
+    <input type="text" name="name" class="form-control" required
+           value="{{ vendor.name if vendor else '' }}">
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <label class="form-label">Vergi Numarası</label>
+      <input type="text" name="tax_no" class="form-control"
+             value="{{ vendor.tax_no if vendor else '' }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Vergi Dairesi</label>
+      <input type="text" name="tax_office" class="form-control"
+             value="{{ vendor.tax_office if vendor else '' }}">
     </div>
   </div>
+
+  <div class="mb-3">
+    <label class="form-label">Adres</label>
+    <textarea name="address" class="form-control" rows="3">{{ vendor.address if vendor else '' }}</textarea>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <label class="form-label">E-posta</label>
+      <input type="email" name="email" class="form-control"
+             value="{{ vendor.email if vendor else '' }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Telefon</label>
+      <input type="text" name="phone" class="form-control"
+             value="{{ vendor.phone if vendor else '' }}">
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-4">
+      <label class="form-label">Ödeme Vadesi (gün)</label>
+      <div class="vade-wrap">
+        <input type="number" name="payment_term" class="form-control" min="0"
+               value="{{ vendor.payment_term if vendor else '30' }}">
+        <span>gün</span>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Sektör <span class="req">*</span></label>
+      <select name="vendor_type" class="form-select">
+        {% for val, label in vendor_types %}
+        <option value="{{ val }}"
+          {% if vendor and vendor.vendor_type == val %}selected
+          {% elif not vendor and val == 'genel' %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">İletişim Kişisi</label>
+      <input type="text" name="contact" class="form-control" placeholder="Yetkili adı"
+             value="{{ vendor.contact if vendor else '' }}">
+    </div>
+  </div>
+
+  {% if vendor %}
+  <div class="mb-0">
+    <label class="form-label">Durum</label>
+    <select name="active" class="form-select" style="max-width:160px;">
+      <option value="1" {% if vendor.active %}selected{% endif %}>Aktif</option>
+      <option value="0" {% if not vendor.active %}selected{% endif %}>Pasif</option>
+    </select>
+  </div>
+  {% endif %}
 </div>
+
+<!-- 2. Konum & Hizmet Bölgesi -->
+<div class="section-card">
+  <div class="section-title"><i class="bi bi-geo-alt"></i> Konum & Hizmet Bölgesi</div>
+
+  <div class="mb-3">
+    <label class="form-label d-block">Tedarikçi Konumu <span class="req">*</span></label>
+    <div class="loc-radio">
+      <label>
+        <input type="radio" name="location_type" value="turkiye"
+               {% if not vendor or (vendor.location_type or 'turkiye') == 'turkiye' %}checked{% endif %}
+               onchange="toggleCities(this.value)">
+        <img src="https://flagcdn.com/16x12/tr.png" alt="TR"> Türkiye
+      </label>
+      <label>
+        <input type="radio" name="location_type" value="yurtdisi"
+               {% if vendor and vendor.location_type == 'yurtdisi' %}checked{% endif %}
+               onchange="toggleCities(this.value)">
+        <img src="https://flagcdn.com/16x12/un.png" alt="INT"> Yurt Dışı
+      </label>
+    </div>
+  </div>
+
+  <div id="citiesSection">
+    <label class="form-label">Hizmet Verilen Şehirler <span class="req">*</span></label>
+    <div class="tag-wrap" id="tagWrap" onclick="document.getElementById('cityInput').focus()">
+      <!-- tags rendered by JS -->
+    </div>
+    <input type="hidden" name="cities" id="citiesHidden" value="{{ vendor.cities if vendor else '' }}">
+    <div style="position:relative;">
+      <input type="text" id="cityInput" class="tag-input" placeholder="Şehir ara..."
+             style="border:none;outline:none;width:100%;margin-top:4px;font-size:13px;"
+             autocomplete="off" oninput="filterCities(this.value)" onkeydown="tagKeydown(event)">
+      <div class="city-ac" id="cityAc"></div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Birden fazla şehir ekleyebilirsiniz.</div>
+  </div>
+</div>
+
+<!-- 3. Banka Hesapları / IBAN -->
+<div class="section-card">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="section-title mb-0"><i class="bi bi-bank"></i> Banka Hesapları / IBAN
+      <span class="text-muted fw-normal" style="font-size:11px;">(en az 1 zorunlu)</span>
+    </div>
+    <button type="button" class="btn btn-outline-primary btn-sm" onclick="toggleIbanEdit()">
+      <i class="bi bi-plus-lg me-1"></i>Hesap Ekle
+    </button>
+  </div>
+
+  <div id="ibanDisplay">
+    {% if vendor and vendor.iban %}
+    <div class="iban-card">
+      <i class="bi bi-credit-card-2-front"></i>
+      <div class="iban-val">{{ vendor.iban }}</div>
+      <span class="badge bg-success">Aktif</span>
+    </div>
+    {% else %}
+    <div class="iban-empty">
+      <i class="bi bi-info-circle me-1"></i>Henüz banka hesabı eklenmedi.
+    </div>
+    {% endif %}
+  </div>
+
+  <div id="ibanEdit" style="display:{% if not vendor or not vendor.iban %}block{% else %}none{% endif %}; margin-top:12px;">
+    <label class="form-label">IBAN</label>
+    <input type="text" name="iban" class="form-control font-monospace"
+           placeholder="TR00 0000 0000 0000 0000 0000 00"
+           value="{{ vendor.iban if vendor else '' }}">
+  </div>
+</div>
+
+<!-- 4. Notlar -->
+<div class="section-card">
+  <div class="section-title"><i class="bi bi-sticky"></i> Notlar</div>
+  <textarea name="notes" class="form-control" rows="3">{{ vendor.notes if vendor else '' }}</textarea>
+</div>
+
+<!-- Butonlar -->
+<div class="d-flex gap-2 mb-5">
+  <button type="submit" class="btn btn-primary px-4">
+    <i class="bi bi-check-lg me-1"></i>{% if vendor %}Güncelle{% else %}Kaydet{% endif %}
+  </button>
+  <a href="/vendors{% if vendor %}/{{ vendor.id }}{% endif %}" class="btn btn-outline-secondary">İptal</a>
+  {% if vendor and current_user.is_admin %}
+  <form method="post" action="/vendors/{{ vendor.id }}/delete" style="margin-left:auto;"
+        onsubmit="return confirm('Bu tedarikçiyi silmek istediğinizden emin misiniz?')">
+    <button type="submit" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-trash me-1"></i>Sil
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+</form>
+</div>
+</div>
+
+<script>
+const TR_CITIES = ["Adana","Adıyaman","Afyonkarahisar","Ağrı","Amasya","Ankara","Antalya",
+  "Artvin","Aydın","Balıkesir","Bilecik","Bingöl","Bitlis","Bolu","Burdur","Bursa",
+  "Çanakkale","Çankırı","Çorum","Denizli","Diyarbakır","Edirne","Elazığ","Erzincan",
+  "Erzurum","Eskişehir","Gaziantep","Giresun","Gümüşhane","Hakkari","Hatay","Isparta",
+  "Mersin","İstanbul","İzmir","Kars","Kastamonu","Kayseri","Kırklareli","Kırşehir",
+  "Kocaeli","Konya","Kütahya","Malatya","Manisa","Kahramanmaraş","Mardin","Muğla",
+  "Muş","Nevşehir","Niğde","Ordu","Rize","Sakarya","Samsun","Siirt","Sinop","Sivas",
+  "Tekirdağ","Tokat","Trabzon","Tunceli","Şanlıurfa","Uşak","Van","Yozgat","Zonguldak",
+  "Aksaray","Bayburt","Karaman","Kırıkkale","Batman","Şırnak","Bartın","Ardahan",
+  "Iğdır","Yalova","Karabük","Kilis","Osmaniye","Düzce"];
+
+let tags = [];
+
+function initTags() {
+  const saved = document.getElementById('citiesHidden').value;
+  if (saved) {
+    tags = saved.split(',').map(s => s.trim()).filter(Boolean);
+    renderTags();
+  }
+}
+
+function renderTags() {
+  const wrap = document.getElementById('tagWrap');
+  wrap.querySelectorAll('.tag').forEach(t => t.remove());
+  const first = wrap.firstChild;
+  tags.forEach((city, i) => {
+    const span = document.createElement('span');
+    span.className = 'tag';
+    span.innerHTML = `${city}<span class="rm" onclick="removeTag(${i})">×</span>`;
+    wrap.insertBefore(span, first);
+  });
+  document.getElementById('citiesHidden').value = tags.join(',');
+}
+
+function addTag(city) {
+  city = city.trim();
+  if (!city || tags.includes(city)) return;
+  tags.push(city);
+  renderTags();
+  document.getElementById('cityInput').value = '';
+  document.getElementById('cityAc').classList.remove('show');
+}
+
+function removeTag(i) {
+  tags.splice(i, 1);
+  renderTags();
+}
+
+function filterCities(q) {
+  const ac = document.getElementById('cityAc');
+  ac.innerHTML = '';
+  if (!q) { ac.classList.remove('show'); return; }
+  const matches = TR_CITIES.filter(c => c.toLowerCase().startsWith(q.toLowerCase())).slice(0, 8);
+  if (!matches.length) { ac.classList.remove('show'); return; }
+  matches.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'city-ac-item';
+    div.textContent = c;
+    div.onclick = () => addTag(c);
+    ac.appendChild(div);
+  });
+  ac.classList.add('show');
+}
+
+function tagKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = document.getElementById('cityInput').value.trim();
+    if (v) addTag(v);
+  } else if (e.key === 'Backspace' && !document.getElementById('cityInput').value && tags.length) {
+    removeTag(tags.length - 1);
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#citiesSection')) {
+    document.getElementById('cityAc').classList.remove('show');
+  }
+});
+
+function toggleCities(val) {
+  // Yurt dışı seçilince şehir bölümü gizlenebilir, ama gösterelim
+}
+
+function toggleIbanEdit() {
+  const edit = document.getElementById('ibanEdit');
+  edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
+}
+
+initTags();
+
+// IBAN display toggle: hide "Henüz yok" if input has value
+const ibanInput = document.querySelector('input[name="iban"]');
+if (ibanInput) {
+  ibanInput.addEventListener('input', function() {
+    const disp = document.getElementById('ibanDisplay');
+    if (this.value.trim()) {
+      disp.innerHTML = `<div class="iban-card">
+        <i class="bi bi-credit-card-2-front" style="color:#3b82f6;font-size:18px;"></i>
+        <div class="iban-val font-monospace" style="font-size:14px;font-weight:600;flex:1;">${this.value}</div>
+        <span class="badge bg-success">Aktif</span>
+      </div>`;
+    }
+  });
+}
+</script>
 {% endblock %}

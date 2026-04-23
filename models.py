@@ -69,6 +69,8 @@ class FinancialVendor(Base):
     email = Column(String(200))
     payment_term = Column(Integer, default=30)
     contact = Column(String(200))
+    location_type = Column(String(20), default="turkiye")
+    cities = Column(Text)
     notes = Column(Text)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

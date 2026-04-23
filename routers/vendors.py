@@ -89,6 +89,8 @@ async def vendor_new_post(
     email: str = Form(""),
     payment_term: int = Form(30),
     contact: str = Form(""),
+    location_type: str = Form("turkiye"),
+    cities: str = Form(""),
     notes: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -99,6 +101,7 @@ async def vendor_new_post(
         tax_office=tax_office.strip(), address=address.strip(),
         phone=phone.strip(), email=email.strip(),
         payment_term=payment_term, contact=contact.strip(),
+        location_type=location_type, cities=cities.strip(),
         notes=notes.strip(), active=True,
     )
     db.add(v)
@@ -180,6 +183,8 @@ async def vendor_edit_post(
     email: str = Form(""),
     payment_term: int = Form(30),
     contact: str = Form(""),
+    location_type: str = Form("turkiye"),
+    cities: str = Form(""),
     notes: str = Form(""),
     active: str = Form("1"),
     current_user: User = Depends(get_current_user),
@@ -198,7 +203,24 @@ async def vendor_edit_post(
     v.email = email.strip()
     v.payment_term = payment_term
     v.contact = contact.strip()
+    v.location_type = location_type
+    v.cities = cities.strip()
     v.notes = notes.strip()
     v.active = (active == "1")
     db.commit()
     return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{vendor_id}/delete", name="vendor_delete")
+async def vendor_delete(
+    vendor_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403)
+    v = db.query(FinancialVendor).get(vendor_id)
+    if v:
+        db.delete(v)
+        db.commit()
+    return RedirectResponse(url="/vendors", status_code=status.HTTP_302_FOUND)
