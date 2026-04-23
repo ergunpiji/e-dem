@@ -2,77 +2,209 @@
 {% block page_title %}{{ vendor.name }}{% endblock %}
 {% block topbar_actions %}
 <a href="/vendors/{{ vendor.id }}/edit" class="btn btn-sm btn-outline-secondary">Düzenle</a>
-<a href="/invoices/new?vendor_id={{ vendor.id }}" class="btn btn-sm btn-primary">+ Fatura Ekle</a>
+<a href="/invoices/new?vendor_id={{ vendor.id }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Fatura Ekle</a>
 {% endblock %}
+
+{% block extra_css %}
+<style>
+  .stat-card { border-radius:12px; padding:16px 20px; }
+  .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#64748b; }
+  .stat-value { font-size:22px; font-weight:700; color:#1e293b; }
+  .inv-row:hover { background:#f8fafc; }
+  .period-btn { font-size:12px; }
+  .period-btn.active { background:#1e3a5f; color:#fff; border-color:#1e3a5f; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row g-3">
-  <div class="col-md-4">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">Tedarikçi Bilgileri</h6>
-        <table class="table table-sm mb-0">
-          <tr><th class="text-muted fw-normal">Tip</th><td>{{ vendor.vendor_type or "—" }}</td></tr>
-          <tr><th class="text-muted fw-normal">IBAN</th><td class="font-monospace small">{{ vendor.iban or "—" }}</td></tr>
-          <tr><th class="text-muted fw-normal">Vergi No</th><td>{{ vendor.tax_no or "—" }}</td></tr>
-          <tr><th class="text-muted fw-normal">Vergi Dairesi</th><td>{{ vendor.tax_office or "—" }}</td></tr>
-          <tr><th class="text-muted fw-normal">İletişim</th><td>{{ vendor.contact or "—" }}</td></tr>
-          <tr><th class="text-muted fw-normal">Durum</th><td><span class="badge {% if vendor.active %}bg-success{% else %}bg-secondary{% endif %}">{{ "Aktif" if vendor.active else "Pasif" }}</span></td></tr>
-        </table>
-        {% if vendor.notes %}<div class="mt-2 text-muted small">{{ vendor.notes }}</div>{% endif %}
+
+<!-- Tedarikçi bilgi başlığı -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-3">
+    <div class="row align-items-center">
+      <div class="col-md-8">
+        <h5 class="fw-bold mb-1">{{ vendor.name }}</h5>
+        <div class="text-muted" style="font-size:13px;">
+          {% if vendor.tax_no %}Vergi No: {{ vendor.tax_no }}{% if vendor.tax_office %} / {{ vendor.tax_office }}{% endif %} &nbsp;|&nbsp;{% endif %}
+          {% if vendor.contact %}<i class="bi bi-person me-1"></i>{{ vendor.contact }} &nbsp;|&nbsp;{% endif %}
+          {% if vendor.vendor_type %}<span class="badge bg-light text-dark border">{{ vendor.vendor_type }}</span>{% endif %}
+        </div>
+        {% if vendor.iban %}<div class="text-muted mt-1" style="font-size:12px;"><i class="bi bi-bank me-1"></i>{{ vendor.iban }}</div>{% endif %}
+        {% if vendor.notes %}<div class="text-muted mt-1" style="font-size:12px;">{{ vendor.notes }}</div>{% endif %}
+      </div>
+      <div class="col-md-4 text-md-end mt-2 mt-md-0">
+        <span class="badge {% if vendor.active %}bg-success{% else %}bg-secondary{% endif %} fs-6">
+          {{ "Aktif" if vendor.active else "Pasif" }}
+        </span>
       </div>
     </div>
-    <div class="card border-0 shadow-sm mt-3">
-      <div class="card-body">
-        <h6 class="fw-bold">Cari Özet</h6>
-        <div class="d-flex justify-content-between"><span class="text-muted">Toplam Gelen</span><span class="fw-semibold text-danger">{{ total_gelen | money }}</span></div>
-        <div class="d-flex justify-content-between"><span class="text-muted">Ödenen</span><span class="fw-semibold text-success">{{ total_odenen | money }}</span></div>
-        <hr class="my-2">
-        <div class="d-flex justify-content-between"><span class="fw-semibold">Bakiye</span><span class="fw-bold">{{ (total_gelen - total_odenen) | money }}</span></div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-8">
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent border-0"><span class="fw-semibold">Faturalar</span></div>
-      <div class="card-body p-0">
-        <table class="table table-sm table-hover mb-0">
-          <thead class="table-light"><tr><th>No</th><th>Tip</th><th>Tarih</th><th class="text-end">Tutar</th><th>Durum</th></tr></thead>
-          <tbody>
-            {% for inv in invoices %}
-            <tr>
-              <td><a href="/invoices/{{ inv.id }}" class="text-decoration-none">{{ inv.invoice_no or ("#" ~ inv.id) }}</a></td>
-              <td>{{ inv.invoice_type }}</td>
-              <td>{{ inv.invoice_date | date_tr }}</td>
-              <td class="text-end">{{ inv.amount | money }}</td>
-              <td><span class="badge {% if inv.status == 'paid' %}bg-success{% elif inv.status == 'approved' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ inv.status }}</span></td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" class="text-center text-muted py-3">Fatura yok.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    {% if cheques %}
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent border-0"><span class="fw-semibold">Çekler</span></div>
-      <div class="card-body p-0">
-        <table class="table table-sm table-hover mb-0">
-          <thead class="table-light"><tr><th>Çek No</th><th>Tutar</th><th>Vade</th><th>Durum</th></tr></thead>
-          <tbody>
-            {% for c in cheques %}
-            <tr>
-              <td>{{ c.cheque_no or "—" }}</td>
-              <td>{{ c.amount | money }}</td>
-              <td>{{ c.due_date | date_tr }}</td>
-              <td><span class="badge bg-secondary">{{ c.status }}</span></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    {% endif %}
   </div>
 </div>
+
+<!-- Özet stat kartları -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-light">
+      <div class="stat-label">Toplam İşlem</div>
+      <div class="stat-value">{{ total_amount | money }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card" style="background:#f0fdf4;">
+      <div class="stat-label">Ödenen</div>
+      <div class="stat-value" style="color:#16a34a;">{{ paid_amount | money }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card" style="background:#fffbeb;">
+      <div class="stat-label">Bekleyen</div>
+      <div class="stat-value" style="color:#d97706;">{{ unpaid_amount | money }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card" style="background:#fef2f2;">
+      <div class="stat-label">Gecikmiş</div>
+      <div class="stat-value" style="color:#dc2626;">{{ overdue_amount | money }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Dönem filtresi -->
+<div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
+  <span class="text-muted" style="font-size:12px;">Dönem:</span>
+  {% for p, lbl in [('all','Tümü'),('30','Son 30 gün'),('90','Son 90 gün'),('180','Son 6 ay'),('365','Son 1 yıl')] %}
+  <a href="/vendors/{{ vendor.id }}?period={{ p }}"
+     class="btn btn-outline-secondary btn-sm period-btn {% if period == p %}active{% endif %}">{{ lbl }}</a>
+  {% endfor %}
+</div>
+
+<!-- Fatura tablosu -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between py-2">
+    <span class="fw-semibold" style="font-size:14px;">Faturalar ({{ invoices|length }})</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0" style="font-size:13px;">
+      <thead style="background:#f8fafc;">
+        <tr>
+          <th class="ps-3" style="font-size:11px;color:#64748b;text-transform:uppercase;">Fatura No</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Tür</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Tarih</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Vade</th>
+          <th class="text-end" style="font-size:11px;color:#64748b;text-transform:uppercase;">Tutar</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Durum</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Ödeme</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr class="inv-row">
+          <td class="ps-3">
+            <a href="/invoices/{{ inv.id }}" class="fw-semibold text-decoration-none text-dark">
+              {{ inv.invoice_no or ("Fatura #" ~ inv.id) }}
+            </a>
+          </td>
+          <td>
+            <span class="badge {% if inv.invoice_type == 'kesilen' %}bg-success{% elif inv.invoice_type == 'gelen' %}bg-danger{% else %}bg-secondary{% endif %}">
+              {{ inv.invoice_type }}
+            </span>
+          </td>
+          <td class="text-muted">{{ inv.invoice_date | date_tr }}</td>
+          <td>
+            {% if inv.due_date %}
+              {% if inv.status == 'approved' and inv.due_date < today %}
+              <span class="text-danger fw-semibold">{{ inv.due_date | date_tr }}</span>
+              <span class="badge bg-danger ms-1" style="font-size:10px;">Gecikmiş</span>
+              {% else %}
+              {{ inv.due_date | date_tr }}
+              {% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-end fw-semibold">{{ inv.amount | money }}</td>
+          <td>
+            {% if inv.status == 'paid' %}
+            <span class="badge" style="background:#dcfce7;color:#16a34a;">Ödendi</span>
+            {% elif inv.status == 'approved' %}
+            <span class="badge" style="background:#fee2e2;color:#dc2626;">Bekliyor</span>
+            {% elif inv.status == 'cancelled' %}
+            <span class="badge bg-secondary">İptal</span>
+            {% else %}
+            <span class="badge bg-light text-dark border">{{ inv.status }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if inv.payment_method %}
+            {% if inv.payment_method == 'kredi_karti' %}
+            <span class="badge" style="background:#ede9fe;color:#6d28d9;font-size:10px;"><i class="bi bi-credit-card"></i> KK</span>
+            {% elif inv.payment_method == 'cek' %}
+            <span class="badge" style="background:#f1f5f9;color:#475569;font-size:10px;"><i class="bi bi-file-text"></i> Çek</span>
+            {% elif inv.payment_method == 'nakit' %}
+            <span class="badge" style="background:#fefce8;color:#854d0e;font-size:10px;"><i class="bi bi-cash"></i> Nakit</span>
+            {% elif inv.payment_method == 'banka' %}
+            <span class="badge" style="background:#f0fdf4;color:#166534;font-size:10px;"><i class="bi bi-bank"></i> Banka</span>
+            {% else %}
+            <span class="badge bg-light text-dark border" style="font-size:10px;">{{ inv.payment_method }}</span>
+            {% endif %}
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center py-4 text-muted">Bu tedarikçiye ait fatura bulunamadı.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Çekler -->
+{% if cheques %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-bottom py-2">
+    <span class="fw-semibold" style="font-size:14px;">Çekler ({{ cheques|length }})</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0" style="font-size:13px;">
+      <thead style="background:#f8fafc;">
+        <tr>
+          <th class="ps-3" style="font-size:11px;color:#64748b;text-transform:uppercase;">Çek No</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Tür</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Banka</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Vade</th>
+          <th class="text-end" style="font-size:11px;color:#64748b;text-transform:uppercase;">Tutar</th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Durum</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cheques %}
+        <tr>
+          <td class="ps-3 fw-semibold">{{ c.cheque_no or "—" }}</td>
+          <td>{{ c.cheque_type }}</td>
+          <td class="text-muted">{{ c.bank or "—" }}</td>
+          <td>
+            {% if c.status == 'beklemede' and c.due_date < today %}
+            <span class="text-danger fw-semibold">{{ c.due_date | date_tr }}</span>
+            {% else %}
+            {{ c.due_date | date_tr }}
+            {% endif %}
+          </td>
+          <td class="text-end fw-semibold">{{ c.amount | money }}</td>
+          <td>
+            {% if c.status == 'tahsil_edildi' %}
+            <span class="badge" style="background:#dcfce7;color:#16a34a;">Tahsil Edildi</span>
+            {% elif c.status == 'beklemede' %}
+            <span class="badge" style="background:#fef9c3;color:#a16207;">Beklemede</span>
+            {% elif c.status == 'iade' %}
+            <span class="badge bg-secondary">İade</span>
+            {% else %}
+            <span class="badge bg-danger">{{ c.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}

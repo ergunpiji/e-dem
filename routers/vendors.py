@@ -83,22 +83,40 @@ async def vendor_new_post(
 async def vendor_detail(
     vendor_id: int,
     request: Request,
+    period: str = "all",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from datetime import date, timedelta
     v = db.query(FinancialVendor).get(vendor_id)
     if not v:
         raise HTTPException(status_code=404)
-    invoices = db.query(Invoice).filter(Invoice.vendor_id == vendor_id).order_by(Invoice.invoice_date.desc()).limit(20).all()
-    cheques = db.query(Cheque).filter(Cheque.vendor_id == vendor_id).order_by(Cheque.due_date.desc()).limit(10).all()
-    total_gelen = sum(i.amount for i in invoices if i.invoice_type == "gelen")
-    total_odenen = sum(i.amount for i in invoices if i.status == "paid")
+
+    today = date.today()
+    inv_q = db.query(Invoice).filter(Invoice.vendor_id == vendor_id)
+    if period != "all":
+        cutoff = today - timedelta(days=int(period))
+        inv_q = inv_q.filter(Invoice.invoice_date >= cutoff)
+    invoices = inv_q.order_by(Invoice.invoice_date.desc()).all()
+
+    cheques = db.query(Cheque).filter(Cheque.vendor_id == vendor_id).order_by(Cheque.due_date.desc()).all()
+
+    total_amount  = sum(i.amount for i in invoices)
+    paid_amount   = sum(i.amount for i in invoices if i.status == "paid")
+    unpaid_amount = sum(i.amount for i in invoices if i.status == "approved")
+    overdue_amount = sum(
+        i.amount for i in invoices
+        if i.status == "approved" and i.due_date and i.due_date < today
+    )
+
     return templates.TemplateResponse(
         "vendors/detail.html",
         {
             "request": request, "current_user": current_user,
             "vendor": v, "invoices": invoices, "cheques": cheques,
-            "total_gelen": total_gelen, "total_odenen": total_odenen,
+            "total_amount": total_amount, "paid_amount": paid_amount,
+            "unpaid_amount": unpaid_amount, "overdue_amount": overdue_amount,
+            "period": period, "today": today,
             "page_title": v.name,
         },
     )
