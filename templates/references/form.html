@@ -1,54 +1,129 @@
 {% extends "base.html" %}
 {% block page_title %}{{ page_title }}{% endblock %}
 
+{% block extra_css %}
+<style>
+  .ref-code-box { background:#f0f7ff; border:2px solid #bfdbfe; border-radius:10px; padding:20px 24px; margin-bottom:20px; }
+  .ref-code-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#1d4ed8; margin-bottom:6px; }
+  .ref-code-input { font-size:22px; font-weight:800; font-family:monospace; letter-spacing:2px;
+    border:none; background:transparent; width:100%; outline:none; color:#1e3a5f; text-transform:uppercase; }
+  .ref-code-input::placeholder { color:#93c5fd; font-weight:400; font-size:18px; letter-spacing:1px; }
+  .ref-code-hint { font-size:11px; color:#64748b; margin-top:5px; }
+  .ref-code-input:focus { outline:none; }
+
+  .form-label { font-weight:600; font-size:13px; color:#374151; margin-bottom:4px; }
+  .form-control, .form-select { font-size:13px; border-color:#e2e8f0; }
+  .form-control:focus, .form-select:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+
+  .badge-refno { display:inline-block; background:#1e3a5f; color:#fff; border-radius:6px;
+    padding:4px 12px; font-family:monospace; font-size:15px; font-weight:700; letter-spacing:1px; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-md-7">
+
+    {% if error %}
+    <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <span>{{ error }}</span>
+    </div>
+    {% endif %}
+
     <div class="card border-0 shadow-sm">
       <div class="card-body p-4">
         <form method="post">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Başlık</label>
-            <input type="text" name="title" class="form-control" required value="{{ ref.title if ref else '' }}">
+
+          <!-- Referans Kodu — en belirgin alan -->
+          <div class="ref-code-box">
+            <div class="ref-code-label"><i class="bi bi-hash me-1"></i>Referans Kodu <span class="text-danger">*</span></div>
+            {% if ref %}
+            <!-- Düzenlemede mevcut kodu göster, değiştirilebilir -->
+            <input type="text" name="ref_no" class="ref-code-input" required
+                   value="{{ form_data.ref_no if form_data else ref.ref_no }}"
+                   placeholder="Örn: 2024-PR-001"
+                   oninput="this.value = this.value.toUpperCase()">
+            <div class="ref-code-hint">
+              <i class="bi bi-info-circle me-1"></i>
+              Bu kod projenizin benzersiz kimliği — faturalar, ödemeler ve tüm kayıtlar bu kodla ilişkilendirilir.
+            </div>
+            {% else %}
+            <input type="text" name="ref_no" class="ref-code-input" required autofocus
+                   value="{{ form_data.ref_no if form_data else '' }}"
+                   placeholder="Örn: 2024-PR-001"
+                   oninput="this.value = this.value.toUpperCase()">
+            <div class="ref-code-hint">
+              <i class="bi bi-info-circle me-1"></i>
+              Projeye özel, benzersiz bir kod girin. Bu kod sonradan değiştirilemez (yalnızca admin değiştirebilir).
+            </div>
+            {% endif %}
           </div>
+
+          <!-- Başlık -->
           <div class="mb-3">
-            <label class="form-label fw-semibold">Müşteri</label>
+            <label class="form-label">Proje / Etkinlik Adı <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control" required
+                   value="{{ form_data.title if form_data else (ref.title if ref else '') }}"
+                   placeholder="Etkinlik veya proje başlığı">
+          </div>
+
+          <!-- Müşteri -->
+          <div class="mb-3">
+            <label class="form-label">Müşteri</label>
             <select name="customer_id" class="form-select">
               <option value="">— Seçiniz —</option>
               {% for c in customers %}
-              <option value="{{ c.id }}" {% if ref and ref.customer_id == c.id %}selected{% endif %}>{{ c.name }} ({{ c.code }})</option>
+              <option value="{{ c.id }}"
+                {% if form_data and form_data.customer_id == c.id %}selected
+                {% elif ref and ref.customer_id == c.id %}selected{% endif %}>
+                {{ c.name }} ({{ c.code }})
+              </option>
               {% endfor %}
             </select>
           </div>
-          <div class="row g-3">
-            <div class="col-md-6 mb-3">
-              <label class="form-label fw-semibold">Etkinlik Tipi</label>
+
+          <!-- Etkinlik Tipi + Tarihler -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label">Etkinlik Tipi</label>
               <select name="event_type" class="form-select">
                 {% for val, label in event_types %}
-                <option value="{{ val }}" {% if ref and ref.event_type == val %}selected{% elif not ref and val == 'diger' %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ val }}"
+                  {% set cur_type = form_data.event_type if form_data else (ref.event_type if ref else 'diger') %}
+                  {% if cur_type == val %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-3 mb-3">
-              <label class="form-label fw-semibold">Giriş Tarihi</label>
-              <input type="date" name="check_in" class="form-control" value="{{ ref.check_in.isoformat() if ref and ref.check_in else '' }}">
+            <div class="col-md-4">
+              <label class="form-label">Başlangıç Tarihi</label>
+              <input type="date" name="check_in" class="form-control"
+                     value="{{ form_data.check_in if form_data else (ref.check_in.isoformat() if ref and ref.check_in else '') }}">
             </div>
-            <div class="col-md-3 mb-3">
-              <label class="form-label fw-semibold">Çıkış Tarihi</label>
-              <input type="date" name="check_out" class="form-control" value="{{ ref.check_out.isoformat() if ref and ref.check_out else '' }}">
+            <div class="col-md-4">
+              <label class="form-label">Bitiş Tarihi</label>
+              <input type="date" name="check_out" class="form-control"
+                     value="{{ form_data.check_out if form_data else (ref.check_out.isoformat() if ref and ref.check_out else '') }}">
             </div>
           </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Notlar</label>
-            <textarea name="notes" class="form-control" rows="3">{{ ref.notes if ref else '' }}</textarea>
+
+          <!-- Notlar -->
+          <div class="mb-4">
+            <label class="form-label">Notlar</label>
+            <textarea name="notes" class="form-control" rows="3"
+                      placeholder="Proje hakkında ek bilgiler...">{{ form_data.notes if form_data else (ref.notes if ref else '') }}</textarea>
           </div>
+
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Kaydet</button>
+            <button type="submit" class="btn btn-primary px-4">
+              <i class="bi bi-check-lg me-1"></i>{% if ref %}Güncelle{% else %}Oluştur{% endif %}
+            </button>
             <a href="/references{% if ref %}/{{ ref.id }}{% endif %}" class="btn btn-outline-secondary">İptal</a>
           </div>
         </form>
       </div>
     </div>
+
   </div>
 </div>
 {% endblock %}

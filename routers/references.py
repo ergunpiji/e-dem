@@ -70,6 +70,7 @@ async def reference_new_get(
 @router.post("/new", name="reference_new_post")
 async def reference_new_post(
     request: Request,
+    ref_no: str = Form(...),
     customer_id: int = Form(None),
     title: str = Form(...),
     event_type: str = Form("diger"),
@@ -79,11 +80,27 @@ async def reference_new_post(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    customer = db.query(Customer).get(customer_id) if customer_id else None
-    customer_code = customer.code if customer else "XXX"
-    ci = date.fromisoformat(check_in) if check_in else date.today()
-    ref_no = generate_ref_no(db, event_type, customer_code, ci)
+    ref_no = ref_no.strip().upper()
+    customers = db.query(Customer).filter(Customer.code != None).order_by(Customer.name).all()  # noqa: E711
 
+    # Benzersizlik kontrolü
+    existing = db.query(Reference).filter(Reference.ref_no == ref_no).first()
+    if existing:
+        return templates.TemplateResponse(
+            "references/form.html",
+            {
+                "request": request, "current_user": current_user,
+                "ref": None, "customers": customers,
+                "event_types": EVENT_TYPES, "page_title": "Yeni Referans",
+                "error": f'"{ref_no}" kodu zaten kullanımda. Lütfen farklı bir kod girin.',
+                "form_data": {"ref_no": ref_no, "customer_id": customer_id, "title": title,
+                              "event_type": event_type, "check_in": check_in,
+                              "check_out": check_out, "notes": notes},
+            },
+            status_code=422,
+        )
+
+    ci = date.fromisoformat(check_in) if check_in else date.today()
     ref = Reference(
         ref_no=ref_no,
         customer_id=customer_id,
@@ -156,7 +173,9 @@ async def reference_edit_get(
 
 @router.post("/{ref_id}/edit", name="reference_edit_post")
 async def reference_edit_post(
+    request: Request,
     ref_id: int,
+    ref_no: str = Form(...),
     customer_id: int = Form(None),
     title: str = Form(...),
     event_type: str = Form("diger"),
@@ -169,6 +188,27 @@ async def reference_edit_post(
     ref = db.query(Reference).get(ref_id)
     if not ref:
         raise HTTPException(status_code=404)
+
+    ref_no = ref_no.strip().upper()
+    # Benzersizlik kontrolü — kendi kaydı hariç
+    conflict = db.query(Reference).filter(
+        Reference.ref_no == ref_no, Reference.id != ref_id
+    ).first()
+    if conflict:
+        customers = db.query(Customer).order_by(Customer.name).all()
+        return templates.TemplateResponse(
+            "references/form.html",
+            {
+                "request": request, "current_user": current_user,
+                "ref": ref, "customers": customers,
+                "event_types": EVENT_TYPES,
+                "page_title": f"Düzenle — {ref.ref_no}",
+                "error": f'"{ref_no}" kodu başka bir referansta kullanımda.',
+            },
+            status_code=422,
+        )
+
+    ref.ref_no = ref_no
     ref.customer_id = customer_id
     ref.title = title.strip()
     ref.event_type = event_type
