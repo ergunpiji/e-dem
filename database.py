@@ -152,12 +152,27 @@ def generate_ref_no(db, event_type: str, customer_code: str, check_in) -> str:
 # Init (DB reset + create + seed)
 # ---------------------------------------------------------------------------
 
+def _migrate(engine) -> None:
+    """Mevcut tablolara eksik kolonları ekler (basit migration)."""
+    from sqlalchemy import text
+    migrations = [
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date DATE",
+    ]
+    with engine.begin() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                print(f"[migrate] {sql[:60]}… → {e}")
+
+
 def init_db() -> None:
     if os.environ.get("RESET_DB") == "1":
         print("[db] RESET_DB=1 — tablolar siliniyor...")
         Base.metadata.drop_all(bind=engine)
         print("[db] Tablolar silindi.")
     Base.metadata.create_all(bind=engine)
+    _migrate(engine)
     print("[db] Tablolar hazır.")
     seed_data()
 
