@@ -63,6 +63,10 @@ async def vendor_new_post(
     iban: str = Form(""),
     tax_no: str = Form(""),
     tax_office: str = Form(""),
+    address: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    payment_term: int = Form(30),
     contact: str = Form(""),
     notes: str = Form(""),
     current_user: User = Depends(get_current_user),
@@ -71,7 +75,9 @@ async def vendor_new_post(
     v = FinancialVendor(
         name=name.strip(), vendor_type=vendor_type,
         iban=iban.strip(), tax_no=tax_no.strip(),
-        tax_office=tax_office.strip(), contact=contact.strip(),
+        tax_office=tax_office.strip(), address=address.strip(),
+        phone=phone.strip(), email=email.strip(),
+        payment_term=payment_term, contact=contact.strip(),
         notes=notes.strip(), active=True,
     )
     db.add(v)
@@ -148,6 +154,10 @@ async def vendor_edit_post(
     iban: str = Form(""),
     tax_no: str = Form(""),
     tax_office: str = Form(""),
+    address: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    payment_term: int = Form(30),
     contact: str = Form(""),
     notes: str = Form(""),
     active: str = Form("1"),
@@ -162,6 +172,10 @@ async def vendor_edit_post(
     v.iban = iban.strip()
     v.tax_no = tax_no.strip()
     v.tax_office = tax_office.strip()
+    v.address = address.strip()
+    v.phone = phone.strip()
+    v.email = email.strip()
+    v.payment_term = payment_term
     v.contact = contact.strip()
     v.notes = notes.strip()
     v.active = (active == "1")

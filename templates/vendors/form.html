@@ -2,25 +2,31 @@
 {% block page_title %}{{ page_title }}{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-6">
+  <div class="col-md-7">
     <div class="card border-0 shadow-sm">
       <div class="card-body p-4">
         <form method="post">
           <div class="mb-3">
-            <label class="form-label fw-semibold">Ad</label>
+            <label class="form-label fw-semibold">Ad <span class="text-danger">*</span></label>
             <input type="text" name="name" class="form-control" required value="{{ vendor.name if vendor else '' }}">
           </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Tip</label>
-            <select name="vendor_type" class="form-select">
-              {% for val, label in vendor_types %}
-              <option value="{{ val }}" {% if vendor and vendor.vendor_type == val %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+          <div class="row g-3">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Tip</label>
+              <select name="vendor_type" class="form-select">
+                {% for val, label in vendor_types %}
+                <option value="{{ val }}" {% if vendor and vendor.vendor_type == val %}selected{% elif not vendor and val == 'genel' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Vade (gün)</label>
+              <input type="number" name="payment_term" class="form-control" min="0" value="{{ vendor.payment_term if vendor else '30' }}">
+            </div>
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">IBAN</label>
-            <input type="text" name="iban" class="form-control font-monospace" value="{{ vendor.iban if vendor else '' }}">
+            <input type="text" name="iban" class="form-control font-monospace" placeholder="TR00 0000 0000 0000 0000 0000 00" value="{{ vendor.iban if vendor else '' }}">
           </div>
           <div class="row g-3">
             <div class="col-md-6 mb-3">
@@ -33,8 +39,22 @@
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">İletişim</label>
-            <input type="text" name="contact" class="form-control" value="{{ vendor.contact if vendor else '' }}">
+            <label class="form-label fw-semibold">Adres</label>
+            <textarea name="address" class="form-control" rows="2">{{ vendor.address if vendor else '' }}</textarea>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Telefon</label>
+              <input type="text" name="phone" class="form-control" value="{{ vendor.phone if vendor else '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">E-posta</label>
+              <input type="email" name="email" class="form-control" value="{{ vendor.email if vendor else '' }}">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">İletişim Kişisi</label>
+            <input type="text" name="contact" class="form-control" placeholder="Yetkili adı, unvanı" value="{{ vendor.contact if vendor else '' }}">
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Notlar</label>

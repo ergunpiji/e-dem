@@ -157,6 +157,10 @@ def _migrate(engine) -> None:
     from sqlalchemy import text
     migrations = [
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date DATE",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS address TEXT",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS phone VARCHAR(50)",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS email VARCHAR(200)",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS payment_term INTEGER DEFAULT 30",
     ]
     with engine.begin() as conn:
         for sql in migrations:
