@@ -32,14 +32,35 @@ async def vendors_list(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from datetime import date
+    from sqlalchemy import func
     query = db.query(FinancialVendor)
     if q:
         query = query.filter(FinancialVendor.name.ilike(f"%{q}%"))
     vendors = query.order_by(FinancialVendor.name).all()
+
+    today = date.today()
+    vendor_ids = [v.id for v in vendors]
+
+    # Batch: approved invoices per vendor
+    approved_invoices = (
+        db.query(Invoice.vendor_id, Invoice.amount, Invoice.due_date)
+        .filter(Invoice.vendor_id.in_(vendor_ids), Invoice.status == "approved")
+        .all()
+    )
+
+    unpaid_map: dict = {}
+    overdue_map: dict = {}
+    for inv in approved_invoices:
+        unpaid_map[inv.vendor_id] = unpaid_map.get(inv.vendor_id, 0) + (inv.amount or 0)
+        if inv.due_date and inv.due_date < today:
+            overdue_map[inv.vendor_id] = overdue_map.get(inv.vendor_id, 0) + (inv.amount or 0)
+
     return templates.TemplateResponse(
         "vendors/list.html",
         {"request": request, "current_user": current_user,
-         "vendors": vendors, "q": q, "page_title": "Tedarikçiler"},
+         "vendors": vendors, "q": q, "page_title": "Tedarikçiler",
+         "unpaid_map": unpaid_map, "overdue_map": overdue_map},
     )
 
 
