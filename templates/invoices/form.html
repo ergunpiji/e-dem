@@ -213,17 +213,17 @@
 <script>
 const REFS = [
   {% for r in refs %}
-  { id: {{ r.id }}, text: "{{ r.ref_no }} — {{ r.title | replace('"','') | truncate(40, True, '…') }}" },
+  { id: {{ r.id }}, text: {{ (r.ref_no ~ " — " ~ r.title) | truncate(60, True, "…") | tojson }} },
   {% endfor %}
 ];
 const VENDORS = {{ vendors_json | safe }};
-const INITIAL_ITEMS = {{ invoice.items_json | default('null') | safe }};
-const INIT_VENDOR_ID = {{ (invoice.vendor_id | string) if invoice and invoice.vendor_id else (preselected_vendor_id | default('null')) | string }};
-const INIT_REF_ID = {{ (invoice.ref_id | string) if invoice and invoice.ref_id else (preselected_ref_id | default('null')) | string }};
+const INITIAL_ITEMS = {% if invoice and invoice.items_json %}{{ invoice.items_json | safe }}{% else %}null{% endif %};
+const INIT_VENDOR_ID = {% if invoice and invoice.vendor_id %}{{ invoice.vendor_id }}{% elif preselected_vendor_id %}{{ preselected_vendor_id }}{% else %}null{% endif %};
+const INIT_REF_ID = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif preselected_ref_id %}{{ preselected_ref_id }}{% else %}null{% endif %};
 
-const VAT_OPTS = [0, 1, 8, 10, 18, 20];
+const VAT_OPTS = [0, 10, 20];
 let rowCount = 0;
-let currency = '{{ (invoice.currency if invoice else 'TRY') }}';
+let currency = "{% if invoice %}{{ invoice.currency }}{% else %}TRY{% endif %}";
 
 /* ---------- currency symbol ---------- */
 function currSym() {
@@ -244,6 +244,7 @@ function fmtMoney(n) { return fmtNum(n) + ' ' + currSym(); }
 
 /* ---------- add / remove row ---------- */
 function addRow(desc='', net=0, vatPct=20) {
+  if (!VAT_OPTS.includes(vatPct)) vatPct = 20;
   const tbody = document.getElementById('itemsBody');
   const idx = rowCount++;
   const vatOptions = VAT_OPTS.map(v =>
