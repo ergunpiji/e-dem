@@ -250,6 +250,7 @@ class Invoice(Base):
     cash_book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=True)
     cheque_id = Column(Integer, ForeignKey("cheques.id"), nullable=True)
     due_date = Column(Date, nullable=True)
+    items_json = Column(Text, nullable=True)
     notes = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

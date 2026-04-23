@@ -51,19 +51,27 @@ async def invoices_list(
 async def invoice_new_get(
     request: Request,
     ref_id: int = None,
+    vendor_id: int = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    import json
     refs = db.query(Reference).filter(Reference.status == "aktif").order_by(Reference.ref_no).all()
     vendors = db.query(FinancialVendor).filter(FinancialVendor.active == True).order_by(FinancialVendor.name).all()  # noqa: E712
+    vendors_json = json.dumps([
+        {"id": v.id, "name": v.name, "payment_term": v.payment_term or 30}
+        for v in vendors
+    ])
     return templates.TemplateResponse(
         "invoices/form.html",
         {
             "request": request, "current_user": current_user,
             "invoice": None, "refs": refs, "vendors": vendors,
+            "vendors_json": vendors_json,
             "invoice_types": INVOICE_TYPES, "vat_rates": VAT_RATES,
             "preselected_ref_id": ref_id,
-            "page_title": "Yeni Fatura",
+            "preselected_vendor_id": vendor_id,
+            "page_title": "Fatura Girişi",
         },
     )
 
@@ -76,13 +84,16 @@ async def invoice_new_post(
     invoice_no: str = Form(""),
     invoice_date: str = Form(...),
     due_date: str = Form(""),
-    amount: float = Form(...),
-    vat_rate: float = Form(0.20),
     currency: str = Form("TRY"),
     notes: str = Form(""),
+    items_json: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    import json as _json
+    net_total, vat_total = _parse_items(items_json)
+    amount = net_total
+    vat_rate = (vat_total / net_total) if net_total else 0.0
     inv = Invoice(
         ref_id=ref_id,
         vendor_id=vendor_id,
@@ -91,10 +102,11 @@ async def invoice_new_post(
         invoice_date=date.fromisoformat(invoice_date),
         due_date=date.fromisoformat(due_date) if due_date else None,
         amount=amount,
-        vat_rate=vat_rate,
+        vat_rate=round(vat_rate, 4),
         currency=currency,
         status="approved",
         notes=notes.strip(),
+        items_json=items_json if items_json != "[]" else None,
         created_by=current_user.id,
     )
     db.add(inv)
@@ -127,6 +139,18 @@ async def invoice_detail(
     )
 
 
+def _parse_items(items_json: str):
+    """Returns (net_total, vat_total) from items JSON string."""
+    import json as _json
+    try:
+        items = _json.loads(items_json or "[]")
+    except Exception:
+        items = []
+    net_total = sum(float(i.get("net", 0)) for i in items)
+    vat_total = sum(float(i.get("vat_amt", 0)) for i in items)
+    return net_total, vat_total
+
+
 @router.get("/{invoice_id}/edit", response_class=HTMLResponse, name="invoice_edit_get")
 async def invoice_edit_get(
     invoice_id: int,
@@ -134,18 +158,25 @@ async def invoice_edit_get(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    import json
     inv = db.query(Invoice).get(invoice_id)
     if not inv:
         raise HTTPException(status_code=404)
     refs = db.query(Reference).order_by(Reference.ref_no).all()
     vendors = db.query(FinancialVendor).filter(FinancialVendor.active == True).order_by(FinancialVendor.name).all()  # noqa: E712
+    vendors_json = json.dumps([
+        {"id": v.id, "name": v.name, "payment_term": v.payment_term or 30}
+        for v in vendors
+    ])
     return templates.TemplateResponse(
         "invoices/form.html",
         {
             "request": request, "current_user": current_user,
             "invoice": inv, "refs": refs, "vendors": vendors,
+            "vendors_json": vendors_json,
             "invoice_types": INVOICE_TYPES, "vat_rates": VAT_RATES,
             "preselected_ref_id": None,
+            "preselected_vendor_id": None,
             "page_title": f"Düzenle — Fatura {inv.invoice_no or inv.id}",
         },
     )
@@ -160,26 +191,27 @@ async def invoice_edit_post(
     invoice_no: str = Form(""),
     invoice_date: str = Form(...),
     due_date: str = Form(""),
-    amount: float = Form(...),
-    vat_rate: float = Form(0.20),
     currency: str = Form("TRY"),
     notes: str = Form(""),
+    items_json: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     inv = db.query(Invoice).get(invoice_id)
     if not inv:
         raise HTTPException(status_code=404)
+    net_total, vat_total = _parse_items(items_json)
     inv.ref_id = ref_id
     inv.vendor_id = vendor_id
     inv.invoice_type = invoice_type
     inv.invoice_no = invoice_no.strip()
     inv.invoice_date = date.fromisoformat(invoice_date)
     inv.due_date = date.fromisoformat(due_date) if due_date else None
-    inv.amount = amount
-    inv.vat_rate = vat_rate
+    inv.amount = net_total
+    inv.vat_rate = round((vat_total / net_total) if net_total else 0.0, 4)
     inv.currency = currency
     inv.notes = notes.strip()
+    inv.items_json = items_json if items_json != "[]" else None
     db.commit()
     return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=status.HTTP_302_FOUND)
 
