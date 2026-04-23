@@ -102,14 +102,23 @@
     <div class="col-md-4">
       <label class="form-label">Tedarikçi</label>
       <div class="ac-wrap">
-        <input type="text" id="vendorSearch" class="form-control" placeholder="Firma adı"
+        <input type="text" id="vendorSearch" class="form-control" placeholder="Firma adı ara..."
                autocomplete="off"
                value="{{ invoice.vendor.name if invoice and invoice.vendor else '' }}">
-        <div class="ac-list" id="vendorList"></div>
+        <div class="ac-list" id="vendorList">
+          <div class="ac-item ac-new-vendor" id="acNewVendorBtn" style="display:none;color:#2563eb;font-weight:600;">
+            <i class="bi bi-plus-circle me-1"></i><span id="acNewVendorLabel">Yeni tedarikçi ekle</span>
+          </div>
+        </div>
       </div>
       <input type="hidden" name="vendor_id" id="vendorId"
              value="{{ invoice.vendor_id if invoice and invoice.vendor_id else '' }}">
-      <div style="font-size:11px;color:#94a3b8;margin-top:3px;">Seçili tedarikçi varsa vade otomatik hesaplanır.</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:3px;">
+        Seçili tedarikçi varsa vade otomatik hesaplanır.
+        <a href="#" id="openVendorModal" style="color:#2563eb;text-decoration:none;" onclick="openNewVendorModal(event,'')">
+          <i class="bi bi-plus-circle me-1"></i>Yeni ekle
+        </a>
+      </div>
     </div>
   </div>
 
@@ -208,6 +217,72 @@
 </div>
 
 </form>
+
+<!-- Yeni Tedarikçi Modal -->
+<div class="modal fade" id="newVendorModal" tabindex="-1" aria-labelledby="newVendorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="newVendorModalLabel">
+          <i class="bi bi-building-add me-2 text-primary"></i>Yeni Tedarikçi Ekle
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-3">
+        <div id="vendorModalError" class="alert alert-danger d-none"></div>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-semibold">Tedarikçi Adı <span class="text-danger">*</span></label>
+            <input type="text" id="vm_name" class="form-control" placeholder="Firma resmi adı">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Vergi Numarası</label>
+            <input type="text" id="vm_tax_no" class="form-control" placeholder="10 haneli vergi no">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Vergi Dairesi</label>
+            <input type="text" id="vm_tax_office" class="form-control" placeholder="Örn: Kadıköy">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Telefon</label>
+            <input type="text" id="vm_phone" class="form-control" placeholder="+90 5xx xxx xx xx">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">E-posta</label>
+            <input type="email" id="vm_email" class="form-control" placeholder="fatura@firma.com">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Ödeme Vadesi (gün)</label>
+            <input type="number" id="vm_payment_term" class="form-control" value="30" min="0">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">Sektör</label>
+            <select id="vm_vendor_type" class="form-select">
+              <option value="genel">Genel Tedarikçi</option>
+              <option value="otel">Otel</option>
+              <option value="etkinlik">Etkinlik Mekanı</option>
+              <option value="teknik">Teknik Ekipman</option>
+              <option value="transfer">Transfer</option>
+              <option value="catering">Catering</option>
+              <option value="tasarim">Tasarım & Baskı</option>
+              <option value="diger">Diğer</option>
+            </select>
+          </div>
+        </div>
+        <div class="text-muted mt-3" style="font-size:12px;">
+          <i class="bi bi-info-circle me-1"></i>
+          Temel bilgiler kaydedilir. Adres, IBAN ve diğer detayları tedarikçi sayfasından ekleyebilirsiniz.
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-primary px-4" id="saveNewVendorBtn" onclick="saveNewVendor()">
+          <i class="bi bi-check-lg me-1"></i>Kaydet ve Seç
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Refs data -->
 <script>
@@ -374,33 +449,143 @@ document.addEventListener('click', e => {
 const vendorSearch = document.getElementById('vendorSearch');
 const vendorList = document.getElementById('vendorList');
 const vendorId = document.getElementById('vendorId');
+const acNewVendorBtn = document.getElementById('acNewVendorBtn');
 let selectedVendorPaymentTerm = null;
 
+function selectVendor(v) {
+  vendorSearch.value = v.name;
+  vendorId.value = v.id;
+  selectedVendorPaymentTerm = v.payment_term;
+  vendorList.classList.remove('show');
+  autoFillDueDate();
+  // listeye ekle (quick-add'dan gelenler için)
+  if (!VENDORS.find(x => x.id === v.id)) {
+    VENDORS.push(v);
+  }
+}
+
 vendorSearch.addEventListener('input', function() {
-  const q = this.value.toLowerCase();
-  vendorList.innerHTML = '';
+  const q = this.value.trim();
+  const ql = q.toLowerCase();
+  // Arama kutusu temizlenince seçimi sıfırla
   vendorId.value = '';
   selectedVendorPaymentTerm = null;
-  if (!q) { vendorList.classList.remove('show'); return; }
-  const matches = VENDORS.filter(v => v.name.toLowerCase().includes(q)).slice(0, 12);
-  if (!matches.length) { vendorList.classList.remove('show'); return; }
+
+  // Önceki dinamik satırları kaldır (pinned "yeni ekle" butonunu koru)
+  vendorList.querySelectorAll('.ac-item:not(.ac-new-vendor)').forEach(el => el.remove());
+
+  if (!q) { vendorList.classList.remove('show'); acNewVendorBtn.style.display='none'; return; }
+
+  const matches = VENDORS.filter(v => v.name.toLowerCase().includes(ql)).slice(0, 12);
+
+  // "Yeni ekle" butonunu güncelle ve en alta taşı
+  acNewVendorBtn.style.display = 'block';
+  document.getElementById('acNewVendorLabel').textContent =
+    matches.length === 0 ? `"${q}" adında yeni tedarikçi ekle` : 'Listede yok mu? Yeni tedarikçi ekle';
+  acNewVendorBtn.onclick = () => openNewVendorModal(null, q);
+
+  // Eşleşen satırları önce ekle
   matches.forEach(v => {
     const div = document.createElement('div');
     div.className = 'ac-item';
-    div.innerHTML = v.name + (v.payment_term ? `<br><small>${v.payment_term} gün vade</small>` : '');
-    div.onclick = () => {
-      vendorSearch.value = v.name;
-      vendorId.value = v.id;
-      selectedVendorPaymentTerm = v.payment_term;
-      vendorList.classList.remove('show');
-      autoFillDueDate();
-    };
-    vendorList.appendChild(div);
+    div.innerHTML = `<span>${v.name}</span>` +
+      (v.payment_term ? `<small class="text-muted ms-2">${v.payment_term} gün vade</small>` : '');
+    div.onclick = () => selectVendor(v);
+    vendorList.insertBefore(div, acNewVendorBtn);
   });
+
   vendorList.classList.add('show');
 });
+
 document.addEventListener('click', e => {
-  if (!vendorSearch.contains(e.target)) vendorList.classList.remove('show');
+  if (!e.target.closest('.ac-wrap')) vendorList.classList.remove('show');
+});
+
+/* ---------- yeni tedarikçi modal ---------- */
+let _vendorModal = null;
+
+function openNewVendorModal(e, prefill) {
+  if (e) e.preventDefault();
+  const nameEl = document.getElementById('vm_name');
+  nameEl.value = prefill || vendorSearch.value || '';
+  document.getElementById('vm_tax_no').value = '';
+  document.getElementById('vm_tax_office').value = '';
+  document.getElementById('vm_phone').value = '';
+  document.getElementById('vm_email').value = '';
+  document.getElementById('vm_payment_term').value = '30';
+  document.getElementById('vm_vendor_type').value = 'genel';
+  document.getElementById('vendorModalError').classList.add('d-none');
+
+  vendorList.classList.remove('show');
+
+  if (!_vendorModal) {
+    _vendorModal = new bootstrap.Modal(document.getElementById('newVendorModal'));
+  }
+  _vendorModal.show();
+  setTimeout(() => nameEl.focus(), 400);
+}
+
+async function saveNewVendor() {
+  const btn = document.getElementById('saveNewVendorBtn');
+  const errEl = document.getElementById('vendorModalError');
+  errEl.classList.add('d-none');
+
+  const name = document.getElementById('vm_name').value.trim();
+  if (!name) {
+    errEl.textContent = 'Tedarikçi adı zorunludur.';
+    errEl.classList.remove('d-none');
+    document.getElementById('vm_name').focus();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Kaydediliyor...';
+
+  const body = new FormData();
+  body.append('name', name);
+  body.append('tax_no', document.getElementById('vm_tax_no').value.trim());
+  body.append('tax_office', document.getElementById('vm_tax_office').value.trim());
+  body.append('phone', document.getElementById('vm_phone').value.trim());
+  body.append('email', document.getElementById('vm_email').value.trim());
+  body.append('payment_term', document.getElementById('vm_payment_term').value);
+  body.append('vendor_type', document.getElementById('vm_vendor_type').value);
+
+  try {
+    const resp = await fetch('/vendors/quick-add', { method: 'POST', body });
+    const data = await resp.json();
+
+    if (resp.status === 409 && data.existing) {
+      // Zaten var — kullanıcıya sor
+      errEl.innerHTML = `<strong>${data.error}</strong><br>
+        <a href="#" class="alert-link" onclick="useExistingVendor(${JSON.stringify(data.existing)});return false;">
+          Mevcut tedarikçiyi seç →
+        </a>`;
+      errEl.classList.remove('d-none');
+    } else if (!resp.ok) {
+      errEl.textContent = data.error || 'Bir hata oluştu.';
+      errEl.classList.remove('d-none');
+    } else {
+      // Başarılı — tedarikçiyi seç ve modali kapat
+      selectVendor(data);
+      _vendorModal.hide();
+    }
+  } catch(err) {
+    errEl.textContent = 'Sunucu bağlantı hatası.';
+    errEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Kaydet ve Seç';
+  }
+}
+
+function useExistingVendor(v) {
+  selectVendor(v);
+  _vendorModal.hide();
+}
+
+// Enter tuşuyla kaydet
+document.getElementById('newVendorModal').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNewVendor(); }
 });
 
 /* ---------- auto-fill due date from vendor payment_term ---------- */

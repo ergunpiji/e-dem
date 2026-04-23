@@ -76,6 +76,44 @@ async def vendors_list(
     )
 
 
+@router.post("/quick-add", name="vendor_quick_add")
+async def vendor_quick_add(
+    name: str = Form(...),
+    tax_no: str = Form(""),
+    tax_office: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    payment_term: int = Form(30),
+    vendor_type: str = Form("genel"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from fastapi.responses import JSONResponse
+    name = name.strip()
+    if not name:
+        return JSONResponse({"error": "Ad zorunludur."}, status_code=422)
+    # İsim çakışması kontrolü
+    existing = db.query(FinancialVendor).filter(
+        FinancialVendor.name.ilike(name)
+    ).first()
+    if existing:
+        return JSONResponse(
+            {"error": f'"{existing.name}" adında bir tedarikçi zaten var.',
+             "existing": {"id": existing.id, "name": existing.name,
+                          "payment_term": existing.payment_term or 30}},
+            status_code=409,
+        )
+    v = FinancialVendor(
+        name=name, vendor_type=vendor_type,
+        tax_no=tax_no.strip(), tax_office=tax_office.strip(),
+        phone=phone.strip(), email=email.strip(),
+        payment_term=payment_term, active=True,
+    )
+    db.add(v)
+    db.commit()
+    return JSONResponse({"id": v.id, "name": v.name, "payment_term": v.payment_term or 30})
+
+
 @router.get("/new", response_class=HTMLResponse, name="vendor_new_get")
 async def vendor_new_get(
     request: Request,
