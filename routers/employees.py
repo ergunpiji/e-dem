@@ -55,14 +55,35 @@ async def employees_list(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from models import EmployeeAdvance, GeneralExpense
     query = db.query(Employee)
     if active_only == "1":
         query = query.filter(Employee.active == True)  # noqa: E712
     employees = query.order_by(Employee.name).all()
+
+    emp_ids = [e.id for e in employees]
+
+    # Açık avans bakiyeleri (open/partial)
+    advance_balance: dict = {}
+    for adv in db.query(EmployeeAdvance).filter(
+        EmployeeAdvance.employee_id.in_(emp_ids),
+        EmployeeAdvance.status.in_(["open", "partial"]),
+    ).all():
+        remaining = (adv.amount or 0) - (adv.repaid_amount or 0)
+        advance_balance[adv.employee_id] = advance_balance.get(adv.employee_id, 0) + remaining
+
+    # Çalışana atanmış genel giderler (HBF / masraf beyanı gibi)
+    expense_totals: dict = {}
+    for exp in db.query(GeneralExpense).filter(
+        GeneralExpense.employee_id.in_(emp_ids)
+    ).all():
+        expense_totals[exp.employee_id] = expense_totals.get(exp.employee_id, 0) + (exp.amount or 0)
+
     return templates.TemplateResponse(
         "employees/list.html",
         {"request": request, "current_user": current_user,
          "employees": employees, "active_only": active_only,
+         "advance_balance": advance_balance, "expense_totals": expense_totals,
          "page_title": "Çalışanlar"},
     )
 
@@ -364,3 +385,32 @@ async def employee_advance_repay(
             ))
     db.commit()
     return RedirectResponse(url=f"/employees/{employee_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{employee_id}/toggle-active", name="employee_toggle_active")
+async def employee_toggle_active(
+    employee_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    emp = db.query(Employee).get(employee_id)
+    if emp:
+        emp.active = not emp.active
+        db.commit()
+    return RedirectResponse(url="/employees", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{employee_id}/delete", name="employee_delete")
+async def employee_delete(
+    employee_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    emp = db.query(Employee).get(employee_id)
+    if emp:
+        try:
+            db.delete(emp)
+            db.commit()
+        except Exception:
+            db.rollback()
+    return RedirectResponse(url="/employees", status_code=status.HTTP_302_FOUND)

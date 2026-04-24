@@ -46,12 +46,15 @@ VENDOR_TYPES = [
 async def vendors_list(
     request: Request,
     q: str = "",
+    active_only: str = "1",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     from datetime import date
     from sqlalchemy import func
     query = db.query(FinancialVendor)
+    if active_only == "1":
+        query = query.filter(FinancialVendor.active == True)  # noqa: E712
     if q:
         query = query.filter(FinancialVendor.name.ilike(f"%{q}%"))
     vendors = query.order_by(FinancialVendor.name).all()
@@ -78,7 +81,8 @@ async def vendors_list(
     return templates.TemplateResponse(
         "vendors/list.html",
         {"request": request, "current_user": current_user,
-         "vendors": vendors, "q": q, "page_title": "Tedarikçiler",
+         "vendors": vendors, "q": q, "active_only": active_only,
+         "page_title": "Tedarikçiler",
          "unpaid_map": unpaid_map, "overdue_map": overdue_map},
     )
 
@@ -399,6 +403,19 @@ async def vendor_edit_post(
     v.active = (active == "1")
     db.commit()
     return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{vendor_id}/toggle-active", name="vendor_toggle_active")
+async def vendor_toggle_active(
+    vendor_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    v = db.query(FinancialVendor).get(vendor_id)
+    if v:
+        v.active = not v.active
+        db.commit()
+    return RedirectResponse(url="/vendors", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{vendor_id}/delete", name="vendor_delete")

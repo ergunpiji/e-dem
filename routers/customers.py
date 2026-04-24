@@ -18,17 +18,21 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 async def customers_list(
     request: Request,
     q: str = "",
+    active_only: str = "1",
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     query = db.query(Customer)
+    if active_only == "1":
+        query = query.filter(Customer.active == True)  # noqa: E712
     if q:
         query = query.filter(Customer.name.ilike(f"%{q}%") | Customer.code.ilike(f"%{q}%"))
     customers = query.order_by(Customer.name).all()
     return templates.TemplateResponse(
         "customers/list.html",
         {"request": request, "current_user": current_user,
-         "customers": customers, "q": q, "page_title": "Müşteriler"},
+         "customers": customers, "q": q, "active_only": active_only,
+         "page_title": "Müşteriler"},
     )
 
 
@@ -134,6 +138,19 @@ async def customer_edit_post(
     return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
 
 
+@router.post("/{customer_id}/toggle-active", name="customer_toggle_active")
+async def customer_toggle_active(
+    customer_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Customer).get(customer_id)
+    if c:
+        c.active = not c.active
+        db.commit()
+    return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
+
+
 @router.post("/{customer_id}/delete", name="customer_delete")
 async def customer_delete(
     customer_id: int,
@@ -142,6 +159,9 @@ async def customer_delete(
 ):
     c = db.query(Customer).get(customer_id)
     if c:
-        db.delete(c)
-        db.commit()
+        try:
+            db.delete(c)
+            db.commit()
+        except Exception:
+            db.rollback()
     return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)

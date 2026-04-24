@@ -49,6 +49,7 @@ class Customer(Base):
     address = Column(Text)
     email = Column(String(200))
     phone = Column(String(50))
+    active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     references = relationship("Reference", back_populates="customer")

@@ -182,6 +182,8 @@ def _migrate(engine) -> None:
         # VendorPrepayment yeni kolonlar
         "ALTER TABLE vendor_prepayments ADD COLUMN IF NOT EXISTS payment_type VARCHAR(20) DEFAULT 'prepayment'",
         "ALTER TABLE vendor_prepayments ADD COLUMN IF NOT EXISTS ref_id INTEGER",
+        # Customer active alanı
+        "ALTER TABLE customers ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true",
     ]
     with engine.begin() as conn:
         for sql in migrations:
