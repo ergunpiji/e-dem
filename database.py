@@ -179,6 +179,9 @@ def _migrate(engine) -> None:
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS location_type VARCHAR(20) DEFAULT 'turkiye'",
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS cities TEXT",
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS bank_accounts_json TEXT",
+        # VendorPrepayment yeni kolonlar
+        "ALTER TABLE vendor_prepayments ADD COLUMN IF NOT EXISTS payment_type VARCHAR(20) DEFAULT 'prepayment'",
+        "ALTER TABLE vendor_prepayments ADD COLUMN IF NOT EXISTS ref_id INTEGER REFERENCES references(id) ON DELETE SET NULL",
     ]
     with engine.begin() as conn:
         for sql in migrations:
