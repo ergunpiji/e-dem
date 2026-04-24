@@ -3,268 +3,215 @@
 
 {% block extra_css %}
 <style>
+  .act-wrap { overflow-x: auto; border-radius: 8px; }
+  .act-table { border-collapse: collapse; min-width: 100%; font-size: 12px; table-layout: auto; }
   .act-table th, .act-table td {
-    font-size: 12px; white-space: nowrap; padding: 5px 8px;
+    padding: 5px 10px; white-space: nowrap;
+    border-bottom: 1px solid #e2e8f0;
   }
-  .act-table thead th {
-    background: #1e293b; color: #cbd5e1;
-    text-transform: uppercase; font-size: 11px; letter-spacing: .04em;
+  /* Sticky label column */
+  .act-table .col-label {
+    position: sticky; left: 0; z-index: 2;
+    min-width: 190px; max-width: 190px;
+    background: white; overflow: hidden; text-overflow: ellipsis;
   }
-  .act-table th.col-label { min-width: 160px; text-align: left; }
-  .act-table td.col-label { font-weight: 600; color: #1e293b; }
-  .act-table td.num { text-align: right; }
-  .act-section-header td { background: #f1f5f9; font-weight: 700; color: #475569;
-    font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px; }
-  .act-total td { background: #e2e8f0; font-weight: 800; }
-  .act-net td { background: #1e293b; color: #f8fafc; font-weight: 800; }
-  .act-budget-input {
-    width: 80px; border: 1px solid #cbd5e1; border-radius: 4px;
-    padding: 2px 4px; font-size: 11px; text-align: right; background: #fffbeb;
+  /* Header row */
+  .act-table thead tr th {
+    background: #1e293b; color: #94a3b8;
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em;
+    position: sticky; top: 0; z-index: 3; text-align: right;
   }
-  .act-budget-input:focus { outline: none; border-color: #f59e0b; background: #fef3c7; }
-  .variance-pos { color: #15803d; font-size: 11px; }
-  .variance-neg { color: #b91c1c; font-size: 11px; }
-  .kpi-card { border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 0; }
-  .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; margin-bottom: 4px; opacity: .75; }
-  .kpi-value { font-size: 20px; font-weight: 800; }
-  .month-col { min-width: 90px; }
-  .row-actual { color: #1e293b; }
-  .row-budget { color: #94a3b8; font-size: 11px; }
-  .row-variance { font-size: 11px; }
-  .fe-badge { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px;
-    padding: 6px 10px; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .act-table thead tr th.col-label { z-index: 4; text-align: left; background: #1e293b; }
+
+  /* Section header rows */
+  .act-table .sec-row td { background: #334155; color: #e2e8f0; font-weight: 700; font-size: 11px; }
+  .act-table .sec-row .col-label { background: #334155; padding-left: 10px; }
+
+  /* Data rows */
+  .act-table .data-row td { background: #ffffff; }
+  .act-table .data-row:hover td { background: #f8fafc; }
+  .act-table .data-row .col-label { background: #ffffff; padding-left: 22px; font-weight: 400; color: #334155; }
+  .act-table .data-row:hover .col-label { background: #f8fafc; }
+
+  /* Grand total */
+  .act-table .grand-row td { background: #0f172a; color: #f1f5f9; font-weight: 800; font-size: 12px; }
+  .act-table .grand-row .col-label { background: #0f172a; padding-left: 10px; }
+
+  /* Number cells */
+  .act-table td.num, .act-table th.num { text-align: right; }
+  .num-zero { color: #cbd5e1; }
+
+  /* Past month actual cells */
+  .cell-past { color: #1e293b; }
+
+  /* YTD column highlight */
+  .col-ytd { background: #eff6ff !important; color: #1d4ed8 !important; font-weight: 600; }
+  .sec-row .col-ytd { background: #1e3a5f !important; color: #93c5fd !important; }
+  .grand-row .col-ytd { background: #0c1f3d !important; color: #93c5fd !important; }
+
+  /* Forecast column */
+  .col-forecast { background: #f0fdf4 !important; color: #166534 !important; font-weight: 700; }
+  .sec-row .col-forecast { background: #14532d !important; color: #86efac !important; }
+  .grand-row .col-forecast { background: #052e16 !important; color: #86efac !important; }
+
+  /* Budget input cells */
+  .budget-input {
+    width: 76px; border: 1px solid #fbbf24; border-radius: 3px;
+    padding: 2px 4px; font-size: 11px; text-align: right;
+    background: #fffbeb; display: block;
+  }
+  .budget-input:focus { outline: none; border-color: #f59e0b; background: #fef3c7; }
+  .budget-cell { background: #fffbeb !important; }
+  .sec-row .budget-cell { background: #78350f !important; }
+
+  /* KPI cards */
+  .kpi-card { border-radius: 12px; padding: 14px 18px; flex: 1; min-width: 140px; }
+  .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; margin-bottom: 3px; opacity: .72; }
+  .kpi-value { font-size: 18px; font-weight: 800; }
 </style>
 {% endblock %}
 
 {% block topbar_actions %}
 <div class="d-flex gap-2 align-items-center">
-  <select class="form-select form-select-sm" style="width:auto;" onchange="location.href='/reports/activity?year='+this.value">
-    {% for y in range(2024, 2028) %}
+  <select class="form-select form-select-sm" style="width:auto;"
+          onchange="location.href='/reports/activity?year='+this.value">
+    {% for y in range(2024, 2029) %}
     <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
     {% endfor %}
   </select>
   <button class="btn btn-sm btn-primary" onclick="document.getElementById('budgetForm').submit()">
     <i class="bi bi-floppy me-1"></i>Bütçeyi Kaydet
   </button>
+  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addFixedModal">
+    <i class="bi bi-pin me-1"></i>Sabit Gider
+  </button>
 </div>
 {% endblock %}
 
 {% block content %}
 
-{# KPI özet kartları #}
-{% set sum_gelir = total_gelir_actual | sum %}
-{% set sum_gelen = total_gelen_actual | sum %}
-{% set sum_maas = total_maas_actual | sum %}
-{% set sum_genel = total_genel_actual | sum %}
-{% set sum_fixed = total_fixed_projected | sum %}
-{% set sum_net = net_actual | sum %}
-
+{# KPI Cards #}
 <div class="d-flex gap-3 mb-4 flex-wrap">
-  <div class="kpi-card" style="background:#eff6ff;color:#1d4ed8;">
-    <div class="kpi-label">Toplam Gelir (Gerçekleşen)</div>
-    <div class="kpi-value">{{ sum_gelir | money }}</div>
+  <div class="kpi-card" style="background:#f8fafc;border:1px solid #e2e8f0;">
+    <div class="kpi-label" style="color:#64748b;">{{ year_prev }} Gerçekleşen</div>
+    <div class="kpi-value" style="color:#1e293b;">{{ grand_prev | money }}</div>
   </div>
-  <div class="kpi-card" style="background:#fef2f2;color:#b91c1c;">
-    <div class="kpi-label">Toplam Gider (Gerçekleşen)</div>
-    <div class="kpi-value">{{ (sum_gelen + sum_maas + sum_genel) | money }}</div>
+  <div class="kpi-card" style="background:#eff6ff;border:1px solid #bfdbfe;">
+    <div class="kpi-label" style="color:#1d4ed8;">{{ year }} YTD Gerçekleşen</div>
+    <div class="kpi-value" style="color:#1d4ed8;">{{ grand_curr_ytd | money }}</div>
   </div>
-  <div class="kpi-card" style="{% if sum_net >= 0 %}background:#f0fdf4;color:#15803d;{% else %}background:#fef2f2;color:#b91c1c;{% endif %}">
-    <div class="kpi-label">Net Kar / Zarar</div>
-    <div class="kpi-value">{{ sum_net | money }}</div>
+  <div class="kpi-card" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+    <div class="kpi-label" style="color:#166534;">{{ year }} Öngörü (Yıl Sonu)</div>
+    <div class="kpi-value" style="color:#166534;">{{ grand_forecast | money }}</div>
   </div>
-  <div class="kpi-card" style="background:#fefce8;color:#92400e;">
-    <div class="kpi-label">Sabit Gider Öngörüsü</div>
-    <div class="kpi-value">{{ sum_fixed | money }}</div>
+  <div class="kpi-card" style="background:#fefce8;border:1px solid #fde68a;">
+    <div class="kpi-label" style="color:#92400e;">Sabit Gider Öngörüsü</div>
+    <div class="kpi-value" style="color:#92400e;">{{ fixed_monthly | sum | money }}</div>
   </div>
 </div>
 
-{# Ana bütçe tablosu #}
+{# Budget table legend #}
+<div class="mb-2 d-flex align-items-center gap-3" style="font-size:11px;color:#64748b;">
+  <span><span style="background:#ffffff;border:1px solid #e2e8f0;padding:1px 8px;border-radius:3px;">Gerçekleşen</span> geçmiş aylar (otomatik)</span>
+  <span><span style="background:#fffbeb;border:1px solid #fbbf24;padding:1px 8px;border-radius:3px;">Bütçe</span> gelecek aylar (düzenlenebilir)</span>
+  <span style="background:#eff6ff;padding:1px 8px;border-radius:3px;color:#1d4ed8;">YTD</span>
+  <span style="background:#f0fdf4;padding:1px 8px;border-radius:3px;color:#166534;">Öngörü = Geçmiş gerçek + Gelecek bütçe</span>
+</div>
+
+{# Main Table #}
 <form id="budgetForm" method="post" action="/reports/activity/budget">
 <input type="hidden" name="year" value="{{ year }}">
 
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-transparent border-0 d-flex align-items-center py-2">
-    <span class="fw-bold">Aylık Gelir / Gider Tablosu</span>
-    <small class="ms-2 text-muted">(Sarı hücreler = bütçe hedefi, düzenlenebilir)</small>
-  </div>
-  <div class="card-body p-0" style="overflow-x:auto;">
-    <table class="table act-table mb-0">
+  <div class="act-wrap">
+    <table class="act-table">
       <thead>
         <tr>
-          <th class="col-label">Kalem</th>
-          {% for m in months %}<th class="text-end month-col">{{ m }}</th>{% endfor %}
-          <th class="text-end month-col">TOPLAM</th>
+          <th class="col-label">Gider Kalemi</th>
+          <th class="num">{{ year_prev }}<br>Gerçekleşen</th>
+          <th class="num col-ytd">{{ year }}<br>Gerçekleşen</th>
+          {% for m in months_short %}<th class="num">{{ m }}</th>{% endfor %}
+          <th class="num col-forecast">Öngörü</th>
         </tr>
       </thead>
       <tbody>
 
-        {# ---- GELİR ---- #}
-        <tr class="act-section-header"><td colspan="14">Gelir</td></tr>
+        {% for section in sections %}
 
-        {# Gelir bütçe satırı #}
-        {% set gelir_budget = bl_months("gelir_0") %}
-        <tr>
+        {# Section header #}
+        <tr class="sec-row">
+          <td class="col-label">{{ section.label | upper }}</td>
+          <td class="num">{{ section.prev_total | money }}</td>
+          <td class="num col-ytd">{{ section.curr_ytd | money }}</td>
+          {% for i in range(12) %}
+            {% set m = i + 1 %}
+            {% if year < today.year or (year == today.year and m <= today.month) %}
+              <td class="num">{{ section.monthly_total[i] | money if section.monthly_total[i] else "—" }}</td>
+            {% else %}
+              <td class="num budget-cell">{{ section.budget_monthly[i] | money if section.budget_monthly[i] else "—" }}</td>
+            {% endif %}
+          {% endfor %}
+          <td class="num col-forecast">{{ section.forecast | money }}</td>
+        </tr>
+
+        {# Data rows #}
+        {% for row in section.rows %}
+        <tr class="data-row">
           <td class="col-label">
-            Gelir Hedefi
-            <input type="hidden" name="label_gelir_0" value="Gelir Hedefi">
+            {{ row.label }}
+            <input type="hidden" name="label_cat_{{ row.cat_id }}" value="{{ row.label }}">
+          </td>
+          <td class="num {% if not row.prev_total %}num-zero{% endif %}">
+            {{ row.prev_total | money }}
+          </td>
+          <td class="num col-ytd {% if not row.curr_ytd %}num-zero{% endif %}">
+            {{ row.curr_ytd | money }}
           </td>
           {% for i in range(12) %}
-          <td class="num">
-            <input type="number" step="0.01" name="line_gelir_0_month_{{ i+1 }}"
-                   class="act-budget-input" value="{{ gelir_budget[i] | int if gelir_budget[i] else '' }}"
-                   placeholder="0">
-          </td>
+            {% set m = i + 1 %}
+            {% if year < today.year or (year == today.year and m <= today.month) %}
+              {# Past month — actual (read-only) #}
+              <td class="num cell-past {% if not row.monthly[i] %}num-zero{% endif %}">
+                {{ row.monthly[i] | money }}
+              </td>
+            {% else %}
+              {# Future month — budget input #}
+              <td class="num budget-cell">
+                <input type="number" step="1" min="0"
+                       name="line_cat_{{ row.cat_id }}_month_{{ m }}"
+                       class="budget-input"
+                       value="{{ row.budget[i] | int if row.budget[i] else '' }}"
+                       placeholder="0">
+              </td>
+            {% endif %}
           {% endfor %}
-          <td class="num row-budget">{{ gelir_budget | sum | money }}</td>
-        </tr>
-
-        {# Kesilen fatura gerçekleşen #}
-        <tr>
-          <td class="col-label text-muted" style="font-weight:400;">Kesilen Fatura (Gerçekleşen)</td>
-          {% for v in total_gelir_actual %}
-          <td class="num row-actual">{{ v | money }}</td>
-          {% endfor %}
-          <td class="num fw-bold">{{ total_gelir_actual | sum | money }}</td>
-        </tr>
-
-        {# Sapma satırı #}
-        <tr style="border-bottom:2px solid #e2e8f0;">
-          <td class="col-label text-muted" style="font-size:11px;">Sapma</td>
-          {% for i in range(12) %}
-          {% set dev = total_gelir_actual[i] - gelir_budget[i] %}
-          <td class="num {% if dev >= 0 %}variance-pos{% else %}variance-neg{% endif %}">
-            {{ dev | money }}
+          <td class="num col-forecast {% if not row.forecast %}num-zero{% endif %}">
+            {{ row.forecast | money }}
           </td>
-          {% endfor %}
-          {% set total_dev = (total_gelir_actual | sum) - (gelir_budget | sum) %}
-          <td class="num {% if total_dev >= 0 %}variance-pos{% else %}variance-neg{% endif %}">
-            {{ total_dev | money }}
-          </td>
-        </tr>
-
-        {# ---- GELEN FATURALAR ---- #}
-        <tr class="act-section-header"><td colspan="14">Gelen Faturalar (Maliyet)</td></tr>
-
-        {% set gelen_budget = bl_months("gelen_0") %}
-        <tr>
-          <td class="col-label">
-            Gelen Fatura Hedefi
-            <input type="hidden" name="label_gelen_0" value="Gelen Fatura Hedefi">
-          </td>
-          {% for i in range(12) %}
-          <td class="num">
-            <input type="number" step="0.01" name="line_gelen_0_month_{{ i+1 }}"
-                   class="act-budget-input" value="{{ gelen_budget[i] | int if gelen_budget[i] else '' }}"
-                   placeholder="0">
-          </td>
-          {% endfor %}
-          <td class="num row-budget">{{ gelen_budget | sum | money }}</td>
-        </tr>
-
-        <tr>
-          <td class="col-label text-muted" style="font-weight:400;">Gelen Fatura (Gerçekleşen)</td>
-          {% for v in total_gelen_actual %}
-          <td class="num row-actual">{{ v | money }}</td>
-          {% endfor %}
-          <td class="num fw-bold">{{ total_gelen_actual | sum | money }}</td>
-        </tr>
-
-        <tr style="border-bottom:2px solid #e2e8f0;">
-          <td class="col-label text-muted" style="font-size:11px;">Sapma</td>
-          {% for i in range(12) %}
-          {% set dev = gelen_budget[i] - total_gelen_actual[i] %}
-          <td class="num {% if dev >= 0 %}variance-pos{% else %}variance-neg{% endif %}">
-            {{ dev | money }}
-          </td>
-          {% endfor %}
-          {% set total_dev = (gelen_budget | sum) - (total_gelen_actual | sum) %}
-          <td class="num {% if total_dev >= 0 %}variance-pos{% else %}variance-neg{% endif %}">
-            {{ total_dev | money }}
-          </td>
-        </tr>
-
-        {# ---- GENEL GİDERLER (Kategori bazlı) ---- #}
-        <tr class="act-section-header"><td colspan="14">Genel Giderler</td></tr>
-
-        {% for cat in top_cats %}
-        {% set cat_key = "cat_" ~ cat.id %}
-        {% set cat_budget = bl_months(cat_key) %}
-        {% set cat_actual = [] %}
-        {% for m in range(1, 13) %}
-          {% set _ = cat_actual.append(gider_by_cat_month.get(cat.id, {}).get(m, 0.0)) %}
-        {% endfor %}
-
-        <tr>
-          <td class="col-label">
-            {{ cat.name }} (Hedef)
-            <input type="hidden" name="label_cat_{{ cat.id }}" value="{{ cat.name }}">
-          </td>
-          {% for i in range(12) %}
-          <td class="num">
-            <input type="number" step="0.01" name="line_cat_{{ cat.id }}_month_{{ i+1 }}"
-                   class="act-budget-input" value="{{ cat_budget[i] | int if cat_budget[i] else '' }}"
-                   placeholder="0">
-          </td>
-          {% endfor %}
-          <td class="num row-budget">{{ cat_budget | sum | money }}</td>
-        </tr>
-
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td class="col-label text-muted" style="font-weight:400;">{{ cat.name }} (Gerçekleşen)</td>
-          {% for v in cat_actual %}
-          <td class="num row-actual">{{ v | money }}</td>
-          {% endfor %}
-          <td class="num fw-bold">{{ cat_actual | sum | money }}</td>
         </tr>
         {% endfor %}
 
-        {# ---- MAAŞ ---- #}
-        <tr class="act-section-header"><td colspan="14">Maaş & Özlük Hakları</td></tr>
+        {% endfor %}
 
-        {% set maas_budget = bl_months("maas_0") %}
-        <tr>
-          <td class="col-label">
-            Maaş Hedefi
-            <input type="hidden" name="label_maas_0" value="Maaş Hedefi">
-          </td>
+        {# Grand total #}
+        <tr class="grand-row">
+          <td class="col-label">TOPLAM GİDERLER</td>
+          <td class="num">{{ grand_prev | money }}</td>
+          <td class="num col-ytd">{{ grand_curr_ytd | money }}</td>
           {% for i in range(12) %}
-          <td class="num">
-            <input type="number" step="0.01" name="line_maas_0_month_{{ i+1 }}"
-                   class="act-budget-input" value="{{ maas_budget[i] | int if maas_budget[i] else '' }}"
-                   placeholder="0">
-          </td>
+            {% set m = i + 1 %}
+            {% if year < today.year or (year == today.year and m <= today.month) %}
+              <td class="num">{{ grand_monthly[i] | money if grand_monthly[i] else "—" }}</td>
+            {% else %}
+              {% set ns = namespace(bsum=0) %}
+              {% for section in sections %}
+                {% set ns.bsum = ns.bsum + section.budget_monthly[i] %}
+              {% endfor %}
+              <td class="num budget-cell">{{ ns.bsum | money if ns.bsum else "—" }}</td>
+            {% endif %}
           {% endfor %}
-          <td class="num row-budget">{{ maas_budget | sum | money }}</td>
-        </tr>
-
-        <tr style="border-bottom:2px solid #e2e8f0;">
-          <td class="col-label text-muted" style="font-weight:400;">Maaş (Gerçekleşen)</td>
-          {% for v in total_maas_actual %}
-          <td class="num row-actual">{{ v | money }}</td>
-          {% endfor %}
-          <td class="num fw-bold">{{ total_maas_actual | sum | money }}</td>
-        </tr>
-
-        {# ---- SABİT GİDER ÖNGÖRÜSÜ ---- #}
-        <tr class="act-section-header"><td colspan="14">Sabit Gider Öngörüsü</td></tr>
-        <tr>
-          <td class="col-label text-muted" style="font-weight:400;">Toplam Sabit Gider</td>
-          {% for v in total_fixed_projected %}
-          <td class="num" style="color:#92400e;">{{ v | money }}</td>
-          {% endfor %}
-          <td class="num fw-bold" style="color:#92400e;">{{ total_fixed_projected | sum | money }}</td>
-        </tr>
-
-        {# ---- NET ---- #}
-        <tr class="act-net">
-          <td class="col-label">NET KAR / ZARAR</td>
-          {% for v in net_actual %}
-          <td class="num {% if v >= 0 %}text-success{% else %}text-danger{% endif %}">{{ v | money }}</td>
-          {% endfor %}
-          {% set total_net = net_actual | sum %}
-          <td class="num fw-bold {% if total_net >= 0 %}text-success{% else %}text-danger{% endif %}">
-            {{ total_net | money }}
-          </td>
+          <td class="num col-forecast">{{ grand_forecast | money }}</td>
         </tr>
 
       </tbody>
@@ -273,91 +220,54 @@
 </div>
 </form>
 
-{# ---- SABİT GİDERLER YÖNETİMİ ---- #}
-<div class="row g-3">
-  <div class="col-md-8">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent border-0 d-flex align-items-center py-2">
-        <span class="fw-bold">Sabit Giderler</span>
-        <button class="ms-auto btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addFixedModal">
-          <i class="bi bi-plus-lg me-1"></i>Sabit Gider Ekle
-        </button>
-      </div>
-      <div class="card-body p-0">
-        {% if fixed_expenses %}
-        <table class="table table-sm table-hover mb-0" style="font-size:13px;">
-          <thead style="background:#f8fafc;">
-            <tr>
-              <th>Gider</th>
-              <th>Tutar</th>
-              <th>Tekrar</th>
-              <th>Başlangıç</th>
-              <th>Bitiş</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for fe in fixed_expenses %}
-            <tr>
-              <td class="fw-semibold">{{ fe.label }}</td>
-              <td>{{ fe.amount | money }}</td>
-              <td>
-                <span class="badge bg-light text-dark border">
-                  {% if fe.recurrence == 'monthly' %}Aylık
-                  {% elif fe.recurrence == 'quarterly' %}3 Aylık
-                  {% elif fe.recurrence == 'yearly' %}Yıllık
-                  {% else %}Bir Kere{% endif %}
-                </span>
-              </td>
-              <td class="text-muted">{{ fe.start_date | date_tr }}</td>
-              <td class="text-muted">{{ fe.end_date | date_tr if fe.end_date else "Süresiz" }}</td>
-              <td>
-                <form method="post" action="/reports/activity/fixed-expense/{{ fe.id }}/delete"
-                      onsubmit="return confirm('Silinsin mi?')" style="display:inline;">
-                  <input type="hidden" name="year" value="{{ year }}">
-                  <button class="btn btn-link btn-sm text-danger p-0">
-                    <i class="bi bi-trash"></i>
-                  </button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="text-center text-muted py-4">Henüz sabit gider girilmedi.</div>
-        {% endif %}
-      </div>
-    </div>
+{# Sabit Giderler #}
+{% if fixed_expenses %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent border-0 d-flex align-items-center py-2">
+    <span class="fw-bold" style="font-size:13px;">Sabit Giderler</span>
+    <small class="ms-2 text-muted">— gelecek ay öngörülerine dahil edilmez, ayrı gösterilir</small>
   </div>
-
-  <div class="col-md-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent border-0 py-2">
-        <span class="fw-bold">{{ year }} Aylık Öngörü</span>
-      </div>
-      <div class="card-body p-0">
-        <table class="table table-sm mb-0" style="font-size:13px;">
-          <tbody>
-            {% set month_names = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"] %}
-            {% for i in range(12) %}
-            {% if total_fixed_projected[i] > 0 %}
-            <tr>
-              <td class="text-muted">{{ month_names[i] }}</td>
-              <td class="text-end fw-semibold" style="color:#92400e;">{{ total_fixed_projected[i] | money }}</td>
-            </tr>
-            {% endif %}
-            {% endfor %}
-            <tr style="border-top:2px solid #e2e8f0;">
-              <td class="fw-bold">Toplam</td>
-              <td class="text-end fw-bold" style="color:#92400e;">{{ total_fixed_projected | sum | money }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0" style="font-size:12px;">
+      <thead style="background:#f8fafc;">
+        <tr>
+          <th>Gider Adı</th>
+          <th class="text-end">Tutar</th>
+          <th>Tekrar</th>
+          <th>Başlangıç</th>
+          <th>Bitiş</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fe in fixed_expenses %}
+        <tr>
+          <td class="fw-semibold">{{ fe.label }}</td>
+          <td class="text-end">{{ fe.amount | money }}</td>
+          <td>
+            <span class="badge bg-light text-dark border" style="font-size:10px;">
+              {% if fe.recurrence == 'monthly' %}Aylık
+              {% elif fe.recurrence == 'quarterly' %}3 Aylık
+              {% elif fe.recurrence == 'yearly' %}Yıllık
+              {% else %}Tek Seferlik{% endif %}
+            </span>
+          </td>
+          <td class="text-muted">{{ fe.start_date | date_tr }}</td>
+          <td class="text-muted">{{ fe.end_date | date_tr if fe.end_date else "Süresiz" }}</td>
+          <td>
+            <form method="post" action="/reports/activity/fixed-expense/{{ fe.id }}/delete"
+                  onsubmit="return confirm('Silinsin mi?')" style="display:inline;">
+              <input type="hidden" name="year" value="{{ year }}">
+              <button class="btn btn-link btn-sm text-danger p-0"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
+{% endif %}
 
 {# Modal: Sabit Gider Ekle #}
 <div class="modal fade" id="addFixedModal" tabindex="-1">
@@ -389,7 +299,7 @@
               </select>
             </div>
           </div>
-          <div class="row g-2 mb-3">
+          <div class="row g-2 mb-2">
             <div class="col">
               <label class="form-label fw-semibold">Başlangıç</label>
               <input type="date" name="start_date" class="form-control" required>
@@ -399,7 +309,7 @@
               <input type="date" name="end_date" class="form-control">
             </div>
           </div>
-          <div class="mb-3">
+          <div class="mb-0">
             <label class="form-label fw-semibold">Notlar</label>
             <input type="text" name="notes" class="form-control">
           </div>

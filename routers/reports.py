@@ -392,127 +392,119 @@ async def report_activity(
 ):
     if not year:
         year = date.today().year
+    today = date.today()
+    year_prev = year - 1
 
-    # --- Gerçekleşen veriler ---
-    # Kesilen faturalar (gelir) — invoice_date bazında
-    kesilen_by_month = defaultdict(float)
-    gelen_by_month = defaultdict(float)
-    for inv in db.query(Invoice).filter(
-        extract("year", Invoice.invoice_date) == year,
-        Invoice.status.in_(["approved", "paid"]),
+    def is_past(m: int) -> bool:
+        return year < today.year or (year == today.year and m <= today.month)
+
+    # Cari yıl: GeneralExpense kategori × ay
+    curr_by_cat_month: dict[int, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    for e in db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year
     ).all():
-        m = inv.invoice_date.month
-        if inv.invoice_type in ("kesilen", "komisyon"):
-            kesilen_by_month[m] += inv.amount or 0
-        elif inv.invoice_type in ("iade_kesilen",):
-            kesilen_by_month[m] -= inv.amount or 0
-        elif inv.invoice_type == "gelen":
-            gelen_by_month[m] += inv.amount or 0
-        elif inv.invoice_type == "iade_gelen":
-            gelen_by_month[m] -= inv.amount or 0
+        curr_by_cat_month[e.category_id or 0][e.expense_date.month] += e.amount or 0
 
-    # Genel giderler — kategori ve ay bazında
-    expenses = db.query(GeneralExpense).filter(
-        extract("year", GeneralExpense.expense_date) == year,
-    ).all()
-
-    # Maaş + haklar ayrı topla
-    maas_by_month: dict[int, float] = defaultdict(float)
-    gider_by_cat_month: dict[int, dict[int, float]] = defaultdict(lambda: defaultdict(float))
-    for e in expenses:
-        m = e.expense_date.month
-        if e.source in ("salary", "benefit"):
-            maas_by_month[m] += e.amount or 0
-        else:
-            gider_by_cat_month[e.category_id or 0][m] += e.amount or 0
-
-    # Maaş ödemeleri (salary_payments tablosu — period: "YYYY-MM")
-    for sp in db.query(SalaryPayment).filter(
-        SalaryPayment.period.like(f"{year}-%")
+    # Önceki yıl: kategori toplamları
+    prev_by_cat: dict[int, float] = defaultdict(float)
+    for e in db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year_prev
     ).all():
-        try:
-            m = int(sp.period.split("-")[1])
-            maas_by_month[m] += sp.net_amount or 0
-        except Exception:
-            pass
+        prev_by_cat[e.category_id or 0] += e.amount or 0
 
-    # --- Bütçe verileri ---
+    # Bütçe satırları
     budget = db.query(AnnualBudget).filter(AnnualBudget.year == year).first()
-    budget_lines_by_key: dict[str, BudgetLine] = {}
+    budget_by_cat: dict[int, list[float]] = {}
     if budget:
         for bl in budget.lines:
-            key = bl.label if not bl.category_id else f"cat_{bl.category_id}"
-            budget_lines_by_key[key] = bl
+            if bl.category_id:
+                budget_by_cat[bl.category_id] = [
+                    getattr(bl, f"month_{m}", 0.0) for m in range(1, 13)
+                ]
 
-    # --- Sabit giderler ---
+    # Kategori hiyerarşisi (üst kategori = section)
+    top_cats = db.query(GeneralExpenseCategory).filter(
+        GeneralExpenseCategory.parent_id.is_(None)
+    ).order_by(GeneralExpenseCategory.sort_order).all()
+
+    # Section ve row yapısını kur
+    sections = []
+    grand_prev = 0.0
+    grand_curr_ytd = 0.0
+    grand_monthly = [0.0] * 12
+    grand_forecast = 0.0
+
+    for top_cat in top_cats:
+        children = sorted(top_cat.children, key=lambda c: c.sort_order) if top_cat.children else [top_cat]
+        rows = []
+
+        for child in children:
+            prev_total = prev_by_cat.get(child.id, 0.0)
+            monthly = [curr_by_cat_month[child.id].get(m, 0.0) for m in range(1, 13)]
+            curr_ytd = sum(monthly[m - 1] for m in range(1, 13) if is_past(m))
+            budget_months = budget_by_cat.get(child.id, [0.0] * 12)
+            forecast = sum(
+                monthly[m - 1] if is_past(m) else budget_months[m - 1]
+                for m in range(1, 13)
+            )
+            rows.append({
+                "cat_id": child.id,
+                "label": child.name,
+                "prev_total": prev_total,
+                "curr_ytd": curr_ytd,
+                "monthly": monthly,
+                "budget": budget_months,
+                "forecast": forecast,
+            })
+
+        sec_prev = sum(r["prev_total"] for r in rows)
+        sec_ytd = sum(r["curr_ytd"] for r in rows)
+        sec_monthly = [sum(r["monthly"][i] for r in rows) for i in range(12)]
+        sec_budget = [sum(r["budget"][i] for r in rows) for i in range(12)]
+        sec_forecast = sum(r["forecast"] for r in rows)
+
+        grand_prev += sec_prev
+        grand_curr_ytd += sec_ytd
+        for i in range(12):
+            grand_monthly[i] += sec_monthly[i]
+        grand_forecast += sec_forecast
+
+        sections.append({
+            "cat_id": top_cat.id,
+            "label": top_cat.name,
+            "rows": rows,
+            "prev_total": sec_prev,
+            "curr_ytd": sec_ytd,
+            "monthly_total": sec_monthly,
+            "budget_monthly": sec_budget,
+            "forecast": sec_forecast,
+        })
+
+    # Sabit giderler öngörüsü
     fixed_expenses = db.query(FixedExpense).filter(FixedExpense.active == True).all()
     fixed_by_month: dict[int, float] = defaultdict(float)
     for fe in fixed_expenses:
         for m in _fixed_expense_months(fe, year):
             fixed_by_month[m] += fe.amount or 0
-
-    # --- Genel gider kategorileri (üst kategori listesi) ---
-    top_cats = db.query(GeneralExpenseCategory).filter(
-        GeneralExpenseCategory.parent_id.is_(None)
-    ).order_by(GeneralExpenseCategory.sort_order).all()
-
-    # --- Özet toplamlar ---
-    def month_vals(d: dict) -> list:
-        return [d.get(m, 0.0) for m in range(1, 13)]
-
-    total_gelir_actual = [kesilen_by_month.get(m, 0.0) for m in range(1, 13)]
-    total_gelen_actual = [gelen_by_month.get(m, 0.0) for m in range(1, 13)]
-    total_maas_actual = [maas_by_month.get(m, 0.0) for m in range(1, 13)]
-    total_fixed_projected = [fixed_by_month.get(m, 0.0) for m in range(1, 13)]
-
-    # Genel gider gerçekleşen (tüm kategoriler toplam, maaş hariç)
-    genel_actual_by_month = defaultdict(float)
-    for cat_id, month_map in gider_by_cat_month.items():
-        for m, amt in month_map.items():
-            genel_actual_by_month[m] += amt
-    total_genel_actual = [genel_actual_by_month.get(m, 0.0) for m in range(1, 13)]
-
-    # Net
-    today = date.today()
-    net_actual = []
-    for m in range(1, 13):
-        net_actual.append(
-            kesilen_by_month.get(m, 0.0)
-            - gelen_by_month.get(m, 0.0)
-            - maas_by_month.get(m, 0.0)
-            - genel_actual_by_month.get(m, 0.0)
-        )
-
-    # Bütçe line helpers
-    def bl_months(key: str) -> list:
-        bl = budget_lines_by_key.get(key)
-        if not bl:
-            return [0.0] * 12
-        return [getattr(bl, f"month_{m}", 0.0) for m in range(1, 13)]
+    fixed_monthly = [fixed_by_month.get(m, 0.0) for m in range(1, 13)]
 
     return templates.TemplateResponse(
         "reports/activity.html",
         {
             "request": request, "current_user": current_user,
             "year": year,
-            "months": ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
-                       "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"],
-            "budget": budget,
-            "budget_lines_by_key": budget_lines_by_key,
-            "fixed_expenses": fixed_expenses,
-            # Gerçekleşen
-            "total_gelir_actual": total_gelir_actual,
-            "total_gelen_actual": total_gelen_actual,
-            "total_maas_actual": total_maas_actual,
-            "total_genel_actual": total_genel_actual,
-            "total_fixed_projected": total_fixed_projected,
-            "net_actual": net_actual,
-            # Kategori bazlı gider gerçekleşen
-            "top_cats": top_cats,
-            "gider_by_cat_month": gider_by_cat_month,
-            # Bütçe helpers
-            "bl_months": bl_months,
+            "year_prev": year_prev,
             "today": today,
+            "months_short": ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+                             "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"],
+            "budget": budget,
+            "sections": sections,
+            "fixed_expenses": fixed_expenses,
+            "fixed_monthly": fixed_monthly,
+            "grand_prev": grand_prev,
+            "grand_curr_ytd": grand_curr_ytd,
+            "grand_monthly": grand_monthly,
+            "grand_forecast": grand_forecast,
             "page_title": f"Faaliyet Raporu — {year}",
         },
     )
