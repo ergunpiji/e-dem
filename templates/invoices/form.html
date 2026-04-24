@@ -270,7 +270,7 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
 
   /* Formatting */
   function fmt(n) {
-    return n.toFixed(2).replace('.', ',');
+    return n.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   }
   function fmtMoney(n) { return fmt(n) + ' ' + curSym; }
 
