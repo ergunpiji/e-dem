@@ -3,6 +3,7 @@ Fatura yönetimi
 """
 
 from datetime import date, datetime
+from typing import List
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -302,6 +303,44 @@ async def invoice_pay(
 
     db.commit()
     return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/pay-bulk", name="invoice_pay_bulk")
+async def invoice_pay_bulk(
+    invoice_ids: List[int] = Form(...),
+    payment_method: str = Form(...),
+    cash_book_id: int = Form(None),
+    bank_account_id: int = Form(None),
+    credit_card_id: int = Form(None),
+    redirect_url: str = Form("/invoices"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    for inv_id in invoice_ids:
+        inv = db.query(Invoice).get(inv_id)
+        if not inv or inv.status == "paid":
+            continue
+        total = inv.amount * (1 + inv.vat_rate)
+        desc = f"Fatura {inv.invoice_no or inv.id}" + (f" — {inv.vendor.name}" if inv.vendor else "")
+        inv.payment_method = payment_method
+        inv.paid_at = datetime.utcnow()
+        inv.status = "paid"
+        if payment_method == "nakit" and cash_book_id:
+            inv.cash_book_id = cash_book_id
+            db.add(CashEntry(book_id=cash_book_id, entry_date=date.today(),
+                entry_type="cikis", amount=total, description=desc,
+                invoice_id=inv.id, ref_id=inv.ref_id))
+        elif payment_method == "banka" and bank_account_id:
+            inv.bank_account_id = bank_account_id
+            db.add(BankMovement(account_id=bank_account_id, movement_date=date.today(),
+                movement_type="cikis", amount=total, description=desc,
+                invoice_id=inv.id, ref_id=inv.ref_id))
+        elif payment_method == "kredi_karti" and credit_card_id:
+            inv.credit_card_id = credit_card_id
+            db.add(CreditCardTxn(card_id=credit_card_id, txn_date=date.today(),
+                amount=total, description=desc, invoice_id=inv.id, ref_id=inv.ref_id))
+    db.commit()
+    return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{invoice_id}/delete", name="invoice_delete")

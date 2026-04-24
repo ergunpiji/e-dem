@@ -12,6 +12,8 @@
   .inv-row:hover { background:#f8fafc; }
   .period-btn { font-size:12px; border-radius:6px; }
   .period-btn.active { background:#1e3a5f; color:#fff; border-color:#1e3a5f; }
+  .inv-check { width:16px; height:16px; cursor:pointer; }
+  tr.selected-row { background:#fffbeb !important; }
 </style>
 {% endblock %}
 
@@ -87,15 +89,24 @@
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between py-2">
     <span class="fw-semibold">Faturalar ({{ invoices|length }})</span>
-    <a href="/invoices/new?vendor_id={{ vendor.id }}" class="btn btn-primary btn-sm">
-      <i class="bi bi-plus-lg me-1"></i>Fatura Ekle
-    </a>
+    <div class="d-flex gap-2 align-items-center">
+      <button id="bulkPayBtn" class="btn btn-warning btn-sm d-none"
+              data-bs-toggle="modal" data-bs-target="#bulkPayModal">
+        <i class="bi bi-cash-stack me-1"></i>Seçilenleri Öde
+        (<span id="bulkCount">0</span>) —
+        <span id="bulkTotalDisplay">₺0</span>
+      </button>
+      <a href="/invoices/new?vendor_id={{ vendor.id }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>Fatura Ekle
+      </a>
+    </div>
   </div>
   <div class="card-body p-0">
     <table class="table table-hover mb-0" style="font-size:13px;">
       <thead style="background:#f8fafc;">
         <tr>
-          <th class="ps-3" style="font-size:11px;color:#64748b;text-transform:uppercase;">Fatura No</th>
+          <th style="width:36px;" class="ps-3"></th>
+          <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Fatura No</th>
           <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Tarih</th>
           <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Vade</th>
           <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Referans</th>
@@ -106,8 +117,17 @@
       </thead>
       <tbody>
         {% for inv in invoices %}
-        <tr class="inv-row">
+        <tr class="inv-row" id="row-{{ inv.id }}">
           <td class="ps-3">
+            {% if inv.status == 'approved' %}
+            <input type="checkbox" class="inv-check"
+                   value="{{ inv.id }}"
+                   data-no="{{ inv.invoice_no or ('#' ~ inv.id) }}"
+                   data-amount="{{ inv.amount }}"
+                   data-vat="{{ inv.vat_rate }}">
+            {% endif %}
+          </td>
+          <td>
             <a href="/invoices/{{ inv.id }}" class="fw-semibold text-decoration-none text-dark">
               {{ inv.invoice_no or ("Fatura #" ~ inv.id) }}
             </a>
@@ -174,7 +194,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center py-4 text-muted">Bu tedarikçiye ait fatura bulunamadı.</td></tr>
+        <tr><td colspan="8" class="text-center py-4 text-muted">Bu tedarikçiye ait fatura bulunamadı.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -233,7 +253,7 @@
 </div>
 {% endif %}
 
-<!-- Ödeme Modal -->
+<!-- Tekli Ödeme Modal -->
 <div class="modal fade" id="payModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -253,7 +273,7 @@
           </div>
           <div class="mb-3">
             <label class="form-label">Ödeme Yöntemi</label>
-            <select name="payment_method" class="form-select" id="pmSelect" onchange="togglePmFields()">
+            <select name="payment_method" class="form-select" id="pmSelect" onchange="togglePmFields('pm_')">
               {% for val, label in payment_methods %}
               <option value="{{ val }}">{{ label }}</option>
               {% endfor %}
@@ -293,6 +313,84 @@
   </div>
 </div>
 
+<!-- Toplu Ödeme Modal -->
+<div class="modal fade" id="bulkPayModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-cash-stack me-2"></i>Toplu Ödeme</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/invoices/pay-bulk" id="bulkPayForm">
+        <input type="hidden" name="redirect_url" value="/vendors/{{ vendor.id }}">
+        <div class="modal-body">
+          <!-- Seçilen fatura listesi -->
+          <div class="mb-3">
+            <div class="fw-semibold mb-2" style="font-size:13px;">Ödenecek Faturalar</div>
+            <table class="table table-sm mb-0" style="font-size:13px;" id="bulkInvTable">
+              <thead style="background:#f8fafc;">
+                <tr>
+                  <th style="font-size:11px;color:#64748b;">Fatura No</th>
+                  <th class="text-end" style="font-size:11px;color:#64748b;">Net</th>
+                  <th class="text-end" style="font-size:11px;color:#64748b;">KDV Dahil</th>
+                </tr>
+              </thead>
+              <tbody id="bulkInvBody"></tbody>
+              <tfoot>
+                <tr style="background:#f8fafc;font-weight:700;">
+                  <td>TOPLAM</td>
+                  <td class="text-end" id="bulkSumNet"></td>
+                  <td class="text-end" id="bulkSumTotal"></td>
+                </tr>
+              </tfoot>
+            </table>
+            <div id="bulkHiddenIds"></div>
+          </div>
+          <!-- Ödeme yöntemi -->
+          <div class="mb-3">
+            <label class="form-label">Ödeme Yöntemi</label>
+            <select name="payment_method" class="form-select" id="bpmSelect" onchange="togglePmFields('bpm_')">
+              {% for val, label in payment_methods %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div id="bpm_cashFields" class="d-none mb-2">
+            <label class="form-label">Kasa</label>
+            <select name="cash_book_id" class="form-select">
+              {% for b in cash_books %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div id="bpm_bankFields" class="d-none mb-2">
+            <label class="form-label">Banka Hesabı</label>
+            <select name="bank_account_id" class="form-select">
+              {% for a in bank_accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div id="bpm_ccFields" class="d-none mb-2">
+            <label class="form-label">Kredi Kartı</label>
+            <select name="credit_card_id" class="form-select">
+              {% for c in credit_cards %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div id="bpm_chequeFields" class="d-none">
+            <input type="text" name="cheque_no" class="form-control mb-2" placeholder="Çek No">
+            <input type="text" name="cheque_bank" class="form-control mb-2" placeholder="Banka">
+            <input type="date" name="cheque_date" class="form-control mb-2">
+            <input type="date" name="cheque_due_date" class="form-control mb-2" placeholder="Vade">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+          <button type="submit" class="btn btn-success fw-semibold">
+            <i class="bi bi-check2-all me-1"></i>Tümünü Öde
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -300,25 +398,87 @@
 function fmt(n) {
   return n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ₺';
 }
-function togglePmFields() {
-  var pm = document.getElementById('pmSelect').value;
+
+function togglePmFields(prefix) {
+  var selectId = prefix === 'pm_' ? 'pmSelect' : 'bpmSelect';
+  var pm = document.getElementById(selectId).value;
   ['cashFields','bankFields','ccFields','chequeFields'].forEach(function(id) {
-    document.getElementById('pm_' + id).classList.add('d-none');
+    document.getElementById(prefix + id).classList.add('d-none');
   });
   var map = {nakit:'cashFields', banka:'bankFields', kredi_karti:'ccFields', cek:'chequeFields'};
-  if (map[pm]) document.getElementById('pm_' + map[pm]).classList.remove('d-none');
+  if (map[pm]) document.getElementById(prefix + map[pm]).classList.remove('d-none');
 }
+
+/* ── Checkbox mantığı ───────────────────────────────────────────────────── */
+function updateBulkBar() {
+  var checks = document.querySelectorAll('.inv-check:checked');
+  var count  = checks.length;
+  var sumNet = 0, sumTotal = 0;
+  checks.forEach(function(cb) {
+    var net = parseFloat(cb.dataset.amount);
+    var vat = parseFloat(cb.dataset.vat);
+    sumNet   += net;
+    sumTotal += net * (1 + vat);
+  });
+  var btn = document.getElementById('bulkPayBtn');
+  if (count > 0) {
+    btn.classList.remove('d-none');
+    document.getElementById('bulkCount').textContent        = count;
+    document.getElementById('bulkTotalDisplay').textContent = fmt(sumTotal);
+  } else {
+    btn.classList.add('d-none');
+  }
+  /* satır highlight */
+  document.querySelectorAll('.inv-check').forEach(function(cb) {
+    var row = document.getElementById('row-' + cb.value);
+    if (row) row.classList.toggle('selected-row', cb.checked);
+  });
+}
+
+document.querySelectorAll('.inv-check').forEach(function(cb) {
+  cb.addEventListener('change', updateBulkBar);
+});
+
+/* ── Toplu ödeme modal açılış ───────────────────────────────────────────── */
+document.getElementById('bulkPayModal').addEventListener('show.bs.modal', function() {
+  var checks  = document.querySelectorAll('.inv-check:checked');
+  var tbody   = document.getElementById('bulkInvBody');
+  var hiddens = document.getElementById('bulkHiddenIds');
+  tbody.innerHTML   = '';
+  hiddens.innerHTML = '';
+  var sumNet = 0, sumTotal = 0;
+  checks.forEach(function(cb) {
+    var net   = parseFloat(cb.dataset.amount);
+    var vat   = parseFloat(cb.dataset.vat);
+    var total = net * (1 + vat);
+    sumNet   += net;
+    sumTotal += total;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="fw-semibold">' + cb.dataset.no + '</td>'
+                 + '<td class="text-end">' + fmt(net) + '</td>'
+                 + '<td class="text-end">' + fmt(total) + '</td>';
+    tbody.appendChild(tr);
+    var inp = document.createElement('input');
+    inp.type  = 'hidden';
+    inp.name  = 'invoice_ids';
+    inp.value = cb.value;
+    hiddens.appendChild(inp);
+  });
+  document.getElementById('bulkSumNet').textContent   = fmt(sumNet);
+  document.getElementById('bulkSumTotal').textContent = fmt(sumTotal);
+  togglePmFields('bpm_');
+});
+
+/* ── Tekli ödeme modal açılış ───────────────────────────────────────────── */
 document.getElementById('payModal').addEventListener('show.bs.modal', function(e) {
   var btn   = e.relatedTarget;
-  var invId = btn.dataset.invoiceId;
-  var invNo = btn.dataset.invoiceNo;
   var net   = parseFloat(btn.dataset.amount);
   var vat   = parseFloat(btn.dataset.vat);
-  document.getElementById('pmInvNo').textContent  = invNo;
+  document.getElementById('pmInvNo').textContent  = btn.dataset.invoiceNo;
   document.getElementById('pmNet').textContent    = fmt(net);
   document.getElementById('pmTotal').textContent  = fmt(net * (1 + vat));
-  document.getElementById('payForm').action       = '/invoices/' + invId + '/pay';
-  togglePmFields();
+  document.getElementById('payForm').action       = '/invoices/' + btn.dataset.invoiceId + '/pay';
+  togglePmFields('pm_');
 });
 </script>
 {% endblock %}
