@@ -45,9 +45,17 @@
           <td>{{ e.payment_method or "—" }}</td>
           <td class="text-end fw-semibold">{{ e.amount | money }}</td>
           <td><span class="badge {% if e.source == 'manual' %}bg-light text-dark{% else %}bg-info text-dark{% endif %}">{{ e.source }}</span></td>
-          <td>
+          <td class="text-end text-nowrap">
             {% if e.source == 'manual' %}
-            <a href="/general-expenses/{{ e.id }}/edit" class="btn btn-sm btn-outline-secondary btn-xs py-0">Düzenle</a>
+            <a href="/general-expenses/{{ e.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Düzenle</a>
+            {% if current_user.is_admin %}
+            <form method="post" action="/general-expenses/{{ e.id }}/delete" class="d-inline">
+              <button type="button" class="btn btn-sm btn-outline-danger py-0"
+                      onclick="if(confirm('Bu gider silinsin mi?')) this.closest('form').submit()">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+            {% endif %}
             {% endif %}
           </td>
         </tr>
