@@ -132,11 +132,10 @@ const ALL_REFS   = {{ refs_data | safe }};
 const INIT_DATA  = {{ (hbf.items_json if hbf and hbf.items_json else '[]') | safe }};
 // INIT_DATA can be grouped [{ref_id,ref_no,ref_title,items:[...]}] or legacy flat
 
-const VDV_RATES  = [0, 0.01, 0.10, 0.20];
 const PAYMENT_OPTS = [['nakit','Nakit'],['kredi_karti','Kredi Kartı'],['banka','Banka/EFT'],['cek','Çek']];
 const DOC_OPTS     = [['fatura','Fatura'],['fis','Fiş'],['gider_pusulasi','Gider Pusulası'],['diger','Diğer']];
 
-let sections = [];  // [{ref_id, ref_no, ref_title, domId}]
+let sections = [];  // [{ref_id, ref_no, ref_title}]
 
 // ---- helpers ----
 function fmt(n) {
@@ -144,13 +143,6 @@ function fmt(n) {
 }
 function parseNum(s) { return parseFloat(String(s||0).replace(/\./g,'').replace(',','.')) || 0; }
 function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
-
-// ---- Row logic ----
-function rowVatOpts(selRate) {
-  return VDV_RATES.map(r =>
-    `<option value="${r}" ${parseFloat(selRate)===r?'selected':''}>${Math.round(r*100)}%</option>`
-  ).join('');
-}
 function rowPayOpts(sel) {
   return PAYMENT_OPTS.map(([v,l]) => `<option value="${v}"${sel===v?' selected':''}>${l}</option>`).join('');
 }
@@ -158,17 +150,22 @@ function rowDocOpts(sel) {
   return DOC_OPTS.map(([v,l]) => `<option value="${v}"${sel===v?' selected':''}>${l}</option>`).join('');
 }
 
+function fmtInput(n) {
+  const v = parseFloat(n) || 0;
+  return v === 0 ? '' : v.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
 function addItemRow(tbody, item) {
   const tr = document.createElement('tr');
+  const withVatVal = item ? fmtInput(item.amount_with_vat || item.amount || 0) : '';
+  const vatAmtVal  = item ? fmtInput(item.vat_amount || 0) : '';
   tr.innerHTML = `
     <td><input type="date" class="form-control i-date" value="${item ? (item.date||'') : ''}"></td>
-    <td><input type="text"  class="form-control i-desc" placeholder="Açıklama" value="${item ? escHtml(item.description||'') : ''}"></td>
+    <td><input type="text" class="form-control i-desc" placeholder="Açıklama" value="${item ? escHtml(item.description||'') : ''}"></td>
     <td><select class="form-select i-pay">${rowPayOpts(item&&item.payment)}</select></td>
     <td><select class="form-select i-doc">${rowDocOpts(item&&item.document_type)}</select></td>
-    <td><input type="text" class="form-control text-end i-amount" inputmode="decimal" placeholder="0,00"
-         value="${item ? (parseFloat(item.amount_with_vat||item.amount||0)).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}) : ''}"></td>
-    <td><select class="form-select i-vat">${rowVatOpts(item&&item.vat_rate)}</select></td>
-    <td><div class="calc-val i-vat-amt">₺0,00</div></td>
+    <td><input type="text" class="form-control text-end i-amount" inputmode="decimal" placeholder="0,00" value="${withVatVal}"></td>
+    <td><input type="text" class="form-control text-end i-vat-amt" inputmode="decimal" placeholder="0,00" value="${vatAmtVal}"></td>
     <td><div class="calc-val i-without-vat">₺0,00</div></td>
     <td class="text-center">
       <button type="button" class="btn btn-link text-danger p-0" style="font-size:15px"
@@ -176,11 +173,9 @@ function addItemRow(tbody, item) {
     </td>`;
   tbody.appendChild(tr);
   const calcThis = () => {
-    const withVat = parseNum(tr.querySelector('.i-amount').value);
-    const rate = parseFloat(tr.querySelector('.i-vat').value) || 0;
-    const vatAmt = rate > 0 ? withVat * rate / (1 + rate) : 0;
+    const withVat    = parseNum(tr.querySelector('.i-amount').value);
+    const vatAmt     = parseNum(tr.querySelector('.i-vat-amt').value);
     const withoutVat = withVat - vatAmt;
-    tr.querySelector('.i-vat-amt').textContent    = fmt(vatAmt);
     tr.querySelector('.i-without-vat').textContent = fmt(withoutVat);
     tr.dataset.v  = withVat;
     tr.dataset.va = vatAmt;
@@ -188,7 +183,7 @@ function addItemRow(tbody, item) {
     calcAllTotals();
   };
   tr.querySelector('.i-amount').addEventListener('input', calcThis);
-  tr.querySelector('.i-vat').addEventListener('change', calcThis);
+  tr.querySelector('.i-vat-amt').addEventListener('input', calcThis);
   calcThis();
 }
 
@@ -221,10 +216,9 @@ function addSection(ref, existingItems) {
             <th>Açıklama</th>
             <th style="width:110px">Ödeme</th>
             <th style="width:100px">Belge</th>
-            <th style="width:120px;text-align:right">Tutar (KDV Dahil)</th>
-            <th style="width:65px">KDV %</th>
-            <th style="width:110px;text-align:right">KDV Tutarı</th>
-            <th style="width:110px;text-align:right">KDV Hariç</th>
+            <th style="width:130px;text-align:right">Tutar (KDV Dahil)</th>
+            <th style="width:120px;text-align:right">KDV Tutarı</th>
+            <th style="width:120px;text-align:right">KDV Hariç</th>
             <th style="width:32px"></th>
           </tr>
         </thead>
@@ -321,16 +315,14 @@ function prepareSubmit() {
     const items = [];
     if (tbody) tbody.querySelectorAll('tr').forEach(tr => {
       const withVat = parseNum(tr.querySelector('.i-amount').value);
-      const rate    = parseFloat(tr.querySelector('.i-vat').value) || 0;
       items.push({
-        date:              tr.querySelector('.i-date').value,
-        description:       tr.querySelector('.i-desc').value,
-        payment:           tr.querySelector('.i-pay').value,
-        document_type:     tr.querySelector('.i-doc').value,
-        amount_with_vat:   withVat,
-        vat_rate:          rate,
-        vat_amount:        parseFloat(tr.dataset.va) || 0,
-        amount_without_vat:parseFloat(tr.dataset.vh) || 0,
+        date:               tr.querySelector('.i-date').value,
+        description:        tr.querySelector('.i-desc').value,
+        payment:            tr.querySelector('.i-pay').value,
+        document_type:      tr.querySelector('.i-doc').value,
+        amount_with_vat:    withVat,
+        vat_amount:         parseFloat(tr.dataset.va) || 0,
+        amount_without_vat: parseFloat(tr.dataset.vh) || 0,
       });
     });
     return {ref_id: s.ref_id, ref_no: s.ref_no, ref_title: s.ref_title, items};

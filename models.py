@@ -619,6 +619,8 @@ class HBF(Base):
     bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
     cash_book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=True)
     general_expense_id = Column(Integer, ForeignKey("general_expenses.id"), nullable=True)
+    # JSON: [{"filename":"uuid_xxx.pdf","original":"fiş.pdf","uploaded_at":"2026-04-24"}]
+    attachments_json = Column(Text)
 
     reference = relationship("Reference")
     employee = relationship("Employee")

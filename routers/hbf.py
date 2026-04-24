@@ -3,10 +3,17 @@ HBF — Harcama Bildirim Formu yönetimi
 """
 
 import json
+import os
+import uuid
 from datetime import date as _date, datetime
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
+
+UPLOAD_DIR = "static/uploads/hbf"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+ALLOWED_EXTS = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".xlsx", ".xls", ".docx", ".doc"}
 
 from auth import get_current_user
 from database import get_db, generate_hbf_no
@@ -400,3 +407,76 @@ async def hbf_delete(
             db.delete(hbf)
             db.commit()
     return RedirectResponse(url="/hbf", status_code=status.HTTP_302_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# Belge Yükle / Sil
+# ---------------------------------------------------------------------------
+
+@router.post("/{hbf_id}/upload", name="hbf_upload")
+async def hbf_upload(
+    hbf_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    hbf = db.query(HBF).get(hbf_id)
+    if not hbf:
+        raise HTTPException(status_code=404)
+    if not (current_user.is_admin or current_user.is_approver or hbf.created_by == current_user.id):
+        raise HTTPException(status_code=403)
+
+    _, ext = os.path.splitext(file.filename or "")
+    ext = ext.lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Desteklenmeyen dosya türü: {ext}")
+
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    hbf_dir = os.path.join(UPLOAD_DIR, str(hbf_id))
+    os.makedirs(hbf_dir, exist_ok=True)
+    dest = os.path.join(hbf_dir, safe_name)
+
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    try:
+        attachments = json.loads(hbf.attachments_json or "[]")
+    except Exception:
+        attachments = []
+    attachments.append({
+        "filename": safe_name,
+        "original": file.filename,
+        "uploaded_at": _date.today().isoformat(),
+    })
+    hbf.attachments_json = json.dumps(attachments, ensure_ascii=False)
+    db.commit()
+    return RedirectResponse(url=f"/hbf/{hbf_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{hbf_id}/attachment/{filename}/delete", name="hbf_attachment_delete")
+async def hbf_attachment_delete(
+    hbf_id: int,
+    filename: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    hbf = db.query(HBF).get(hbf_id)
+    if not hbf:
+        raise HTTPException(status_code=404)
+    if not (current_user.is_admin or hbf.created_by == current_user.id):
+        raise HTTPException(status_code=403)
+
+    try:
+        attachments = json.loads(hbf.attachments_json or "[]")
+    except Exception:
+        attachments = []
+    attachments = [a for a in attachments if a["filename"] != filename]
+    hbf.attachments_json = json.dumps(attachments, ensure_ascii=False)
+    db.commit()
+
+    # Dosyayı diskten sil
+    fpath = os.path.join(UPLOAD_DIR, str(hbf_id), filename)
+    if os.path.exists(fpath):
+        os.remove(fpath)
+    return RedirectResponse(url=f"/hbf/{hbf_id}", status_code=status.HTTP_302_FOUND)

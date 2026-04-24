@@ -99,7 +99,7 @@
             <th>Tarih</th>
             <th>Açıklama</th>
             <th>Ödeme</th>
-            <th>Belge</th>
+            <th>Belge Türü</th>
             <th class="text-end">Tutar (KDV Dahil)</th>
             <th class="text-end">KDV Tutarı</th>
             <th class="text-end">KDV Hariç</th>
@@ -148,6 +148,55 @@
     {% if hbf.notes %}
     <div class="alert alert-light border"><strong>Not:</strong> {{ hbf.notes }}</div>
     {% endif %}
+
+    <!-- Belgeler -->
+    <div class="section-card mb-3">
+      <div class="card-head d-flex align-items-center justify-content-between">
+        <span>Belgeler</span>
+        {% if current_user.is_admin or current_user.is_approver or hbf.created_by == current_user.id %}
+        <button class="btn btn-sm btn-outline-primary py-0" type="button"
+                data-bs-toggle="collapse" data-bs-target="#uploadForm">
+          <i class="bi bi-paperclip me-1"></i>Belge Ekle
+        </button>
+        {% endif %}
+      </div>
+      {% if current_user.is_admin or current_user.is_approver or hbf.created_by == current_user.id %}
+      <div class="collapse px-3 py-2 border-bottom" id="uploadForm">
+        <form method="post" action="/hbf/{{ hbf.id }}/upload" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
+          <input type="file" name="file" class="form-control form-control-sm" required
+                 accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.docx,.doc">
+          <button type="submit" class="btn btn-primary btn-sm text-nowrap">Yükle</button>
+        </form>
+        <div class="text-muted mt-1" style="font-size:11px">PDF, Görüntü, Excel, Word desteklenir</div>
+      </div>
+      {% endif %}
+      {% set attachments = hbf.attachments_json | fromjson if hbf.attachments_json else [] %}
+      {% if attachments %}
+      <ul class="list-group list-group-flush">
+        {% for att in attachments %}
+        <li class="list-group-item d-flex align-items-center gap-2 py-2">
+          {% set ext = att.filename.rsplit('.',1)[-1].lower() %}
+          <i class="bi {% if ext == 'pdf' %}bi-file-earmark-pdf text-danger{% elif ext in ('jpg','jpeg','png','webp') %}bi-file-earmark-image text-success{% elif ext in ('xlsx','xls') %}bi-file-earmark-excel text-success{% elif ext in ('docx','doc') %}bi-file-earmark-word text-primary{% else %}bi-file-earmark text-secondary{% endif %}" style="font-size:18px;flex-shrink:0"></i>
+          <a href="/static/uploads/hbf/{{ hbf.id }}/{{ att.filename }}" target="_blank"
+             class="text-decoration-none flex-grow-1" style="font-size:13px">
+            {{ att.original }}
+          </a>
+          <span class="text-muted" style="font-size:11px">{{ att.uploaded_at }}</span>
+          {% if current_user.is_admin or hbf.created_by == current_user.id %}
+          <form method="post" action="/hbf/{{ hbf.id }}/attachment/{{ att.filename }}/delete" class="mb-0">
+            <button type="button" class="btn btn-link text-danger p-0" style="font-size:14px"
+                    onclick="if(confirm('Belge silinsin mi?')) this.closest('form').submit()">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="text-muted text-center py-3" style="font-size:13px">Henüz belge eklenmemiş.</div>
+      {% endif %}
+    </div>
 
     <!-- Onay notu -->
     {% if hbf.approval_note %}

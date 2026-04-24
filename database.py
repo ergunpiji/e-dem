@@ -195,8 +195,9 @@ def _migrate(engine) -> None:
         "ALTER TABLE customers ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true",
         # User is_approver alanı
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approver BOOLEAN DEFAULT false",
-        # HBF çoklu referans
+        # HBF çoklu referans ve belge ekleri
         "ALTER TABLE hbf_forms ADD COLUMN IF NOT EXISTS refs_json TEXT",
+        "ALTER TABLE hbf_forms ADD COLUMN IF NOT EXISTS attachments_json TEXT",
         # EmployeeAdvance avans tipi ve iş avansı kapatma alanları
         "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS advance_type VARCHAR(10) DEFAULT 'maas'",
         "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS ref_id INTEGER",
