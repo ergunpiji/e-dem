@@ -191,6 +191,57 @@ def _migrate(engine) -> None:
                 print(f"[migrate] {sql[:60]}… → {e}")
 
 
+def _seed_extra_categories() -> None:
+    """Eksik ana/alt kategorileri idempotent olarak ekler."""
+    extra = [
+        ("Personel (*)", 6, [
+            "Bordro", "Elden", "Yan Haklar", "Sigorta", "Overtime",
+            "Tazminat", "İkramiye/Prim", "Yönetim", "İsg & Eğitim",
+            "Kıyafet", "Teşvik",
+        ]),
+        ("Genel Giderler", 7, [
+            "Ofis Kira", "Ofis Gider", "Depo Kira", "Depo Gider",
+            "Sigorta", "Araç", "Ulaşım", "İletişim", "It - Software",
+            "It - Malzeme", "Temsil & Ağırlama", "Tanıtım", "Danışmanlık",
+            "Resmi", "Bağış & Aidat", "Operasyonel Harcamalar",
+        ]),
+        ("Finans Giderleri", 8, [
+            "Faiz", "Ortaklar Faizi", "Kredi Komisyonları", "Masraf",
+        ]),
+    ]
+    db = SessionLocal()
+    try:
+        changed = False
+        for cat_name, sort_order, sub_names in extra:
+            parent = db.query(GeneralExpenseCategory).filter_by(
+                name=cat_name, parent_id=None
+            ).first()
+            if not parent:
+                parent = GeneralExpenseCategory(
+                    name=cat_name, parent_id=None, sort_order=sort_order
+                )
+                db.add(parent)
+                db.flush()
+                changed = True
+            for i, sub in enumerate(sub_names, 1):
+                exists = db.query(GeneralExpenseCategory).filter_by(
+                    name=sub, parent_id=parent.id
+                ).first()
+                if not exists:
+                    db.add(GeneralExpenseCategory(
+                        name=sub, parent_id=parent.id, sort_order=i
+                    ))
+                    changed = True
+        if changed:
+            db.commit()
+            print("[seed] Ek gider kategorileri eklendi.")
+    except Exception as exc:
+        db.rollback()
+        print(f"[seed] Ek kategoriler HATA: {exc}")
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     if os.environ.get("RESET_DB") == "1":
         print("[db] RESET_DB=1 — tablolar siliniyor...")
@@ -200,6 +251,7 @@ def init_db() -> None:
     _migrate(engine)
     print("[db] Tablolar hazır.")
     seed_data()
+    _seed_extra_categories()
 
 
 if __name__ == "__main__":
