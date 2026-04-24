@@ -4,10 +4,11 @@ HBF — Harcama Bildirim Formu yönetimi
 
 import json
 import os
+import shutil
 import uuid
 from datetime import date as _date, datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 UPLOAD_DIR = "static/uploads/hbf"
@@ -80,6 +81,85 @@ def _hbf_expense_category(db) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Geçici yükleme yardımcısı
+# ---------------------------------------------------------------------------
+
+def _process_row_attachments(
+    hbf_id: int,
+    form_token: str,
+    row_atts_input: dict,
+    existing_atts: list,
+) -> list:
+    """
+    row_atts_input: {row_id: {filename, original}}  — form'dan gelen
+    existing_atts : mevcut attachments_json listesi
+    Döner: yeni attachments listesi
+    """
+    hbf_dir = os.path.join(UPLOAD_DIR, str(hbf_id))
+    os.makedirs(hbf_dir, exist_ok=True)
+
+    existing_map = {a["row_id"]: a for a in existing_atts if a.get("row_id")}
+    global_atts  = [a for a in existing_atts if not a.get("row_id")]
+    new_atts     = list(global_atts)
+
+    for row_id, att_info in row_atts_input.items():
+        tmp_path = os.path.join(UPLOAD_DIR, "tmp", form_token, att_info["filename"])
+        if os.path.exists(tmp_path):
+            _, ext = os.path.splitext(att_info["filename"])
+            new_fn = f"{uuid.uuid4().hex}{ext}"
+            shutil.move(tmp_path, os.path.join(hbf_dir, new_fn))
+            # Önceki dosyayı sil (satır değiştirildi)
+            if row_id in existing_map:
+                old_path = os.path.join(hbf_dir, existing_map[row_id]["filename"])
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+            new_atts.append({
+                "row_id": row_id,
+                "filename": new_fn,
+                "original": att_info["original"],
+                "uploaded_at": _date.today().isoformat(),
+            })
+        elif row_id in existing_map:
+            new_atts.append(existing_map[row_id])
+
+    # Tmp dizinini temizle
+    tmp_dir = os.path.join(UPLOAD_DIR, "tmp", form_token)
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    return new_atts
+
+
+# ---------------------------------------------------------------------------
+# Geçici dosya yükleme (form kaydedilmeden önce)
+# ---------------------------------------------------------------------------
+
+@router.post("/tmp-upload", name="hbf_tmp_upload")
+async def hbf_tmp_upload(
+    file: UploadFile = File(...),
+    form_token: str = Form(...),
+    row_id: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    _, ext = os.path.splitext(file.filename or "")
+    ext = ext.lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Desteklenmeyen dosya türü: {ext}")
+
+    tmp_dir = os.path.join(UPLOAD_DIR, "tmp", form_token)
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    # Satır başına tek dosya: row_id{ext} olarak sakla
+    safe_name = f"{row_id}{ext}"
+    dest = os.path.join(tmp_dir, safe_name)
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    return JSONResponse({"filename": safe_name, "original": file.filename, "row_id": row_id})
+
+
+# ---------------------------------------------------------------------------
 # Liste
 # ---------------------------------------------------------------------------
 
@@ -129,6 +209,8 @@ async def hbf_new_get(
             "request": request, "current_user": current_user,
             "hbf": None, "employees": employees,
             "refs_data": json.dumps(_refs_for_template(db), ensure_ascii=False),
+            "form_token": uuid.uuid4().hex,
+            "existing_row_atts": "{}",
             "page_title": "Yeni Harcama Bildirimi",
         },
     )
@@ -141,6 +223,8 @@ async def hbf_new_post(
     items_json: str = Form("[]"),
     notes: str = Form(""),
     action: str = Form("taslak"),
+    form_token: str = Form(""),
+    row_attachments_json: str = Form("{}"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -161,6 +245,17 @@ async def hbf_new_post(
         created_by=current_user.id,
     )
     db.add(hbf)
+    db.flush()
+
+    try:
+        row_atts = json.loads(row_attachments_json or "{}")
+    except Exception:
+        row_atts = {}
+    if row_atts and form_token:
+        new_atts = _process_row_attachments(hbf.id, form_token, row_atts, [])
+        if new_atts:
+            hbf.attachments_json = json.dumps(new_atts, ensure_ascii=False)
+
     db.commit()
     return RedirectResponse(url=f"/hbf/{hbf.id}", status_code=status.HTTP_302_FOUND)
 
@@ -237,12 +332,22 @@ async def hbf_edit_get(
     if hbf.created_by != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403)
     employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()  # noqa: E712
+    try:
+        existing_atts = json.loads(hbf.attachments_json or "[]")
+    except Exception:
+        existing_atts = []
+    existing_row_atts = {
+        a["row_id"]: {"filename": a["filename"], "original": a["original"]}
+        for a in existing_atts if a.get("row_id")
+    }
     return templates.TemplateResponse(
         "hbf/form.html",
         {
             "request": request, "current_user": current_user,
             "hbf": hbf, "employees": employees,
             "refs_data": json.dumps(_refs_for_template(db), ensure_ascii=False),
+            "form_token": uuid.uuid4().hex,
+            "existing_row_atts": json.dumps(existing_row_atts, ensure_ascii=False),
             "page_title": f"Düzenle — {hbf.hbf_no}",
         },
     )
@@ -256,6 +361,8 @@ async def hbf_edit_post(
     items_json: str = Form("[]"),
     notes: str = Form(""),
     action: str = Form("taslak"),
+    form_token: str = Form(""),
+    row_attachments_json: str = Form("{}"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -274,6 +381,19 @@ async def hbf_edit_post(
     hbf.notes = notes.strip() or None
     if action == "gonder":
         hbf.status = "beklemede"
+
+    try:
+        row_atts = json.loads(row_attachments_json or "{}")
+    except Exception:
+        row_atts = {}
+    if form_token:
+        try:
+            existing_atts = json.loads(hbf.attachments_json or "[]")
+        except Exception:
+            existing_atts = []
+        new_atts = _process_row_attachments(hbf_id, form_token, row_atts, existing_atts)
+        hbf.attachments_json = json.dumps(new_atts, ensure_ascii=False) if new_atts else hbf.attachments_json
+
     db.commit()
     return RedirectResponse(url=f"/hbf/{hbf_id}", status_code=status.HTTP_302_FOUND)
 

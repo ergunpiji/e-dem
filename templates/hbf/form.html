@@ -75,6 +75,8 @@
 <form method="post" id="hbfForm">
   <input type="hidden" name="refs_json" id="refs_json">
   <input type="hidden" name="items_json" id="items_json">
+  <input type="hidden" name="form_token" value="{{ form_token }}">
+  <input type="hidden" name="row_attachments_json" id="row_attachments_json">
 
   <!-- Başlık -->
   <div class="hbf-header">
@@ -128,9 +130,10 @@
 </form>
 
 <script>
-const ALL_REFS   = {{ refs_data | safe }};
-const INIT_DATA  = {{ (hbf.items_json if hbf and hbf.items_json else '[]') | safe }};
-// INIT_DATA can be grouped [{ref_id,ref_no,ref_title,items:[...]}] or legacy flat
+const ALL_REFS          = {{ refs_data | safe }};
+const INIT_DATA         = {{ (hbf.items_json if hbf and hbf.items_json else '[]') | safe }};
+const FORM_TOKEN        = "{{ form_token }}";
+const EXISTING_ROW_ATTS = {{ existing_row_atts | safe }};
 
 const PAYMENT_OPTS = [['nakit','Nakit'],['kredi_karti','Kredi Kartı'],['banka','Banka/EFT'],['cek','Çek']];
 const DOC_OPTS     = [['fatura','Fatura'],['fis','Fiş'],['gider_pusulasi','Gider Pusulası'],['diger','Diğer']];
@@ -174,6 +177,13 @@ function addItemRow(tbody, item) {
     <td><input type="text" class="form-control text-end i-amount" inputmode="decimal" placeholder="0,00" value="${withVatVal}"></td>
     <td><input type="text" class="form-control text-end i-vat-amt" inputmode="decimal" placeholder="0,00" value="${vatAmtVal}"></td>
     <td><div class="calc-val i-without-vat">₺0,00</div></td>
+    <td class="text-center" style="white-space:nowrap">
+      <label class="att-row-lbl mb-0" style="cursor:pointer" title="Dosya ekle">
+        <input type="file" class="att-row-inp" style="display:none"
+               accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.xlsx,.xls,.docx,.doc">
+        <i class="bi att-row-ico" style="font-size:16px"></i>
+      </label>
+    </td>
     <td class="text-center">
       <button type="button" class="btn btn-link text-danger p-0" style="font-size:15px"
         onclick="this.closest('tr').remove(); calcAllTotals()"><i class="bi bi-x-lg"></i></button>
@@ -192,6 +202,52 @@ function addItemRow(tbody, item) {
   tr.querySelector('.i-amount').addEventListener('input', calcThis);
   tr.querySelector('.i-vat-amt').addEventListener('input', calcThis);
   calcThis();
+
+  // Dosya ikonu başlangıç durumu
+  const ico = tr.querySelector('.att-row-ico');
+  const existingAtt = EXISTING_ROW_ATTS[tr.dataset.rowId];
+  if (existingAtt) {
+    tr.dataset.attFilename = existingAtt.filename;
+    tr.dataset.attOriginal = existingAtt.original;
+    ico.className = 'bi bi-paperclip att-row-ico';
+    ico.style.color = '#2563eb';
+    ico.title = existingAtt.original;
+  } else {
+    ico.className = 'bi bi-upload att-row-ico';
+    ico.style.color = '#94a3b8';
+    ico.title = 'Dosya ekle';
+  }
+
+  // AJAX upload
+  tr.querySelector('.att-row-inp').addEventListener('change', async function() {
+    const f = this.files[0];
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('form_token', FORM_TOKEN);
+    fd.append('row_id', tr.dataset.rowId);
+    ico.className = 'bi bi-hourglass-split att-row-ico';
+    ico.style.color = '#f59e0b';
+    try {
+      const resp = await fetch('/hbf/tmp-upload', {method: 'POST', body: fd});
+      if (resp.ok) {
+        const data = await resp.json();
+        tr.dataset.attFilename = data.filename;
+        tr.dataset.attOriginal = data.original;
+        ico.className = 'bi bi-paperclip att-row-ico';
+        ico.style.color = '#16a34a';
+        ico.title = data.original;
+      } else {
+        ico.className = 'bi bi-exclamation-triangle att-row-ico';
+        ico.style.color = '#dc2626';
+        ico.title = 'Yükleme başarısız';
+      }
+    } catch(e) {
+      ico.className = 'bi bi-exclamation-triangle att-row-ico';
+      ico.style.color = '#dc2626';
+      ico.title = 'Yükleme hatası';
+    }
+  });
 }
 
 // ---- Section management ----
@@ -226,6 +282,7 @@ function addSection(ref, existingItems) {
             <th style="width:130px;text-align:right">Tutar (KDV Dahil)</th>
             <th style="width:120px;text-align:right">KDV Tutarı</th>
             <th style="width:120px;text-align:right">KDV Hariç</th>
+            <th style="width:46px;text-align:center" title="Dosya ekle">Dosya</th>
             <th style="width:32px"></th>
           </tr>
         </thead>
@@ -317,6 +374,7 @@ document.addEventListener('click', e => { if (!e.target.closest('#refAc') && !e.
 
 // ---- Submit ----
 function prepareSubmit() {
+  const rowAtts = {};
   const grouped = sections.map(s => {
     const tbody = document.getElementById(`tbody-${s.ref_id}`);
     const items = [];
@@ -332,11 +390,15 @@ function prepareSubmit() {
         vat_amount:         parseFloat(tr.dataset.va) || 0,
         amount_without_vat: parseFloat(tr.dataset.vh) || 0,
       });
+      if (tr.dataset.attFilename) {
+        rowAtts[tr.dataset.rowId] = {filename: tr.dataset.attFilename, original: tr.dataset.attOriginal || ''};
+      }
     });
     return {ref_id: s.ref_id, ref_no: s.ref_no, ref_title: s.ref_title, items};
   });
-  document.getElementById('items_json').value = JSON.stringify(grouped);
-  document.getElementById('refs_json').value  = JSON.stringify(sections.map(s => ({id:s.ref_id, ref_no:s.ref_no, title:s.ref_title})));
+  document.getElementById('items_json').value          = JSON.stringify(grouped);
+  document.getElementById('refs_json').value           = JSON.stringify(sections.map(s => ({id:s.ref_id, ref_no:s.ref_no, title:s.ref_title})));
+  document.getElementById('row_attachments_json').value = JSON.stringify(rowAtts);
   return true;
 }
 
