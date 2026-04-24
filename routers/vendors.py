@@ -11,7 +11,7 @@ from auth import get_current_user
 from database import get_db
 from models import (
     FinancialVendor, Invoice, Cheque, User, CashBook, BankAccount, CreditCard,
-    VendorPrepayment, CashEntry, BankMovement, CreditCardTxn,
+    VendorPrepayment, CashEntry, BankMovement, CreditCardTxn, Reference,
     PAYMENT_METHODS,
 )
 from templates_config import templates
@@ -207,6 +207,12 @@ async def vendor_detail(
         .order_by(VendorPrepayment.payment_date.desc())
         .all()
     )
+    references = (
+        db.query(Reference)
+        .filter(Reference.status == "aktif")
+        .order_by(Reference.ref_no)
+        .all()
+    )
     cheques = db.query(Cheque).filter(Cheque.vendor_id == vendor_id).order_by(Cheque.due_date.desc()).all()
 
     cash_books    = db.query(CashBook).all()
@@ -227,7 +233,7 @@ async def vendor_detail(
         {
             "request": request, "current_user": current_user,
             "vendor": v, "invoices": invoices, "cheques": cheques,
-            "prepayments": prepayments,
+            "prepayments": prepayments, "references": references,
             "total_amount": total_amount, "paid_amount": paid_amount,
             "unpaid_amount": unpaid_amount, "overdue_amount": overdue_amount,
             "period": period, "today": today,
@@ -241,9 +247,11 @@ async def vendor_detail(
 @router.post("/{vendor_id}/prepayment", name="vendor_prepayment")
 async def vendor_prepayment(
     vendor_id: int,
+    payment_type: str = Form("prepayment"),
     amount: float = Form(...),
     pay_date: str = Form(""),
     payment_method: str = Form(...),
+    ref_id: int = Form(None),
     bank_account_id: int = Form(None),
     cash_book_id: int = Form(None),
     credit_card_id: int = Form(None),
@@ -260,10 +268,13 @@ async def vendor_prepayment(
         raise HTTPException(status_code=404)
 
     pdate = _date.fromisoformat(pay_date) if pay_date else _date.today()
-    desc = f"Ön Ödeme — {v.name}"
+    label = "Ön Ödeme" if payment_type == "prepayment" else "Ödeme"
+    desc = f"{label} — {v.name}"
 
     pmt = VendorPrepayment(
         vendor_id=vendor_id,
+        payment_type=payment_type,
+        ref_id=ref_id or None,
         payment_date=pdate,
         amount=amount,
         payment_method=payment_method,

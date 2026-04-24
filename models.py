@@ -351,11 +351,13 @@ class InvoicePayment(Base):
 
 
 class VendorPrepayment(Base):
-    """Tedarikçiye fatura kesilmeden yapılan ön/avans ödeme."""
+    """Tedarikçiye fatura kesilmeden yapılan ön/avans ya da doğrudan ödeme."""
     __tablename__ = "vendor_prepayments"
 
     id = Column(Integer, primary_key=True)
     vendor_id = Column(Integer, ForeignKey("financial_vendors.id"), nullable=False)
+    payment_type = Column(String(20), default="prepayment", nullable=False)  # prepayment | direct
+    ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     payment_date = Column(Date, nullable=False)
     amount = Column(Float, nullable=False)
     payment_method = Column(
@@ -371,6 +373,7 @@ class VendorPrepayment(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     vendor = relationship("FinancialVendor", back_populates="prepayments")
+    reference = relationship("Reference")
     bank_account = relationship("BankAccount")
     cash_book = relationship("CashBook")
     credit_card = relationship("CreditCard")
