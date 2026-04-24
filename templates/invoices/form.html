@@ -13,7 +13,6 @@
   .form-control, .form-select { font-size:13px; border-color:#e2e8f0; }
   .form-control:focus, .form-select:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
 
-  /* Kalemler tablosu */
   .items-table { width:100%; border-collapse:collapse; }
   .items-table thead th { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:#64748b; padding:8px 10px; border-bottom:2px solid #e2e8f0; white-space:nowrap; }
   .items-table tbody td { padding:5px 5px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
@@ -30,7 +29,6 @@
   .file-drop-zone .dt { font-size:13px; font-weight:600; color:#3b82f6; margin-top:6px; }
   .file-drop-zone .ds { font-size:11px; color:#94a3b8; }
 
-  /* Autocomplete */
   .ac-wrap { position:relative; }
   .ac-dd { position:absolute; top:100%; left:0; right:0; z-index:1050; background:#fff;
     border:1px solid #e2e8f0; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,.12);
@@ -45,23 +43,9 @@
 {% endblock %}
 
 {% block content %}
-
-{# ── Veri blokları — JS tarafından okunur ─────────────────────── #}
-<script id="d-refs" type="application/json">
-[{% for r in refs %}{"id":{{ r.id }},"text":{{ (r.ref_no ~ " — " ~ r.title) | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]
-</script>
-<script id="d-vendors" type="application/json">{{ vendors_json | safe }}</script>
-<script id="d-items" type="application/json">{% if invoice and invoice.items_json %}{{ invoice.items_json | safe }}{% else %}null{% endif %}</script>
-<script id="d-meta" type="application/json">{
-  "vendor_id": {% if invoice and invoice.vendor_id %}{{ invoice.vendor_id }}{% elif preselected_vendor_id %}{{ preselected_vendor_id }}{% else %}null{% endif %},
-  "ref_id":    {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif preselected_ref_id %}{{ preselected_ref_id }}{% else %}null{% endif %},
-  "currency":  {% if invoice %}{{ invoice.currency | tojson }}{% else %}"TRY"{% endif %}
-}</script>
-
 <form method="post" id="invoiceForm">
 <input type="hidden" name="items_json" id="itemsJson">
 
-<!-- PDF Otomatik Doldur -->
 <div class="pdf-drop">
   <div class="pdf-drop-icon"><i class="bi bi-file-earmark-pdf"></i></div>
   <div class="pdf-drop-text">
@@ -113,7 +97,7 @@
              value="{{ invoice.vendor_id if invoice and invoice.vendor_id else '' }}">
       <div style="font-size:11px;color:#94a3b8;margin-top:3px;">
         Seçili tedarikçi varsa vade otomatik hesaplanır. &nbsp;
-        <a href="#" style="color:#2563eb;text-decoration:none;" onclick="openVendorModal(event,'')">
+        <a href="#" style="color:#2563eb;text-decoration:none;" id="openVendorModalLink">
           <i class="bi bi-plus-circle"></i> Yeni ekle
         </a>
       </div>
@@ -142,9 +126,9 @@
     <div class="col-md-3">
       <label class="form-label">Para Birimi</label>
       <select name="currency" class="form-select" id="currencySelect">
-        <option value="TRY" {% if not invoice or invoice.currency == 'TRY' %}selected{% endif %}>₺ TRY</option>
+        <option value="TRY" {% if not invoice or invoice.currency == 'TRY' %}selected{% endif %}>&#8378; TRY</option>
         <option value="USD" {% if invoice and invoice.currency == 'USD' %}selected{% endif %}>$ USD</option>
-        <option value="EUR" {% if invoice and invoice.currency == 'EUR' %}selected{% endif %}>€ EUR</option>
+        <option value="EUR" {% if invoice and invoice.currency == 'EUR' %}selected{% endif %}>&#8364; EUR</option>
       </select>
     </div>
   </div>
@@ -162,10 +146,10 @@
     <table class="items-table">
       <thead>
         <tr>
-          <th style="width:44%">Açıklama</th>
-          <th style="width:17%;text-align:right;">Tutar (KDV Hariç)</th>
+          <th style="width:44%">Açiklama</th>
+          <th style="width:17%;text-align:right;">Tutar (KDV Haric)</th>
           <th style="width:9%;text-align:center;">KDV %</th>
-          <th style="width:13%;text-align:right;">KDV Tutarı</th>
+          <th style="width:13%;text-align:right;">KDV Tutari</th>
           <th style="width:13%;text-align:right;">Toplam</th>
           <th style="width:4%;"></th>
         </tr>
@@ -175,9 +159,9 @@
   </div>
   <div class="totals-row">
     <table class="totals-table">
-      <tr><td class="lbl">KDV Hariç Toplam</td><td class="val" id="sumNet">0,00 ₺</td></tr>
-      <tr><td class="lbl">KDV Toplamı</td><td class="val" id="sumVat">0,00 ₺</td></tr>
-      <tr><td class="lbl grand">GENEL TOPLAM (KDV Dahil)</td><td class="val grand" id="sumGross">0,00 ₺</td></tr>
+      <tr><td class="lbl">KDV Hariç Toplam</td><td class="val" id="sumNet">0,00 TL</td></tr>
+      <tr><td class="lbl">KDV Toplami</td><td class="val" id="sumVat">0,00 TL</td></tr>
+      <tr><td class="lbl grand">GENEL TOPLAM (KDV Dahil)</td><td class="val grand" id="sumGross">0,00 TL</td></tr>
     </table>
   </div>
 </div>
@@ -194,7 +178,7 @@
 
 <div class="d-flex gap-2 mb-4">
   <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg me-1"></i>Kaydet</button>
-  <a href="/invoices{% if invoice %}/{{ invoice.id }}{% endif %}" class="btn btn-outline-secondary">İptal</a>
+  <a href="/invoices{% if invoice %}/{{ invoice.id }}{% endif %}" class="btn btn-outline-secondary">Iptal</a>
 </div>
 </form>
 
@@ -207,7 +191,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div id="vmErr" class="alert alert-danger d-none"></div>
+        <div id="vmErr" class="alert alert-danger" style="display:none"></div>
         <div class="row g-3">
           <div class="col-12">
             <label class="form-label fw-semibold">Tedarikçi Adı <span class="text-danger">*</span></label>
@@ -242,14 +226,11 @@
               <option value="teknik">Teknik Ekipman</option>
               <option value="transfer">Transfer</option>
               <option value="catering">Catering</option>
-              <option value="tasarim">Tasarım & Baskı</option>
+              <option value="tasarim">Tasarım &amp; Baskı</option>
               <option value="diger">Diğer</option>
             </select>
           </div>
         </div>
-        <p class="text-muted mt-3 mb-0" style="font-size:12px;">
-          <i class="bi bi-info-circle me-1"></i>Detaylar (IBAN, adres) tedarikçi sayfasından eklenebilir.
-        </p>
       </div>
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
@@ -260,237 +241,234 @@
     </div>
   </div>
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
+var INV_REFS    = {{ refs_json | safe }};
+var INV_VENDORS = {{ vendors_json | safe }};
+var INV_ITEMS   = {% if invoice and invoice.items_json %}{{ invoice.items_json | safe }}{% else %}null{% endif %};
+var INV_CUR     = "{% if invoice and invoice.currency %}{{ invoice.currency }}{% else %}TRY{% endif %}";
+var INV_VID     = {% if invoice and invoice.vendor_id %}{{ invoice.vendor_id }}{% elif preselected_vendor_id %}{{ preselected_vendor_id }}{% else %}null{% endif %};
+var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif preselected_ref_id %}{{ preselected_ref_id }}{% else %}null{% endif %};
+</script>
+<script>
 (function () {
-  'use strict';
+  var REFS    = INV_REFS;
+  var VENDORS = INV_VENDORS;
+  var ITEMS0  = INV_ITEMS;
+  var curSym  = INV_CUR === 'USD' ? '$' : INV_CUR === 'EUR' ? 'EUR' : 'TL';
+  var selVendorTerm = null;
+  var VAT_OPTS = [0, 10, 20];
+  var rowSeq   = 0;
 
-  /* ── Veri okuma ─────────────────────────────────────────── */
-  const REFS    = JSON.parse(document.getElementById('d-refs').textContent);
-  const VENDORS = JSON.parse(document.getElementById('d-vendors').textContent);
-  const META    = JSON.parse(document.getElementById('d-meta').textContent);
-  const ITEMS0  = JSON.parse(document.getElementById('d-items').textContent);   // null veya []
-
-  const VAT_OPTS = [0, 10, 20];
-  let rowSeq = 0;
-  let curSym = META.currency === 'USD' ? '$' : META.currency === 'EUR' ? '€' : '₺';
-  let selVendorTerm = null;
-
-  /* ── Para birimi ─────────────────────────────────────────── */
-  document.getElementById('currencySelect').addEventListener('change', function () {
-    curSym = this.value === 'USD' ? '$' : this.value === 'EUR' ? '€' : '₺';
+  /* Currency */
+  document.getElementById('currencySelect').onchange = function () {
+    curSym = this.value === 'USD' ? '$' : this.value === 'EUR' ? 'EUR' : 'TL';
     recalcAll();
-  });
+  };
 
-  /* ── Sayı formatlama ─────────────────────────────────────── */
+  /* Formatting */
   function fmt(n) {
-    return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return n.toFixed(2).replace('.', ',');
   }
   function fmtMoney(n) { return fmt(n) + ' ' + curSym; }
 
-  /* ── Satır ekle ──────────────────────────────────────────── */
+  /* Row management */
   function addRow(desc, net, vatPct) {
-    desc   = (desc   === undefined || desc   === null) ? '' : String(desc);
-    net    = (net    === undefined || net    === null) ? 0  : Number(net);
-    vatPct = (vatPct === undefined || vatPct === null) ? 20 : Number(vatPct);
-    if (!VAT_OPTS.includes(vatPct)) vatPct = 20;
+    desc   = desc   != null ? String(desc) : '';
+    net    = net    != null ? Number(net)  : 0;
+    vatPct = vatPct != null ? Number(vatPct) : 20;
+    if (VAT_OPTS.indexOf(vatPct) === -1) vatPct = 20;
 
-    const idx = rowSeq++;
-    const vatOpts = VAT_OPTS.map(function (v) {
-      return '<option value="' + v + '"' + (v === vatPct ? ' selected' : '') + '>%' + v + '</option>';
-    }).join('');
-
-    const tr = document.createElement('tr');
-    tr.id = 'row-' + idx;
-    tr.innerHTML =
-      '<td><input type="text" class="form-control form-control-sm" placeholder="Kalem açıklaması"' +
-        ' value="' + desc.replace(/"/g, '&quot;') + '" data-role="desc"></td>' +
-      '<td style="text-align:right"><input type="number" step="0.01" min="0"' +
-        ' class="form-control form-control-sm text-end" style="max-width:130px;margin-left:auto"' +
-        ' value="' + (net || '') + '" placeholder="0,00" id="net-' + idx + '" data-role="net"></td>' +
-      '<td style="text-align:center"><select class="form-select form-select-sm"' +
-        ' style="max-width:80px;margin:0 auto" id="vat-' + idx + '">' + vatOpts + '</select></td>' +
-      '<td><div class="calc-cell" id="vatAmt-' + idx + '">0,00</div></td>' +
-      '<td><div class="total-cell" id="total-' + idx + '">0,00</div></td>' +
-      '<td style="text-align:center"><button type="button" class="btn btn-link btn-sm text-danger p-0"' +
-        ' data-del="' + idx + '" title="Sil"><i class="bi bi-x-lg"></i></button></td>';
-
-    document.getElementById('itemsBody').appendChild(tr);
-
-    // Event listener'ları doğrudan ekle (inline oninput yerine)
-    tr.querySelector('[data-role="net"]').addEventListener('input', function () { recalcRow(idx); });
-    tr.querySelector('#vat-' + idx).addEventListener('change', function () { recalcRow(idx); });
-    tr.querySelector('[data-del="' + idx + '"]').addEventListener('click', function () { removeRow(idx); });
-
+    var idx = rowSeq++;
+    var opts = '';
+    for (var i = 0; i < VAT_OPTS.length; i++) {
+      opts += '<option value="' + VAT_OPTS[i] + '"' + (VAT_OPTS[i] === vatPct ? ' selected' : '') + '>%' + VAT_OPTS[i] + '</option>';
+    }
+    var html =
+      '<tr id="row-' + idx + '">' +
+        '<td><input type="text" class="form-control form-control-sm" placeholder="Kalem aciklamasi"' +
+          ' value="' + desc.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" data-role="desc"></td>' +
+        '<td style="text-align:right">' +
+          '<input type="number" step="0.01" min="0" class="form-control form-control-sm text-end"' +
+          ' style="max-width:130px;margin-left:auto"' +
+          ' value="' + (net ? net : '') + '" placeholder="0.00" id="net-' + idx + '" data-role="net">' +
+        '</td>' +
+        '<td style="text-align:center">' +
+          '<select class="form-select form-select-sm" style="max-width:80px;margin:0 auto" id="vat-' + idx + '">' + opts + '</select>' +
+        '</td>' +
+        '<td><div class="calc-cell" id="vatAmt-' + idx + '">0,00</div></td>' +
+        '<td><div class="total-cell" id="total-' + idx + '">0,00</div></td>' +
+        '<td style="text-align:center">' +
+          '<button type="button" class="btn btn-link btn-sm text-danger p-0" onclick="removeRow(' + idx + ')" title="Sil">' +
+            '<i class="bi bi-x-lg"></i>' +
+          '</button>' +
+        '</td>' +
+      '</tr>';
+    document.getElementById('itemsBody').insertAdjacentHTML('beforeend', html);
+    document.getElementById('net-' + idx).oninput  = function () { recalcRow(idx); };
+    document.getElementById('vat-' + idx).onchange = function () { recalcRow(idx); };
     if (net) recalcRow(idx);
   }
 
-  function removeRow(idx) {
-    const tr = document.getElementById('row-' + idx);
-    if (tr) { tr.remove(); recalcAll(); }
-  }
+  window.removeRow = function (idx) {
+    var tr = document.getElementById('row-' + idx);
+    if (tr) { tr.parentNode.removeChild(tr); recalcAll(); }
+  };
 
   function recalcRow(idx) {
-    const netEl = document.getElementById('net-' + idx);
-    const vatEl = document.getElementById('vat-' + idx);
-    if (!netEl || !vatEl) return;
-    const net    = parseFloat(netEl.value) || 0;
-    const vatPct = parseInt(vatEl.value, 10) || 0;
-    const vatAmt = net * vatPct / 100;
-    document.getElementById('vatAmt-' + idx).textContent = fmt(vatAmt);
-    document.getElementById('total-'  + idx).textContent = fmt(net + vatAmt);
+    var n = parseFloat(document.getElementById('net-' + idx).value) || 0;
+    var p = parseInt(document.getElementById('vat-' + idx).value, 10) || 0;
+    var v = n * p / 100;
+    document.getElementById('vatAmt-' + idx).textContent = fmt(v);
+    document.getElementById('total-'  + idx).textContent = fmt(n + v);
     recalcAll();
   }
 
   function recalcAll() {
-    let sumNet = 0, sumVat = 0;
-    document.querySelectorAll('#itemsBody tr').forEach(function (tr) {
-      var idx    = tr.id.replace('row-', '');
-      var netEl  = document.getElementById('net-' + idx);
-      var vatEl  = document.getElementById('vat-' + idx);
-      if (!netEl || !vatEl) return;
-      var net    = parseFloat(netEl.value) || 0;
-      var vatPct = parseInt(vatEl.value, 10) || 0;
-      sumNet += net;
-      sumVat += net * vatPct / 100;
-    });
-    document.getElementById('sumNet').textContent   = fmtMoney(sumNet);
-    document.getElementById('sumVat').textContent   = fmtMoney(sumVat);
-    document.getElementById('sumGross').textContent = fmtMoney(sumNet + sumVat);
+    var sn = 0, sv = 0;
+    var rows = document.querySelectorAll('#itemsBody tr');
+    for (var i = 0; i < rows.length; i++) {
+      var id = rows[i].id.replace('row-', '');
+      var n  = parseFloat(document.getElementById('net-' + id).value) || 0;
+      var p  = parseInt(document.getElementById('vat-' + id).value, 10) || 0;
+      sn += n; sv += n * p / 100;
+    }
+    document.getElementById('sumNet').textContent   = fmtMoney(sn);
+    document.getElementById('sumVat').textContent   = fmtMoney(sv);
+    document.getElementById('sumGross').textContent = fmtMoney(sn + sv);
   }
 
-  document.getElementById('addRowBtn').addEventListener('click', function () { addRow(); });
+  document.getElementById('addRowBtn').onclick = function () { addRow(); };
 
-  /* ── Form submit ─────────────────────────────────────────── */
-  document.getElementById('invoiceForm').addEventListener('submit', function (e) {
+  /* Submit */
+  document.getElementById('invoiceForm').onsubmit = function () {
     var items = [];
-    document.querySelectorAll('#itemsBody tr').forEach(function (tr) {
-      var idx    = tr.id.replace('row-', '');
-      var descEl = tr.querySelector('[data-role="desc"]');
-      var netEl  = document.getElementById('net-' + idx);
-      var vatEl  = document.getElementById('vat-' + idx);
-      if (!netEl) return;
-      var net    = parseFloat(netEl.value) || 0;
-      var vatPct = parseInt(vatEl.value, 10) || 0;
-      var vatAmt = net * vatPct / 100;
-      items.push({ desc: descEl ? descEl.value : '', net: net, vat_pct: vatPct, vat_amt: vatAmt, total: net + vatAmt });
-    });
-    if (items.length === 0) {
-      e.preventDefault();
-      alert('En az bir fatura kalemi eklemeniz gerekiyor.');
-      return;
+    var rows = document.querySelectorAll('#itemsBody tr');
+    for (var i = 0; i < rows.length; i++) {
+      var id    = rows[i].id.replace('row-', '');
+      var descEl = rows[i].querySelector('[data-role="desc"]');
+      var n  = parseFloat(document.getElementById('net-' + id).value) || 0;
+      var p  = parseInt(document.getElementById('vat-' + id).value, 10) || 0;
+      var v  = n * p / 100;
+      items.push({desc: descEl ? descEl.value : '', net: n, vat_pct: p, vat_amt: v, total: n + v});
     }
+    if (!items.length) { alert('En az bir fatura kalemi eklemelisiniz.'); return false; }
     document.getElementById('itemsJson').value = JSON.stringify(items);
-  });
+    return true;
+  };
 
-  /* ── Referans autocomplete ───────────────────────────────── */
+  /* Reference autocomplete */
   var refSearch = document.getElementById('refSearch');
   var refDd     = document.getElementById('refDd');
-  var refId     = document.getElementById('refId');
+  var refIdEl   = document.getElementById('refId');
 
   function showRefDd(q) {
-    refDd.innerHTML = '';
     var list = q
-      ? REFS.filter(function (r) { return r.text.toLowerCase().includes(q.toLowerCase()); }).slice(0, 12)
+      ? REFS.filter(function (r) { return r.text.toLowerCase().indexOf(q.toLowerCase()) !== -1; }).slice(0, 12)
       : REFS.slice(0, 12);
-    if (!list.length) { refDd.innerHTML = '<div class="ac-empty">Aktif referans bulunamadı.</div>'; }
-    list.forEach(function (r) {
-      var d = document.createElement('div');
-      d.className = 'ac-row';
-      d.textContent = r.text;
-      d.addEventListener('click', function () {
-        refSearch.value = r.text;
-        refId.value = r.id;
-        refDd.classList.remove('open');
-      });
-      refDd.appendChild(d);
-    });
-    refDd.classList.add('open');
+    refDd.innerHTML = '';
+    if (!list.length) {
+      refDd.innerHTML = '<div class="ac-empty">Aktif referans bulunamadi.</div>';
+    } else {
+      for (var i = 0; i < list.length; i++) {
+        (function (r) {
+          var d = document.createElement('div');
+          d.className   = 'ac-row';
+          d.textContent = r.text;
+          d.onclick = function () { refSearch.value = r.text; refIdEl.value = r.id; refDd.className = 'ac-dd'; };
+          refDd.appendChild(d);
+        }(list[i]));
+      }
+    }
+    refDd.className = 'ac-dd open';
   }
 
-  refSearch.addEventListener('focus', function () { showRefDd(this.value); });
-  refSearch.addEventListener('input', function () { refId.value = ''; showRefDd(this.value); });
-  document.addEventListener('click', function (e) {
-    if (!refSearch.closest('.ac-wrap').contains(e.target)) refDd.classList.remove('open');
-  });
+  refSearch.onfocus = function () { showRefDd(this.value); };
+  refSearch.oninput = function () { refIdEl.value = ''; showRefDd(this.value); };
 
-  // Sayfa yüklendiğinde mevcut ref_id varsa adı göster
-  if (META.ref_id) {
-    var rr = REFS.find(function (r) { return r.id === META.ref_id; });
-    if (rr && !refSearch.value) refSearch.value = rr.text;
-  }
-
-  /* ── Tedarikçi autocomplete ──────────────────────────────── */
+  /* Vendor autocomplete */
   var vendorSearch = document.getElementById('vendorSearch');
   var vendorDd     = document.getElementById('vendorDd');
   var vendorIdEl   = document.getElementById('vendorId');
 
-  function selectVendor(v) {
+  function selectVendor (v) {
     vendorSearch.value = v.name;
     vendorIdEl.value   = v.id;
     selVendorTerm      = v.payment_term || 30;
-    vendorDd.classList.remove('open');
+    vendorDd.className = 'ac-dd';
     autoFillDue();
-    if (!VENDORS.find(function (x) { return x.id === v.id; })) VENDORS.push(v);
+    var found = false;
+    for (var i = 0; i < VENDORS.length; i++) { if (VENDORS[i].id === v.id) { found = true; break; } }
+    if (!found) VENDORS.push(v);
   }
 
   function showVendorDd(q) {
-    vendorDd.innerHTML = '';
     var list = q
-      ? VENDORS.filter(function (v) { return v.name.toLowerCase().includes(q.toLowerCase()); }).slice(0, 12)
+      ? VENDORS.filter(function (v) { return v.name.toLowerCase().indexOf(q.toLowerCase()) !== -1; }).slice(0, 12)
       : VENDORS.slice(0, 12);
-    list.forEach(function (v) {
-      var d = document.createElement('div');
-      d.className = 'ac-row';
-      d.innerHTML = '<span>' + v.name + '</span>' +
-        (v.payment_term ? '<small class="text-muted">' + v.payment_term + ' gün</small>' : '');
-      d.addEventListener('click', function () { selectVendor(v); });
-      vendorDd.appendChild(d);
-    });
-    // "Yeni ekle" satırı
-    var newRow = document.createElement('div');
-    newRow.className = 'ac-row ac-new';
-    var lbl = (q && !list.length) ? '"' + q + '" adında yeni tedarikçi ekle' : 'Listede yok mu? Yeni tedarikçi ekle';
-    newRow.innerHTML = '<i class="bi bi-plus-circle me-1"></i>' + lbl;
-    newRow.addEventListener('click', function () { openVendorModal(null, q || vendorSearch.value); });
-    vendorDd.appendChild(newRow);
-    vendorDd.classList.add('open');
+    vendorDd.innerHTML = '';
+    for (var i = 0; i < list.length; i++) {
+      (function (v) {
+        var d = document.createElement('div');
+        d.className = 'ac-row';
+        d.innerHTML = '<span>' + v.name + '</span>' + (v.payment_term ? '<small class="text-muted ms-2">' + v.payment_term + ' gün</small>' : '');
+        d.onclick = function () { selectVendor(v); };
+        vendorDd.appendChild(d);
+      }(list[i]));
+    }
+    var nr = document.createElement('div');
+    nr.className = 'ac-row ac-new';
+    nr.innerHTML = '<i class="bi bi-plus-circle me-1"></i>' + (q && !list.length ? '"' + q + '" yeni tedarikçi ekle' : 'Listede yok mu? Yeni ekle');
+    nr.onclick = function () { openVendorModal(null, q || vendorSearch.value); };
+    vendorDd.appendChild(nr);
+    vendorDd.className = 'ac-dd open';
   }
 
-  vendorSearch.addEventListener('focus', function () { showVendorDd(this.value); });
-  vendorSearch.addEventListener('input', function () { vendorIdEl.value = ''; selVendorTerm = null; showVendorDd(this.value); });
+  vendorSearch.onfocus = function () { showVendorDd(this.value); };
+  vendorSearch.oninput = function () { vendorIdEl.value = ''; selVendorTerm = null; showVendorDd(this.value); };
+
+  /* Close dropdowns on outside click */
   document.addEventListener('click', function (e) {
-    if (!vendorSearch.closest('.ac-wrap').contains(e.target)) vendorDd.classList.remove('open');
+    var rw = document.getElementById('refSearch').closest('.ac-wrap');
+    if (rw && !rw.contains(e.target)) refDd.className = 'ac-dd';
+    var vw = document.getElementById('vendorSearch').closest('.ac-wrap');
+    if (vw && !vw.contains(e.target) && e.target.id !== 'openVendorModalLink' && !e.target.closest('#openVendorModalLink')) {
+      vendorDd.className = 'ac-dd';
+    }
   });
 
-  if (META.vendor_id) {
-    var vv = VENDORS.find(function (v) { return v.id === META.vendor_id; });
-    if (vv) { selVendorTerm = vv.payment_term; }
+  /* Pre-fill vendor name on edit */
+  if (INV_VID) {
+    for (var i = 0; i < VENDORS.length; i++) {
+      if (VENDORS[i].id === INV_VID) { selVendorTerm = VENDORS[i].payment_term; break; }
+    }
+  }
+  if (INV_RID && !refSearch.value) {
+    for (var i = 0; i < REFS.length; i++) {
+      if (REFS[i].id === INV_RID) { refSearch.value = REFS[i].text; break; }
+    }
   }
 
-  /* ── Vade otomatik doldur ────────────────────────────────── */
+  /* Auto-fill due date */
   function autoFillDue() {
     if (!selVendorTerm) return;
-    var dateEl = document.getElementById('invoiceDate');
-    var dueEl  = document.getElementById('dueDate');
+    var dueEl = document.getElementById('dueDate');
     if (dueEl.value) return;
-    var base = dateEl.value ? new Date(dateEl.value) : new Date();
+    var base = document.getElementById('invoiceDate').value ? new Date(document.getElementById('invoiceDate').value) : new Date();
     base.setDate(base.getDate() + selVendorTerm);
     dueEl.value = base.toISOString().slice(0, 10);
   }
-  document.getElementById('invoiceDate').addEventListener('change', function () {
+  document.getElementById('invoiceDate').onchange = function () {
     if (!selVendorTerm) return;
     var base = new Date(this.value);
     base.setDate(base.getDate() + selVendorTerm);
     document.getElementById('dueDate').value = base.toISOString().slice(0, 10);
-  });
+  };
 
-  /* ── Yeni tedarikçi modal ────────────────────────────────── */
+  /* Vendor modal */
   var _modal = null;
-
   window.openVendorModal = function (e, prefill) {
     if (e) e.preventDefault();
     document.getElementById('vm_name').value         = prefill || '';
@@ -500,70 +478,66 @@
     document.getElementById('vm_email').value        = '';
     document.getElementById('vm_payment_term').value = '30';
     document.getElementById('vm_vendor_type').value  = 'genel';
-    document.getElementById('vmErr').classList.add('d-none');
-    vendorDd.classList.remove('open');
+    var errEl = document.getElementById('vmErr');
+    errEl.style.display = 'none'; errEl.textContent = '';
+    vendorDd.className = 'ac-dd';
     if (!_modal) _modal = new bootstrap.Modal(document.getElementById('newVendorModal'));
     _modal.show();
     setTimeout(function () { document.getElementById('vm_name').focus(); }, 350);
   };
 
-  document.getElementById('vmSaveBtn').addEventListener('click', saveVendor);
-  document.getElementById('newVendorModal').addEventListener('keydown', function (e) {
+  document.getElementById('openVendorModalLink').onclick = function (e) { e.preventDefault(); openVendorModal(null, ''); };
+  document.getElementById('vmSaveBtn').onclick = saveVendor;
+  document.getElementById('newVendorModal').onkeydown = function (e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveVendor(); }
-  });
+  };
 
-  async function saveVendor() {
+  function saveVendor() {
     var btn   = document.getElementById('vmSaveBtn');
     var errEl = document.getElementById('vmErr');
-    errEl.classList.add('d-none');
+    errEl.style.display = 'none';
     var name = document.getElementById('vm_name').value.trim();
     if (!name) {
-      errEl.textContent = 'Tedarikçi adı zorunludur.';
-      errEl.classList.remove('d-none');
-      document.getElementById('vm_name').focus();
-      return;
+      errEl.textContent = 'Tedarikçi adı zorunludur.'; errEl.style.display = 'block';
+      document.getElementById('vm_name').focus(); return;
     }
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Kaydediliyor...';
     var fd = new FormData();
-    fd.append('name', name);
+    fd.append('name',         name);
     fd.append('tax_no',       document.getElementById('vm_tax_no').value.trim());
     fd.append('tax_office',   document.getElementById('vm_tax_office').value.trim());
     fd.append('phone',        document.getElementById('vm_phone').value.trim());
     fd.append('email',        document.getElementById('vm_email').value.trim());
     fd.append('payment_term', document.getElementById('vm_payment_term').value);
     fd.append('vendor_type',  document.getElementById('vm_vendor_type').value);
-    try {
-      var resp = await fetch('/vendors/quick-add', { method: 'POST', body: fd });
-      var data = await resp.json();
-      if (resp.status === 409 && data.existing) {
-        errEl.innerHTML = '<strong>' + data.error + '</strong><br>' +
-          '<a href="#" class="alert-link" id="useExisting">Mevcut tedarikçiyi seç →</a>';
-        errEl.classList.remove('d-none');
-        document.getElementById('useExisting').addEventListener('click', function (e) {
-          e.preventDefault(); selectVendor(data.existing); _modal.hide();
-        });
-      } else if (!resp.ok) {
-        errEl.textContent = data.error || 'Bir hata oluştu.';
-        errEl.classList.remove('d-none');
-      } else {
-        selectVendor(data);
-        _modal.hide();
-      }
-    } catch (err) {
-      errEl.textContent = 'Sunucu bağlantı hatası.';
-      errEl.classList.remove('d-none');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Kaydet ve Seç';
-    }
+    fetch('/vendors/quick-add', {method: 'POST', body: fd})
+      .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, status: r.status, data: d}; }); })
+      .then(function (res) {
+        if (res.status === 409 && res.data.existing) {
+          errEl.innerHTML = '<strong>' + res.data.error + '</strong><br>' +
+            '<a href="#" id="useExisting" class="alert-link">Mevcut tedarikçiyi seç</a>';
+          errEl.style.display = 'block';
+          document.getElementById('useExisting').onclick = function (e) {
+            e.preventDefault(); selectVendor(res.data.existing); _modal.hide();
+          };
+        } else if (!res.ok) {
+          errEl.textContent = res.data.error || 'Bir hata olustu.'; errEl.style.display = 'block';
+        } else {
+          selectVendor(res.data); _modal.hide();
+        }
+      })
+      .catch(function () { errEl.textContent = 'Sunucu baglanti hatasi.'; errEl.style.display = 'block'; })
+      .finally(function () { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Kaydet ve Seç'; });
   }
 
-  /* ── Init ────────────────────────────────────────────────── */
-  if (ITEMS0 && Array.isArray(ITEMS0) && ITEMS0.length > 0) {
-    ITEMS0.forEach(function (it) { addRow(it.desc, it.net, it.vat_pct); });
+  /* Init */
+  if (ITEMS0 && ITEMS0.length) {
+    for (var ii = 0; ii < ITEMS0.length; ii++) {
+      addRow(ITEMS0[ii].desc, ITEMS0[ii].net, ITEMS0[ii].vat_pct);
+    }
   } else {
-    addRow(); // 1 boş satır
+    addRow('', 0, 20);
   }
 
 }());

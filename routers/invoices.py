@@ -62,12 +62,16 @@ async def invoice_new_get(
         {"id": v.id, "name": v.name, "payment_term": v.payment_term or 30}
         for v in vendors
     ])
+    refs_json = json.dumps([
+        {"id": r.id, "text": r.ref_no + " — " + r.title}
+        for r in refs
+    ])
     return templates.TemplateResponse(
         "invoices/form.html",
         {
             "request": request, "current_user": current_user,
             "invoice": None, "refs": refs, "vendors": vendors,
-            "vendors_json": vendors_json,
+            "vendors_json": vendors_json, "refs_json": refs_json,
             "invoice_types": INVOICE_TYPES, "vat_rates": VAT_RATES,
             "preselected_ref_id": ref_id,
             "preselected_vendor_id": vendor_id,
@@ -162,18 +166,22 @@ async def invoice_edit_get(
     inv = db.query(Invoice).get(invoice_id)
     if not inv:
         raise HTTPException(status_code=404)
-    refs = db.query(Reference).order_by(Reference.ref_no).all()
+    refs = db.query(Reference).filter(Reference.status == "aktif").order_by(Reference.ref_no).all()
     vendors = db.query(FinancialVendor).filter(FinancialVendor.active == True).order_by(FinancialVendor.name).all()  # noqa: E712
     vendors_json = json.dumps([
         {"id": v.id, "name": v.name, "payment_term": v.payment_term or 30}
         for v in vendors
+    ])
+    refs_json = json.dumps([
+        {"id": r.id, "text": r.ref_no + " — " + r.title}
+        for r in refs
     ])
     return templates.TemplateResponse(
         "invoices/form.html",
         {
             "request": request, "current_user": current_user,
             "invoice": inv, "refs": refs, "vendors": vendors,
-            "vendors_json": vendors_json,
+            "vendors_json": vendors_json, "refs_json": refs_json,
             "invoice_types": INVOICE_TYPES, "vat_rates": VAT_RATES,
             "preselected_ref_id": None,
             "preselected_vendor_id": None,
