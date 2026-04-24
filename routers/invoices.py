@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user, require_admin
 from database import get_db
 from models import (
-    Invoice, Reference, FinancialVendor, CashBook, BankAccount,
+    Invoice, InvoicePayment, Reference, FinancialVendor, CashBook, BankAccount,
     CreditCard, CreditCardTxn, Cheque, CashEntry, BankMovement,
     User, INVOICE_TYPES, PAYMENT_METHODS, VAT_RATES
 )
@@ -229,6 +229,8 @@ async def invoice_edit_post(
 async def invoice_pay(
     invoice_id: int,
     payment_method: str = Form(...),
+    pay_amount: float = Form(None),
+    pay_date: str = Form(""),
     cash_book_id: int = Form(None),
     bank_account_id: int = Form(None),
     credit_card_id: int = Form(None),
@@ -236,7 +238,7 @@ async def invoice_pay(
     cheque_bank: str = Form(""),
     cheque_date: str = Form(""),
     cheque_due_date: str = Form(""),
-    cheque_amount: float = Form(None),
+    pay_notes: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -244,46 +246,54 @@ async def invoice_pay(
     if not inv or inv.status == "paid":
         raise HTTPException(status_code=400, detail="Fatura bulunamadı veya zaten ödendi.")
 
-    inv.payment_method = payment_method
-    inv.paid_at = datetime.utcnow()
-    inv.status = "paid"
-    total = inv.amount * (1 + inv.vat_rate)
-    desc = f"Fatura {inv.invoice_no or inv.id}" + (f" — {inv.vendor.name}" if inv.vendor else "")
+    total = inv.total_with_vat
+    amount = pay_amount if pay_amount and pay_amount > 0 else total
+    amount = min(amount, inv.remaining)  # kalan tutarı aşamasın
+    pdate = date.fromisoformat(pay_date) if pay_date else date.today()
 
-    # Kesilen/komisyon → tahsilat (giris); gelen/diğer → ödeme (cikis)
     is_income = inv.invoice_type in ("kesilen", "komisyon")
     flow = "giris" if is_income else "cikis"
+    desc = f"Fatura {inv.invoice_no or inv.id}" + (f" — {inv.vendor.name}" if inv.vendor else "")
+
+    pmt = InvoicePayment(
+        invoice_id=invoice_id,
+        payment_date=pdate,
+        amount=amount,
+        payment_method=payment_method,
+        notes=pay_notes.strip(),
+        created_by=current_user.id,
+    )
 
     if payment_method == "nakit" and cash_book_id:
-        inv.cash_book_id = cash_book_id
+        pmt.cash_book_id = cash_book_id
         db.add(CashEntry(
             book_id=cash_book_id,
-            entry_date=date.today(),
+            entry_date=pdate,
             entry_type=flow,
-            amount=total,
+            amount=amount,
             description=desc,
             invoice_id=invoice_id,
             ref_id=inv.ref_id,
         ))
 
     elif payment_method == "banka" and bank_account_id:
-        inv.bank_account_id = bank_account_id
+        pmt.bank_account_id = bank_account_id
         db.add(BankMovement(
             account_id=bank_account_id,
-            movement_date=date.today(),
+            movement_date=pdate,
             movement_type=flow,
-            amount=total,
+            amount=amount,
             description=desc,
             invoice_id=invoice_id,
             ref_id=inv.ref_id,
         ))
 
     elif payment_method == "kredi_karti" and credit_card_id:
-        inv.credit_card_id = credit_card_id
+        pmt.credit_card_id = credit_card_id
         db.add(CreditCardTxn(
             card_id=credit_card_id,
-            txn_date=date.today(),
-            amount=total,
+            txn_date=pdate,
+            amount=amount,
             description=desc,
             invoice_id=invoice_id,
             ref_id=inv.ref_id,
@@ -295,15 +305,74 @@ async def invoice_pay(
             cheque_type="alınan" if is_income else "verilen",
             cheque_no=cheque_no.strip(),
             bank=cheque_bank.strip(),
-            amount=cheque_amount or total,
+            amount=amount,
             currency=inv.currency,
-            cheque_date=date.fromisoformat(cheque_date) if cheque_date else date.today(),
-            due_date=date.fromisoformat(cheque_due_date) if cheque_due_date else date.today(),
+            cheque_date=date.fromisoformat(cheque_date) if cheque_date else pdate,
+            due_date=date.fromisoformat(cheque_due_date) if cheque_due_date else pdate,
             status="beklemede",
         )
         db.add(cheque)
         db.flush()
-        inv.cheque_id = cheque.id
+        pmt.cheque_id = cheque.id
+
+    db.add(pmt)
+    db.flush()
+
+    # Status güncelle
+    new_paid = sum(p.amount for p in inv.payments)
+    if new_paid >= total - 0.01:
+        inv.status = "paid"
+        inv.paid_at = datetime.utcnow()
+        inv.payment_method = payment_method
+    else:
+        inv.status = "partial"
+
+    db.commit()
+    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{invoice_id}/payment/{payment_id}/delete", name="invoice_payment_delete")
+async def invoice_payment_delete(
+    invoice_id: int,
+    payment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    inv = db.query(Invoice).get(invoice_id)
+    pmt = db.query(InvoicePayment).filter(
+        InvoicePayment.id == payment_id,
+        InvoicePayment.invoice_id == invoice_id,
+    ).first()
+    if not pmt:
+        raise HTTPException(status_code=404)
+
+    # İlgili kasa/banka hareketlerini de sil
+    for ce in list(inv.cash_entries):
+        if ce.invoice_id == invoice_id and ce.amount == pmt.amount:
+            db.delete(ce)
+            break
+    for bm in list(inv.bank_movements):
+        if bm.invoice_id == invoice_id and bm.amount == pmt.amount:
+            db.delete(bm)
+            break
+
+    db.delete(pmt)
+    db.flush()
+
+    # Status güncelle
+    total = inv.total_with_vat
+    remaining_payments = db.query(InvoicePayment).filter(
+        InvoicePayment.invoice_id == invoice_id
+    ).all()
+    paid = sum(p.amount for p in remaining_payments)
+    if paid <= 0.01:
+        inv.status = "approved"
+        inv.paid_at = None
+        inv.payment_method = None
+    elif paid >= total - 0.01:
+        inv.status = "paid"
+    else:
+        inv.status = "partial"
 
     db.commit()
     return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=status.HTTP_302_FOUND)

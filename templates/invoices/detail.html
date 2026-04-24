@@ -10,7 +10,13 @@
 {% endblock %}
 
 {% block content %}
+{% set is_income = invoice.invoice_type in ('kesilen', 'komisyon') %}
+{% set total = invoice.amount * (1 + invoice.vat_rate) %}
+{% set paid = invoice.paid_amount %}
+{% set remaining = invoice.remaining %}
+
 <div class="row g-3">
+  <!-- Sol: Fatura Bilgileri -->
   <div class="col-md-4">
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body">
@@ -19,91 +25,195 @@
           <tr><th class="text-muted fw-normal">Fatura No</th><td class="fw-semibold">{{ invoice.invoice_no or "—" }}</td></tr>
           <tr><th class="text-muted fw-normal">Tip</th><td><span class="badge bg-secondary">{{ invoice.invoice_type }}</span></td></tr>
           <tr><th class="text-muted fw-normal">Tarih</th><td>{{ invoice.invoice_date | date_tr }}</td></tr>
-          <tr><th class="text-muted fw-normal">Tutar</th><td class="fw-bold">{{ invoice.amount | money }}</td></tr>
+          <tr><th class="text-muted fw-normal">Tutar (KDV hariç)</th><td>{{ invoice.amount | money }}</td></tr>
           <tr><th class="text-muted fw-normal">KDV %</th><td>%{{ (invoice.vat_rate * 100) | int }}</td></tr>
-          <tr><th class="text-muted fw-normal">KDV Dahil</th><td class="fw-bold">{{ (invoice.amount * (1 + invoice.vat_rate)) | money }}</td></tr>
+          <tr><th class="text-muted fw-normal">Toplam (KDV dahil)</th><td class="fw-bold">{{ total | money }}</td></tr>
           <tr><th class="text-muted fw-normal">Para Birimi</th><td>{{ invoice.currency }}</td></tr>
           <tr><th class="text-muted fw-normal">Tedarikçi</th><td>{% if invoice.vendor %}<a href="/vendors/{{ invoice.vendor_id }}" class="text-decoration-none">{{ invoice.vendor.name }}</a>{% else %}—{% endif %}</td></tr>
           <tr><th class="text-muted fw-normal">Referans</th><td>{% if invoice.reference %}<a href="/references/{{ invoice.ref_id }}" class="text-decoration-none">{{ invoice.reference.ref_no }}</a>{% else %}—{% endif %}</td></tr>
-          <tr><th class="text-muted fw-normal">Durum</th><td><span class="badge {% if invoice.status == 'paid' %}bg-success{% elif invoice.status == 'approved' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ invoice.status }}</span></td></tr>
+          <tr>
+            <th class="text-muted fw-normal">Durum</th>
+            <td>
+              {% if invoice.status == 'paid' %}
+                <span class="badge bg-success">Ödendi</span>
+              {% elif invoice.status == 'partial' %}
+                <span class="badge bg-warning text-dark">Kısmi Ödendi</span>
+              {% elif invoice.status == 'approved' %}
+                <span class="badge bg-secondary">Onaylı</span>
+              {% else %}
+                <span class="badge bg-light text-dark">{{ invoice.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
         </table>
         {% if invoice.notes %}<div class="mt-2 text-muted small">{{ invoice.notes }}</div>{% endif %}
       </div>
     </div>
 
-    {% set is_income = invoice.invoice_type in ('kesilen', 'komisyon') %}
-    {% if invoice.status == 'approved' %}
+    <!-- Ödeme / Tahsilat Formu -->
+    {% if invoice.status in ('approved', 'partial') %}
     <div class="card border-0 shadow-sm">
       <div class="card-body">
         <h6 class="fw-bold mb-1">
-          {% if is_income %}Tahsilat Yap{% else %}Ödeme Yap{% endif %}
+          {% if is_income %}Tahsilat Ekle{% else %}Ödeme Ekle{% endif %}
         </h6>
-        {% if is_income %}
-        <p class="text-muted small mb-3">Müşteriden gelen ödeme banka hesabına veya kasaya eklenir.</p>
+        {% if remaining > 0 %}
+        <p class="text-muted small mb-3">
+          Kalan: <strong class="text-danger">{{ remaining | money }}</strong> / Toplam: {{ total | money }}
+        </p>
         {% endif %}
         <form method="post" action="/invoices/{{ invoice.id }}/pay" id="payForm">
-          <div class="mb-3">
-            <label class="form-label">{% if is_income %}Tahsilat Yöntemi{% else %}Ödeme Yöntemi{% endif %}</label>
-            <select name="payment_method" class="form-select" id="pmSelect" onchange="togglePayFields()">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Tutar (KDV dahil)</label>
+            <input type="number" name="pay_amount" class="form-control form-control-sm"
+                   step="0.01" min="0.01" max="{{ remaining | round(2) }}"
+                   value="{{ remaining | round(2) }}" required>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small mb-1">Tarih</label>
+            <input type="date" name="pay_date" class="form-control form-control-sm"
+                   value="{{ '' }}">
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small mb-1">{% if is_income %}Tahsilat Yöntemi{% else %}Ödeme Yöntemi{% endif %}</label>
+            <select name="payment_method" class="form-select form-select-sm" id="pmSelect" onchange="togglePayFields()">
               {% for val, label in payment_methods %}
               <option value="{{ val }}">{{ label }}</option>
               {% endfor %}
             </select>
           </div>
 
-          <div id="cashFields" class="d-none">
-            <label class="form-label">Kasa</label>
-            <select name="cash_book_id" class="form-select mb-2">
+          <div id="cashFields" class="d-none mb-2">
+            <label class="form-label small mb-1">Kasa</label>
+            <select name="cash_book_id" class="form-select form-select-sm">
               {% for b in cash_books %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
             </select>
           </div>
 
-          <div id="bankFields" class="d-none">
-            <label class="form-label">Banka Hesabı</label>
-            <select name="bank_account_id" class="form-select mb-2">
+          <div id="bankFields" class="d-none mb-2">
+            <label class="form-label small mb-1">Banka Hesabı</label>
+            <select name="bank_account_id" class="form-select form-select-sm">
               {% for a in bank_accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
             </select>
           </div>
 
-          <div id="ccFields" class="d-none">
-            <label class="form-label">Kredi Kartı</label>
-            <select name="credit_card_id" class="form-select mb-2">
+          <div id="ccFields" class="d-none mb-2">
+            <label class="form-label small mb-1">Kredi Kartı</label>
+            <select name="credit_card_id" class="form-select form-select-sm">
               {% for c in credit_cards %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
             </select>
           </div>
 
-          <div id="chequeFields" class="d-none">
-            <input type="text" name="cheque_no" class="form-control mb-2" placeholder="Çek No">
-            <input type="text" name="cheque_bank" class="form-control mb-2" placeholder="Banka">
-            <input type="date" name="cheque_date" class="form-control mb-2" placeholder="Keşide Tarihi">
-            <input type="date" name="cheque_due_date" class="form-control mb-2" placeholder="Vade Tarihi">
+          <div id="chequeFields" class="d-none mb-2">
+            <input type="text" name="cheque_no" class="form-control form-control-sm mb-1" placeholder="Çek No">
+            <input type="text" name="cheque_bank" class="form-control form-control-sm mb-1" placeholder="Banka">
+            <input type="date" name="cheque_date" class="form-control form-control-sm mb-1" placeholder="Keşide Tarihi">
+            <input type="date" name="cheque_due_date" class="form-control form-control-sm mb-1" placeholder="Vade Tarihi">
           </div>
 
-          <button type="submit" class="btn btn-success w-100">
+          <div class="mb-3">
+            <label class="form-label small mb-1">Açıklama (opsiyonel)</label>
+            <input type="text" name="pay_notes" class="form-control form-control-sm" placeholder="Not...">
+          </div>
+
+          <button type="submit" class="btn btn-success btn-sm w-100">
             {% if is_income %}Tahsil Et{% else %}Öde{% endif %}
           </button>
         </form>
       </div>
     </div>
     {% elif invoice.status == 'paid' %}
-    <div class="alert {% if is_income %}alert-primary{% else %}alert-success{% endif %}">
+    <div class="alert {% if is_income %}alert-primary{% else %}alert-success{% endif %} mb-0">
       <i class="bi bi-check-circle"></i>
       {% if is_income %}Tahsil Edildi{% else %}Ödendi{% endif %} — {{ invoice.paid_at | datetime_tr }}
     </div>
     {% endif %}
   </div>
+
+  <!-- Sağ: Ödeme Geçmişi -->
   <div class="col-md-8">
     <div class="card border-0 shadow-sm">
       <div class="card-body">
-        <h6 class="fw-bold">{% if is_income %}Tahsilat Detayı{% else %}Ödeme Detayı{% endif %}</h6>
-        {% if invoice.payment_method %}
-        <p class="mb-0">Yöntem: <strong>{{ invoice.payment_method }}</strong></p>
-        {% if invoice.bank_account %}<p class="mb-0">Banka: {{ invoice.bank_account.name }}</p>{% endif %}
-        {% if invoice.cash_book %}<p class="mb-0">Kasa: {{ invoice.cash_book.name }}</p>{% endif %}
-        {% if invoice.credit_card %}<p class="mb-0">Kredi Kartı: {{ invoice.credit_card.name }}</p>{% endif %}
-        {% if invoice.cheque %}<p class="mb-0">Çek No: {{ invoice.cheque.cheque_no }} — Vade: {{ invoice.cheque.due_date | date_tr }}</p>{% endif %}
+        <h6 class="fw-bold mb-3">{% if is_income %}Tahsilat Geçmişi{% else %}Ödeme Geçmişi{% endif %}</h6>
+
+        {% if invoice.payments %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-2">
+            <thead class="table-light">
+              <tr>
+                <th>Tarih</th>
+                <th>Tutar</th>
+                <th>Yöntem</th>
+                <th>Hesap / Kasa</th>
+                <th>Not</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pmt in invoice.payments %}
+              <tr>
+                <td>{{ pmt.payment_date | date_tr }}</td>
+                <td class="fw-semibold">{{ pmt.amount | money }}</td>
+                <td>
+                  {% if pmt.payment_method == 'nakit' %}Nakit
+                  {% elif pmt.payment_method == 'banka' %}Banka
+                  {% elif pmt.payment_method == 'kredi_karti' %}Kredi Kartı
+                  {% elif pmt.payment_method == 'cek' %}Çek
+                  {% else %}{{ pmt.payment_method }}{% endif %}
+                </td>
+                <td class="text-muted small">
+                  {% if pmt.bank_account %}{{ pmt.bank_account.name }}
+                  {% elif pmt.cash_book %}{{ pmt.cash_book.name }}
+                  {% elif pmt.credit_card %}{{ pmt.credit_card.name }}
+                  {% elif pmt.cheque %}Çek #{{ pmt.cheque.cheque_no }}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-muted small">{{ pmt.notes or "—" }}</td>
+                <td>
+                  <form method="post"
+                        action="/invoices/{{ invoice.id }}/payment/{{ pmt.id }}/delete"
+                        onsubmit="return confirm('Bu ödeme kaydını sil?')"
+                        style="display:inline">
+                    <button class="btn btn-link btn-sm text-danger p-0" title="Sil">
+                      <i class="bi bi-x-circle"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot class="table-light fw-semibold">
+              <tr>
+                <td>Toplam</td>
+                <td>{{ paid | money }}</td>
+                <td colspan="4">
+                  {% if remaining > 0.01 %}
+                  <span class="text-danger">Kalan: {{ remaining | money }}</span>
+                  {% else %}
+                  <span class="text-success"><i class="bi bi-check-circle"></i> Tamamlandı</span>
+                  {% endif %}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
         {% else %}
-        <p class="text-muted">Henüz {% if is_income %}tahsilat{% else %}ödeme{% endif %} bilgisi yok.</p>
+        <p class="text-muted mb-0">Henüz {% if is_income %}tahsilat{% else %}ödeme{% endif %} kaydı yok.</p>
+        {% endif %}
+
+        <!-- Özet progress bar -->
+        {% if total > 0 and paid > 0 %}
+        {% set pct = [(paid / total * 100), 100] | min | int %}
+        <div class="progress mt-2" style="height:8px;">
+          <div class="progress-bar {% if pct >= 100 %}bg-success{% else %}bg-warning{% endif %}"
+               style="width:{{ pct }}%"></div>
+        </div>
+        <div class="d-flex justify-content-between mt-1">
+          <small class="text-muted">Ödenen: {{ paid | money }}</small>
+          <small class="text-muted">Toplam: {{ total | money }}</small>
+        </div>
         {% endif %}
       </div>
     </div>
@@ -122,5 +232,11 @@ function togglePayFields() {
   else if (pm === 'cek') document.getElementById('chequeFields').classList.remove('d-none');
 }
 togglePayFields();
+
+// pay_date default = bugün
+const dateInput = document.querySelector('input[name="pay_date"]');
+if (dateInput && !dateInput.value) {
+  dateInput.value = new Date().toISOString().split('T')[0];
+}
 </script>
 {% endblock %}

@@ -155,6 +155,20 @@ def generate_ref_no(db, event_type: str, customer_code: str, check_in) -> str:
 def _migrate(engine) -> None:
     """Mevcut tablolara eksik kolonları ekler (basit migration)."""
     from sqlalchemy import text
+
+    # PostgreSQL enum'a yeni değer eklemek transaction dışında yapılmalı
+    if not DATABASE_URL.startswith("sqlite"):
+        try:
+            raw = engine.raw_connection()
+            raw.set_isolation_level(0)  # AUTOCOMMIT
+            cur = raw.cursor()
+            cur.execute("ALTER TYPE invoice_status_enum ADD VALUE IF NOT EXISTS 'partial'")
+            cur.close()
+            raw.close()
+            print("[migrate] invoice_status_enum 'partial' eklendi.")
+        except Exception as e:
+            print(f"[migrate] enum partial: {e}")
+
     migrations = [
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date DATE",
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS items_json TEXT",

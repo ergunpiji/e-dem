@@ -72,7 +72,7 @@ async def nav_counts_middleware(request: Request, call_next):
             try:
                 counts["invoices_unpaid"] = (
                     db.query(func.count(Invoice.id))
-                    .filter(Invoice.status == "approved")
+                    .filter(Invoice.status.in_(["approved", "partial"]))
                     .scalar() or 0
                 )
             except Exception:

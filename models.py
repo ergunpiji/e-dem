@@ -240,7 +240,7 @@ class Invoice(Base):
     vat_rate = Column(Float, default=0.20, nullable=False)
     currency = Column(String(3), default="TRY", nullable=False)
     status = Column(
-        Enum("draft", "approved", "paid", "cancelled", name="invoice_status_enum"),
+        Enum("draft", "approved", "partial", "paid", "cancelled", name="invoice_status_enum"),
         default="approved", nullable=False
     )
     payment_method = Column(
@@ -267,6 +267,20 @@ class Invoice(Base):
     cheque = relationship("Cheque")
     cash_entries = relationship("CashEntry", back_populates="invoice")
     bank_movements = relationship("BankMovement", back_populates="invoice")
+    payments = relationship("InvoicePayment", back_populates="invoice",
+                            cascade="all, delete-orphan", order_by="InvoicePayment.payment_date")
+
+    @property
+    def total_with_vat(self) -> float:
+        return round(self.amount * (1 + self.vat_rate), 2)
+
+    @property
+    def paid_amount(self) -> float:
+        return round(sum(p.amount for p in self.payments), 2)
+
+    @property
+    def remaining(self) -> float:
+        return round(self.total_with_vat - self.paid_amount, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +319,33 @@ class BankMovement(Base):
     account = relationship("BankAccount", back_populates="movements")
     reference = relationship("Reference", back_populates="bank_movements")
     invoice = relationship("Invoice", back_populates="bank_movements")
+
+
+class InvoicePayment(Base):
+    """Faturaya bağlı kısmi veya tam ödeme taksiti."""
+    __tablename__ = "invoice_payments"
+
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    payment_date = Column(Date, nullable=False)
+    amount = Column(Float, nullable=False)
+    payment_method = Column(
+        Enum("nakit", "banka", "kredi_karti", "cek", name="inv_pmt_method_enum"),
+        nullable=False
+    )
+    bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
+    cash_book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=True)
+    credit_card_id = Column(Integer, ForeignKey("credit_cards.id"), nullable=True)
+    cheque_id = Column(Integer, ForeignKey("cheques.id"), nullable=True)
+    notes = Column(String(300))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    invoice = relationship("Invoice", back_populates="payments")
+    bank_account = relationship("BankAccount")
+    cash_book = relationship("CashBook")
+    credit_card = relationship("CreditCard")
+    cheque = relationship("Cheque")
 
 
 # ---------------------------------------------------------------------------
