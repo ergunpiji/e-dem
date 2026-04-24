@@ -2,7 +2,9 @@
 Nakit kasa yönetimi
 """
 
-from datetime import date
+from collections import defaultdict
+from datetime import date, datetime
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -10,7 +12,7 @@ from sqlalchemy import func
 
 from auth import get_current_user, require_admin
 from database import get_db
-from models import CashBook, CashEntry, User
+from models import CashBook, CashEntry, CashDayClose, User
 from templates_config import templates
 
 router = APIRouter(prefix="/cash", tags=["cash"])
@@ -24,6 +26,63 @@ def _balance(db, book_id: int) -> float:
         CashEntry.book_id == book_id, CashEntry.entry_type == "cikis"
     ).scalar() or 0
     return ins - outs
+
+
+def _balance_before(db, book_id: int, d: date) -> float:
+    ins = db.query(func.sum(CashEntry.amount)).filter(
+        CashEntry.book_id == book_id,
+        CashEntry.entry_type == "giris",
+        CashEntry.entry_date < d,
+    ).scalar() or 0
+    outs = db.query(func.sum(CashEntry.amount)).filter(
+        CashEntry.book_id == book_id,
+        CashEntry.entry_type == "cikis",
+        CashEntry.entry_date < d,
+    ).scalar() or 0
+    return ins - outs
+
+
+def _daily_summary(db, book_id: int):
+    """Tüm girişleri gün bazında grupla, açılış/kapanış bakiyelerini hesapla."""
+    all_entries = (
+        db.query(CashEntry)
+        .filter(CashEntry.book_id == book_id)
+        .order_by(CashEntry.entry_date)
+        .all()
+    )
+    closed_map = {
+        dc.close_date: dc
+        for dc in db.query(CashDayClose).filter(CashDayClose.book_id == book_id).all()
+    }
+
+    daily = defaultdict(lambda: {"giris": 0.0, "cikis": 0.0, "count": 0})
+    for e in all_entries:
+        daily[e.entry_date]["count"] += 1
+        if e.entry_type == "giris":
+            daily[e.entry_date]["giris"] += e.amount
+        else:
+            daily[e.entry_date]["cikis"] += e.amount
+
+    rows = []
+    running = 0.0
+    for d in sorted(daily.keys()):
+        opening = running
+        g = daily[d]["giris"]
+        c = daily[d]["cikis"]
+        closing = opening + g - c
+        close_rec = closed_map.get(d)
+        rows.append({
+            "date": d,
+            "opening": opening,
+            "giris": g,
+            "cikis": c,
+            "closing": closing,
+            "count": daily[d]["count"],
+            "close_rec": close_rec,
+        })
+        running = closing
+
+    return rows, closed_map
 
 
 @router.get("", response_class=HTMLResponse, name="cash_list")
@@ -70,6 +129,7 @@ async def cash_new_post(
 async def cash_detail(
     book_id: int,
     request: Request,
+    tab: str = "hareketler",
     type_filter: str = "",
     category_filter: str = "",
     date_from: str = "",
@@ -83,6 +143,13 @@ async def cash_detail(
 
     balance = _balance(db, book_id)
 
+    # Kapalı günler seti
+    closed_map = {
+        dc.close_date: dc
+        for dc in db.query(CashDayClose).filter(CashDayClose.book_id == book_id).all()
+    }
+    closed_dates = set(closed_map.keys())
+
     # Tüm kategoriler (filtre dropdown için)
     cats_raw = db.query(CashEntry.category).filter(
         CashEntry.book_id == book_id,
@@ -90,7 +157,7 @@ async def cash_detail(
     ).distinct().all()
     all_categories = sorted([c[0] for c in cats_raw if c[0]])
 
-    # Filtrelenmiş sorgу
+    # Filtrelenmiş hareket sorgusu
     q = db.query(CashEntry).filter(CashEntry.book_id == book_id)
     if type_filter in ("giris", "cikis"):
         q = q.filter(CashEntry.entry_type == type_filter)
@@ -109,9 +176,14 @@ async def cash_detail(
 
     entries = q.order_by(CashEntry.entry_date.desc(), CashEntry.id.desc()).all()
 
-    # Filtrelenmiş toplamlar
     toplam_giris = sum(e.amount for e in entries if e.entry_type == "giris")
     toplam_cikis = sum(e.amount for e in entries if e.entry_type == "cikis")
+
+    # Günlük özet
+    daily_rows, _ = _daily_summary(db, book_id)
+
+    today = date.today()
+    today_closed = today in closed_dates
 
     return templates.TemplateResponse(
         "cash/detail.html",
@@ -123,6 +195,12 @@ async def cash_detail(
             "type_filter": type_filter,
             "category_filter": category_filter,
             "date_from": date_from, "date_to": date_to,
+            "tab": tab,
+            "daily_rows": daily_rows,
+            "closed_dates": closed_dates,
+            "today": today,
+            "today_closed": today_closed,
+            "today_str": today.isoformat(),
             "page_title": f"Kasa — {book.name}",
         },
     )
@@ -143,9 +221,16 @@ async def cash_entry_add(
     book = db.query(CashBook).get(book_id)
     if not book:
         raise HTTPException(status_code=404)
+    d = date.fromisoformat(entry_date)
+    closed = db.query(CashDayClose).filter(
+        CashDayClose.book_id == book_id,
+        CashDayClose.close_date == d,
+    ).first()
+    if closed:
+        raise HTTPException(status_code=400, detail=f"{d.strftime('%d.%m.%Y')} günü kapalı — işlem yapılamaz.")
     db.add(CashEntry(
         book_id=book_id,
-        entry_date=date.fromisoformat(entry_date),
+        entry_date=d,
         entry_type=entry_type,
         amount=amount,
         description=description.strip() or None,
@@ -172,6 +257,13 @@ async def cash_entry_edit(
     e = db.query(CashEntry).get(entry_id)
     if not e or e.book_id != book_id:
         raise HTTPException(status_code=404)
+    # Orijinal gün kapalıysa düzenleme engellendi
+    closed = db.query(CashDayClose).filter(
+        CashDayClose.book_id == book_id,
+        CashDayClose.close_date == e.entry_date,
+    ).first()
+    if closed:
+        raise HTTPException(status_code=400, detail="Kapalı güne ait hareket düzenlenemez.")
     e.entry_date = date.fromisoformat(entry_date)
     e.entry_type = entry_type
     e.amount = amount
@@ -190,7 +282,65 @@ async def cash_entry_delete(
     db: Session = Depends(get_db),
 ):
     e = db.query(CashEntry).get(entry_id)
-    if e and e.book_id == book_id:
-        db.delete(e)
-        db.commit()
+    if not e or e.book_id != book_id:
+        raise HTTPException(status_code=404)
+    closed = db.query(CashDayClose).filter(
+        CashDayClose.book_id == book_id,
+        CashDayClose.close_date == e.entry_date,
+    ).first()
+    if closed:
+        raise HTTPException(status_code=400, detail="Kapalı güne ait hareket silinemez.")
+    db.delete(e)
+    db.commit()
     return RedirectResponse(url=f"/cash/{book_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{book_id}/close", name="cash_day_close")
+async def cash_day_close(
+    book_id: int,
+    close_date: str = Form(...),
+    physical_count: float = Form(...),
+    notes: str = Form(""),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    book = db.query(CashBook).get(book_id)
+    if not book:
+        raise HTTPException(status_code=404)
+    d = date.fromisoformat(close_date)
+
+    existing = db.query(CashDayClose).filter(
+        CashDayClose.book_id == book_id,
+        CashDayClose.close_date == d,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu gün zaten kapatılmış.")
+
+    # Kapanış bakiyesi = o güne kadar tüm hareketlerin neti
+    ins = db.query(func.sum(CashEntry.amount)).filter(
+        CashEntry.book_id == book_id,
+        CashEntry.entry_type == "giris",
+        CashEntry.entry_date <= d,
+    ).scalar() or 0
+    outs = db.query(func.sum(CashEntry.amount)).filter(
+        CashEntry.book_id == book_id,
+        CashEntry.entry_type == "cikis",
+        CashEntry.entry_date <= d,
+    ).scalar() or 0
+    closing_balance = ins - outs
+    opening_balance = _balance_before(db, book_id, d)
+
+    dc = CashDayClose(
+        book_id=book_id,
+        close_date=d,
+        opening_balance=opening_balance,
+        closing_balance=closing_balance,
+        physical_count=physical_count,
+        difference=physical_count - closing_balance,
+        notes=notes.strip() or None,
+        closed_by=current_user.id,
+        closed_at=datetime.utcnow(),
+    )
+    db.add(dc)
+    db.commit()
+    return RedirectResponse(url=f"/cash/{book_id}?tab=gunluk", status_code=status.HTTP_302_FOUND)

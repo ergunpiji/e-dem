@@ -218,6 +218,7 @@ def _migrate(engine) -> None:
         # payment_method nullable yap (talep aşamasında henüz bilinmez)
         "ALTER TABLE employee_advances ALTER COLUMN payment_method DROP NOT NULL",
         "ALTER TABLE employee_advances ALTER COLUMN advance_date DROP NOT NULL",
+        # cash_day_closes tablosu create_all tarafından oluşturulur; burada ek migration yok
     ]
     with engine.begin() as conn:
         for sql in migrations:

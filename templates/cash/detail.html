@@ -2,9 +2,18 @@
 {% block page_title %}{{ page_title }}{% endblock %}
 
 {% block topbar_actions %}
+{% if not today_closed and current_user.is_admin %}
+<button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#closeModal">
+  <i class="bi bi-lock me-1"></i>Gün Sonu Kapat
+</button>
+{% elif today_closed %}
+<span class="badge bg-success py-2 px-3" style="font-size:12px"><i class="bi bi-lock-fill me-1"></i>Bugün Kapalı</span>
+{% endif %}
+{% if not today_closed %}
 <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addEntryModal">
   <i class="bi bi-plus-lg me-1"></i>Hareket Ekle
 </button>
+{% endif %}
 {% endblock %}
 
 {% block extra_css %}
@@ -12,6 +21,11 @@
   .kpi-card { background:#fff; border-radius:12px; padding:20px 24px; border:1px solid #e2e8f0; }
   .kpi-card .kpi-label { font-size:12px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
   .kpi-card .kpi-value { font-size:26px; font-weight:800; margin-top:4px; line-height:1.1; }
+
+  .nav-tabs-custom { border-bottom:2px solid #e2e8f0; margin-bottom:16px; }
+  .nav-tabs-custom .nav-link { color:#64748b; font-size:13.5px; font-weight:600; padding:8px 18px; border:none; border-bottom:2px solid transparent; margin-bottom:-2px; border-radius:0; }
+  .nav-tabs-custom .nav-link.active { color:#1e40af; border-bottom-color:#1e40af; background:none; }
+  .nav-tabs-custom .nav-link:hover { color:#1e293b; }
 
   .filter-bar { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:16px; }
 
@@ -21,13 +35,11 @@
   .entries-card tbody td { padding:10px 14px; border-bottom:1px solid #f1f5f9; font-size:13.5px; vertical-align:middle; }
   .entries-card tbody tr:last-child td { border-bottom:none; }
   .entries-card tbody tr:hover { background:#f8fafc; }
+  .entries-card tbody tr.closed-row td { background:#fafafa; color:#94a3b8; }
 
   .pill { display:inline-block; width:28px; height:16px; border-radius:4px; }
   .pill.giris { background:#16a34a; }
   .pill.cikis { background:#dc2626; }
-
-  .cat-link { color:#2563eb; text-decoration:none; font-size:12px; }
-  .cat-link:hover { text-decoration:underline; }
 
   .amt-giris { color:#16a34a; font-weight:700; }
   .amt-cikis { color:#dc2626; font-weight:700; }
@@ -35,6 +47,25 @@
   .action-btn { background:none; border:1px solid #e2e8f0; border-radius:6px; padding:3px 7px; cursor:pointer; color:#64748b; font-size:13px; transition:all .12s; }
   .action-btn:hover { border-color:#94a3b8; color:#1e293b; }
   .action-btn.del:hover { border-color:#fca5a5; color:#dc2626; background:#fef2f2; }
+
+  /* Günlük özet tablosu */
+  .daily-table { background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  .daily-table table { margin:0; }
+  .daily-table thead th { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; padding:10px 14px; border-bottom:2px solid #e2e8f0; white-space:nowrap; background:#fafafa; }
+  .daily-table tbody td { padding:10px 14px; border-bottom:1px solid #f1f5f9; font-size:13.5px; vertical-align:middle; }
+  .daily-table tbody tr:last-child td { border-bottom:none; }
+  .daily-table tbody tr.day-open:hover { background:#fefce8; }
+  .daily-table tbody tr.day-closed { background:#f0fdf4; }
+
+  .diff-ok { color:#16a34a; font-weight:600; font-size:12px; }
+  .diff-err { color:#dc2626; font-weight:600; font-size:12px; }
+
+  .close-info { font-size:11px; color:#64748b; }
+
+  .balance-info-box {
+    background:linear-gradient(135deg,#1a3a5c,#1e5f8c);
+    color:#fff; border-radius:10px; padding:14px 18px; margin-bottom:12px;
+  }
 </style>
 {% endblock %}
 
@@ -64,9 +95,29 @@
   </div>
 </div>
 
+<!-- Sekmeler -->
+<ul class="nav nav-tabs-custom">
+  <li class="nav-item">
+    <a class="nav-link {% if tab != 'gunluk' %}active{% endif %}"
+       href="/cash/{{ book.id }}?tab=hareketler">
+      <i class="bi bi-list-ul me-1"></i>Hareketler
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if tab == 'gunluk' %}active{% endif %}"
+       href="/cash/{{ book.id }}?tab=gunluk">
+      <i class="bi bi-calendar-check me-1"></i>Günlük Özet
+    </a>
+  </li>
+</ul>
+
+<!-- ── SEKMЕ 1: Hareketler ── -->
+{% if tab != 'gunluk' %}
+
 <!-- Filtre -->
 <div class="filter-bar">
   <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+    <input type="hidden" name="tab" value="hareketler">
     <select name="type_filter" class="form-select form-select-sm" style="width:160px">
       <option value="" {% if not type_filter %}selected{% endif %}>Tür: Hepsi</option>
       <option value="giris"  {% if type_filter=='giris' %}selected{% endif %}>Giriş</option>
@@ -101,16 +152,16 @@
     </thead>
     <tbody>
       {% for e in entries %}
-      <tr>
-        <td>{{ e.entry_date | date_tr }}</td>
+      {% set is_closed = e.entry_date in closed_dates %}
+      <tr {% if is_closed %}class="closed-row"{% endif %}>
+        <td>
+          {{ e.entry_date | date_tr }}
+          {% if is_closed %}<i class="bi bi-lock-fill ms-1" style="font-size:11px;color:#94a3b8" title="Kapalı gün"></i>{% endif %}
+        </td>
         <td><span class="pill {{ e.entry_type }}"></span></td>
         <td>
           {% if e.category %}
           <span style="font-size:12px;color:#374151">{{ e.category }}</span>
-          {% if e.related_party %}
-          <span class="text-muted">·</span>
-          <span class="cat-link">{{ e.related_party }}</span>
-          {% endif %}
           {% else %}—{% endif %}
         </td>
         <td>{{ e.description or '—' }}</td>
@@ -119,7 +170,7 @@
           {% if e.entry_type=='giris' %}+{% else %}-{% endif %}{{ e.amount | money }}
         </td>
         <td class="text-end">
-          {% if current_user.is_admin %}
+          {% if current_user.is_admin and not is_closed %}
           <button class="action-btn me-1" title="Düzenle"
                   onclick="openEdit({{ e.id }}, '{{ e.entry_date }}', '{{ e.entry_type }}', {{ e.amount }}, '{{ (e.description or '') | replace("'","") }}', '{{ (e.category or '') | replace("'","") }}', '{{ (e.related_party or '') | replace("'","") }}')">
             <i class="bi bi-pencil"></i>
@@ -130,6 +181,8 @@
               <i class="bi bi-trash"></i>
             </button>
           </form>
+          {% elif is_closed %}
+          <span style="font-size:11px;color:#94a3b8"><i class="bi bi-lock"></i></span>
           {% endif %}
         </td>
       </tr>
@@ -140,7 +193,84 @@
   </table>
 </div>
 
-<!-- Hareket Ekle Modal -->
+{% else %}
+<!-- ── SEKME 2: Günlük Özet ── -->
+
+{% if not daily_rows %}
+<div class="text-center text-muted py-5">Henüz hiç hareket kaydedilmemiş.</div>
+{% else %}
+<div class="daily-table">
+  <table class="table mb-0">
+    <thead>
+      <tr>
+        <th>Tarih</th>
+        <th class="text-end">Açılış</th>
+        <th class="text-end text-success">Giriş</th>
+        <th class="text-end text-danger">Çıkış</th>
+        <th class="text-end">Sistem Kapanış</th>
+        <th class="text-end">Sayım</th>
+        <th class="text-end">Fark</th>
+        <th class="text-center">Durum</th>
+        {% if current_user.is_admin %}<th style="width:100px"></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in daily_rows | reverse %}
+      <tr class="{% if row.close_rec %}day-closed{% else %}day-open{% endif %}">
+        <td class="fw-semibold">{{ row.date | date_tr }}</td>
+        <td class="text-end text-muted" style="font-size:13px">{{ row.opening | money }}</td>
+        <td class="text-end amt-giris">+{{ row.giris | money }}</td>
+        <td class="text-end amt-cikis">-{{ row.cikis | money }}</td>
+        <td class="text-end fw-bold">{{ row.closing | money }}</td>
+        <td class="text-end">
+          {% if row.close_rec %}
+          {{ row.close_rec.physical_count | money }}
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% if row.close_rec %}
+          {% set diff = row.close_rec.difference %}
+          <span class="{% if diff == 0 %}diff-ok{% else %}diff-err{% endif %}">
+            {% if diff > 0 %}+{% endif %}{{ diff | money }}
+          </span>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td class="text-center">
+          {% if row.close_rec %}
+          <span class="badge bg-success"><i class="bi bi-lock-fill me-1"></i>Kapalı</span>
+          {% else %}
+          <span class="badge bg-warning text-dark"><i class="bi bi-unlock me-1"></i>Açık</span>
+          {% endif %}
+        </td>
+        {% if current_user.is_admin %}
+        <td class="text-end">
+          {% if not row.close_rec %}
+          <button class="btn btn-outline-warning btn-sm py-0"
+                  onclick="openCloseModal('{{ row.date }}', {{ row.closing }})">
+            <i class="bi bi-lock me-1"></i>Kapat
+          </button>
+          {% else %}
+          <span class="close-info" title="{{ row.close_rec.closed_at.strftime('%d.%m.%Y %H:%M') if row.close_rec.closed_at else '' }}">
+            <i class="bi bi-person me-1"></i>{{ row.close_rec.closer.name if row.close_rec.closer else '—' }}
+          </span>
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endif %}
+<!-- ── /SEKMELER ── -->
+
+<!-- ══ MODAL: Hareket Ekle ══ -->
 <div class="modal fade" id="addEntryModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -150,11 +280,15 @@
       </div>
       <form method="post" action="/cash/{{ book.id }}/entry">
         <div class="modal-body">
+          {% if today_closed %}
+          <div class="alert alert-warning py-2" style="font-size:13px">
+            <i class="bi bi-lock me-1"></i>Bugün kapalı — geçmiş açık bir güne işlem girebilirsiniz.
+          </div>
+          {% endif %}
           <div class="row g-2">
             <div class="col-6">
               <label class="form-label small">Tarih <span class="text-danger">*</span></label>
-              <input type="date" name="entry_date" class="form-control form-control-sm"
-                     value="{{ today_str }}" required>
+              <input type="date" name="entry_date" id="add_date" class="form-control form-control-sm" required>
             </div>
             <div class="col-6">
               <label class="form-label small">Tür <span class="text-danger">*</span></label>
@@ -195,7 +329,7 @@
   </div>
 </div>
 
-<!-- Düzenle Modal -->
+<!-- ══ MODAL: Hareketi Düzenle ══ -->
 <div class="modal fade" id="editEntryModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -244,10 +378,55 @@
   </div>
 </div>
 
+<!-- ══ MODAL: Gün Sonu Kapat ══ -->
+<div class="modal fade" id="closeModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:linear-gradient(135deg,#1a3a5c,#1e5f8c);color:#fff;border-radius:8px 8px 0 0">
+        <h6 class="modal-title"><i class="bi bi-lock me-2"></i>Gün Sonu Kapatma</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/cash/{{ book.id }}/close">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Kapatılacak Gün</label>
+            <input type="date" name="close_date" id="close_date" class="form-control"
+                   value="{{ today_str }}" required>
+          </div>
+          <div class="alert alert-info py-2 mb-3" style="font-size:13px" id="balanceInfo">
+            <i class="bi bi-info-circle me-1"></i>
+            Sistem bakiyesi: <strong>{{ balance | money }}</strong> ₺
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Fiziksel Sayım (₺) <span class="text-danger">*</span></label>
+            <input type="number" name="physical_count" step="0.01" class="form-control"
+                   placeholder="Kasadaki gerçek nakit miktarı" required>
+            <div class="form-text">Kasada saydığınız gerçek nakit tutarını girin. Sistem ile karşılaştırılacak.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Not</label>
+            <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="İsteğe bağlı not…"></textarea>
+          </div>
+          <div class="alert alert-warning py-2" style="font-size:12px">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Gün kapatıldıktan sonra o güne ait hareket eklenemez, düzenlenemez veya silinemez.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-warning btn-sm px-4 fw-bold"
+                  onclick="return confirm('Bu günü kapatmak istediğinizden emin misiniz? Bu işlem geri alınamaz.')">
+            <i class="bi bi-lock me-1"></i>Günü Kapat
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
-// Hareket ekle modalı için bugünün tarihi
-document.querySelector('#addEntryModal input[name="entry_date"]').value =
-  new Date().toISOString().split('T')[0];
+// Hareket ekle: bugün veya açık bir gün seçilebilir
+document.getElementById('add_date').value = '{{ today_str }}';
 
 function openEdit(id, dt, typ, amt, desc, cat, party) {
   document.getElementById('editForm').action = `/cash/{{ book.id }}/entry/${id}/edit`;
@@ -258,6 +437,14 @@ function openEdit(id, dt, typ, amt, desc, cat, party) {
   document.getElementById('edit_category').value = cat;
   document.getElementById('edit_party').value    = party;
   new bootstrap.Modal(document.getElementById('editEntryModal')).show();
+}
+
+function openCloseModal(dateStr, systemBalance) {
+  document.getElementById('close_date').value = dateStr;
+  const fmt = new Intl.NumberFormat('tr-TR', {minimumFractionDigits:2}).format(systemBalance);
+  document.getElementById('balanceInfo').innerHTML =
+    `<i class="bi bi-info-circle me-1"></i>Sistem bakiyesi: <strong>${fmt} ₺</strong>`;
+  new bootstrap.Modal(document.getElementById('closeModal')).show();
 }
 </script>
 {% endblock %}

@@ -98,6 +98,26 @@ class CashBook(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     entries = relationship("CashEntry", back_populates="book", cascade="all, delete-orphan")
+    day_closes = relationship("CashDayClose", back_populates="book", cascade="all, delete-orphan")
+
+
+class CashDayClose(Base):
+    """Gün sonu kapanış kaydı — kapalı günlere artık işlem yapılamaz."""
+    __tablename__ = "cash_day_closes"
+
+    id = Column(Integer, primary_key=True)
+    book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=False)
+    close_date = Column(Date, nullable=False)
+    opening_balance = Column(Float, nullable=False, default=0.0)
+    closing_balance = Column(Float, nullable=False)
+    physical_count = Column(Float, nullable=False)
+    difference = Column(Float, nullable=False, default=0.0)
+    notes = Column(String(300), nullable=True)
+    closed_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    closed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    book = relationship("CashBook", back_populates="day_closes")
+    closer = relationship("User", foreign_keys=[closed_by])
 
 
 class BankAccount(Base):
