@@ -443,6 +443,66 @@ class EmployeeAdvance(Base):
 
 
 # ---------------------------------------------------------------------------
+# Faaliyet Raporu / Yıllık Bütçe
+# ---------------------------------------------------------------------------
+
+class AnnualBudget(Base):
+    __tablename__ = "annual_budgets"
+
+    id = Column(Integer, primary_key=True)
+    year = Column(Integer, nullable=False, unique=True)
+    notes = Column(String(300))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    lines = relationship("BudgetLine", back_populates="budget", cascade="all, delete-orphan")
+
+
+class BudgetLine(Base):
+    __tablename__ = "budget_lines"
+
+    id = Column(Integer, primary_key=True)
+    budget_id = Column(Integer, ForeignKey("annual_budgets.id"), nullable=False)
+    line_type = Column(String(20), nullable=False)  # gelir | gider | maas | sabit
+    category_id = Column(Integer, ForeignKey("general_expense_categories.id"), nullable=True)
+    label = Column(String(150), nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+    month_1 = Column(Float, default=0.0, nullable=False)
+    month_2 = Column(Float, default=0.0, nullable=False)
+    month_3 = Column(Float, default=0.0, nullable=False)
+    month_4 = Column(Float, default=0.0, nullable=False)
+    month_5 = Column(Float, default=0.0, nullable=False)
+    month_6 = Column(Float, default=0.0, nullable=False)
+    month_7 = Column(Float, default=0.0, nullable=False)
+    month_8 = Column(Float, default=0.0, nullable=False)
+    month_9 = Column(Float, default=0.0, nullable=False)
+    month_10 = Column(Float, default=0.0, nullable=False)
+    month_11 = Column(Float, default=0.0, nullable=False)
+    month_12 = Column(Float, default=0.0, nullable=False)
+
+    budget = relationship("AnnualBudget", back_populates="lines")
+    category = relationship("GeneralExpenseCategory")
+
+
+class FixedExpense(Base):
+    __tablename__ = "fixed_expenses"
+
+    id = Column(Integer, primary_key=True)
+    label = Column(String(150), nullable=False)
+    category_id = Column(Integer, ForeignKey("general_expense_categories.id"), nullable=True)
+    amount = Column(Float, nullable=False)
+    recurrence = Column(String(20), default="monthly", nullable=False)  # monthly | quarterly | yearly | once
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    active = Column(Boolean, default=True, nullable=False)
+    notes = Column(String(300))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    category = relationship("GeneralExpenseCategory")
+
+
+# ---------------------------------------------------------------------------
 # Sabitler
 # ---------------------------------------------------------------------------
 

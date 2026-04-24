@@ -9,12 +9,15 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 
+from fastapi import Form, HTTPException
+from fastapi.responses import RedirectResponse
 from auth import get_current_user, require_admin
 from database import get_db
 from models import (
     Invoice, GeneralExpense, CashEntry, BankMovement,
     CreditCardStatement, Cheque, Customer, FinancialVendor,
-    Employee, SalaryPayment, EmployeeBenefit, User
+    Employee, SalaryPayment, EmployeeBenefit, User,
+    AnnualBudget, BudgetLine, FixedExpense, GeneralExpenseCategory,
 )
 from templates_config import templates
 
@@ -347,3 +350,278 @@ async def report_payroll(
             "page_title": f"Bordro — {period}",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Faaliyet Raporu
+# ---------------------------------------------------------------------------
+
+def _fixed_expense_months(fe: FixedExpense, year: int) -> list[int]:
+    """Verilen yılda hangi aylarda bu sabit gider gerçekleşir, liste döner."""
+    months = []
+    for m in range(1, 13):
+        month_start = date(year, m, 1)
+        # Bitiş tarihi kontrolü
+        if fe.end_date and month_start > fe.end_date:
+            continue
+        # Başlangıç tarihi kontrolü (ay bazında)
+        if date(year, m, 1) < date(fe.start_date.year, fe.start_date.month, 1):
+            continue
+        if fe.recurrence == "monthly":
+            months.append(m)
+        elif fe.recurrence == "quarterly":
+            # start_date'in ayından itibaren her 3 ayda bir
+            start_month = fe.start_date.month
+            if (m - start_month) % 3 == 0:
+                months.append(m)
+        elif fe.recurrence == "yearly":
+            if m == fe.start_date.month:
+                months.append(m)
+        elif fe.recurrence == "once":
+            if year == fe.start_date.year and m == fe.start_date.month:
+                months.append(m)
+    return months
+
+
+@router.get("/activity", response_class=HTMLResponse, name="report_activity")
+async def report_activity(
+    request: Request,
+    year: int = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not year:
+        year = date.today().year
+
+    # --- Gerçekleşen veriler ---
+    # Kesilen faturalar (gelir) — invoice_date bazında
+    kesilen_by_month = defaultdict(float)
+    gelen_by_month = defaultdict(float)
+    for inv in db.query(Invoice).filter(
+        extract("year", Invoice.invoice_date) == year,
+        Invoice.status.in_(["approved", "paid"]),
+    ).all():
+        m = inv.invoice_date.month
+        if inv.invoice_type in ("kesilen", "komisyon"):
+            kesilen_by_month[m] += inv.amount or 0
+        elif inv.invoice_type in ("iade_kesilen",):
+            kesilen_by_month[m] -= inv.amount or 0
+        elif inv.invoice_type == "gelen":
+            gelen_by_month[m] += inv.amount or 0
+        elif inv.invoice_type == "iade_gelen":
+            gelen_by_month[m] -= inv.amount or 0
+
+    # Genel giderler — kategori ve ay bazında
+    expenses = db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year,
+    ).all()
+
+    # Maaş + haklar ayrı topla
+    maas_by_month: dict[int, float] = defaultdict(float)
+    gider_by_cat_month: dict[int, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    for e in expenses:
+        m = e.expense_date.month
+        if e.source in ("salary", "benefit"):
+            maas_by_month[m] += e.amount or 0
+        else:
+            gider_by_cat_month[e.category_id or 0][m] += e.amount or 0
+
+    # Maaş ödemeleri (salary_payments tablosu — period: "YYYY-MM")
+    for sp in db.query(SalaryPayment).filter(
+        SalaryPayment.period.like(f"{year}-%")
+    ).all():
+        try:
+            m = int(sp.period.split("-")[1])
+            maas_by_month[m] += sp.net_amount or 0
+        except Exception:
+            pass
+
+    # --- Bütçe verileri ---
+    budget = db.query(AnnualBudget).filter(AnnualBudget.year == year).first()
+    budget_lines_by_key: dict[str, BudgetLine] = {}
+    if budget:
+        for bl in budget.lines:
+            key = bl.label if not bl.category_id else f"cat_{bl.category_id}"
+            budget_lines_by_key[key] = bl
+
+    # --- Sabit giderler ---
+    fixed_expenses = db.query(FixedExpense).filter(FixedExpense.active == True).all()
+    fixed_by_month: dict[int, float] = defaultdict(float)
+    for fe in fixed_expenses:
+        for m in _fixed_expense_months(fe, year):
+            fixed_by_month[m] += fe.amount or 0
+
+    # --- Genel gider kategorileri (üst kategori listesi) ---
+    top_cats = db.query(GeneralExpenseCategory).filter(
+        GeneralExpenseCategory.parent_id.is_(None)
+    ).order_by(GeneralExpenseCategory.sort_order).all()
+
+    # --- Özet toplamlar ---
+    def month_vals(d: dict) -> list:
+        return [d.get(m, 0.0) for m in range(1, 13)]
+
+    total_gelir_actual = [kesilen_by_month.get(m, 0.0) for m in range(1, 13)]
+    total_gelen_actual = [gelen_by_month.get(m, 0.0) for m in range(1, 13)]
+    total_maas_actual = [maas_by_month.get(m, 0.0) for m in range(1, 13)]
+    total_fixed_projected = [fixed_by_month.get(m, 0.0) for m in range(1, 13)]
+
+    # Genel gider gerçekleşen (tüm kategoriler toplam, maaş hariç)
+    genel_actual_by_month = defaultdict(float)
+    for cat_id, month_map in gider_by_cat_month.items():
+        for m, amt in month_map.items():
+            genel_actual_by_month[m] += amt
+    total_genel_actual = [genel_actual_by_month.get(m, 0.0) for m in range(1, 13)]
+
+    # Net
+    today = date.today()
+    net_actual = []
+    for m in range(1, 13):
+        net_actual.append(
+            kesilen_by_month.get(m, 0.0)
+            - gelen_by_month.get(m, 0.0)
+            - maas_by_month.get(m, 0.0)
+            - genel_actual_by_month.get(m, 0.0)
+        )
+
+    # Bütçe line helpers
+    def bl_months(key: str) -> list:
+        bl = budget_lines_by_key.get(key)
+        if not bl:
+            return [0.0] * 12
+        return [getattr(bl, f"month_{m}", 0.0) for m in range(1, 13)]
+
+    return templates.TemplateResponse(
+        "reports/activity.html",
+        {
+            "request": request, "current_user": current_user,
+            "year": year,
+            "months": ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+                       "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"],
+            "budget": budget,
+            "budget_lines_by_key": budget_lines_by_key,
+            "fixed_expenses": fixed_expenses,
+            # Gerçekleşen
+            "total_gelir_actual": total_gelir_actual,
+            "total_gelen_actual": total_gelen_actual,
+            "total_maas_actual": total_maas_actual,
+            "total_genel_actual": total_genel_actual,
+            "total_fixed_projected": total_fixed_projected,
+            "net_actual": net_actual,
+            # Kategori bazlı gider gerçekleşen
+            "top_cats": top_cats,
+            "gider_by_cat_month": gider_by_cat_month,
+            # Bütçe helpers
+            "bl_months": bl_months,
+            "today": today,
+            "page_title": f"Faaliyet Raporu — {year}",
+        },
+    )
+
+
+@router.post("/activity/budget", name="report_activity_budget_save")
+async def report_activity_budget_save(
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from fastapi import status as http_status
+    form = await request.form()
+    year = int(form.get("year", date.today().year))
+
+    budget = db.query(AnnualBudget).filter(AnnualBudget.year == year).first()
+    if not budget:
+        budget = AnnualBudget(year=year, created_by=current_user.id)
+        db.add(budget)
+        db.flush()
+
+    # Mevcut satırları temizle
+    db.query(BudgetLine).filter(BudgetLine.budget_id == budget.id).delete()
+
+    # Form'dan satırları topla: line_TYPE_IDX_month_M
+    # Format: line_gelir_0_month_1, line_gelen_0_month_1, line_cat_7_month_1, ...
+    lines_map: dict[str, dict] = {}
+    for key, val in form.items():
+        if not key.startswith("line_"):
+            continue
+        parts = key.split("_")
+        # line_{type}_{idx_or_catid}_month_{m}
+        # e.g. line_gelir_0_month_1 → type=gelir, idx=0, m=1
+        # e.g. line_cat_7_month_3 → type=cat, idx=7, m=3
+        if len(parts) < 5:
+            continue
+        line_key = f"{parts[1]}_{parts[2]}"  # gelir_0 or cat_7
+        month_num = int(parts[-1])
+        if line_key not in lines_map:
+            lines_map[line_key] = {"type": parts[1], "idx": parts[2], "months": {}}
+        try:
+            lines_map[line_key]["months"][month_num] = float(val or 0)
+        except ValueError:
+            lines_map[line_key]["months"][month_num] = 0.0
+
+    # Label bilgisi
+    for line_key, data in lines_map.items():
+        label = form.get(f"label_{line_key}", line_key)
+        cat_id = None
+        if data["type"] == "cat":
+            try:
+                cat_id = int(data["idx"])
+            except ValueError:
+                pass
+        bl = BudgetLine(
+            budget_id=budget.id,
+            line_type=data["type"] if data["type"] != "cat" else "gider",
+            category_id=cat_id,
+            label=label,
+        )
+        for m in range(1, 13):
+            setattr(bl, f"month_{m}", data["months"].get(m, 0.0))
+        db.add(bl)
+
+    db.commit()
+    return RedirectResponse(url=f"/reports/activity?year={year}", status_code=303)
+
+
+@router.post("/activity/fixed-expense/add", name="report_activity_fixed_add")
+async def report_activity_fixed_add(
+    label: str = Form(...),
+    amount: float = Form(...),
+    recurrence: str = Form("monthly"),
+    start_date: str = Form(...),
+    end_date: str = Form(""),
+    category_id: int = Form(None),
+    notes: str = Form(""),
+    year: int = Form(None),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from datetime import date as dt_date
+    fe = FixedExpense(
+        label=label.strip(),
+        amount=amount,
+        recurrence=recurrence,
+        start_date=dt_date.fromisoformat(start_date),
+        end_date=dt_date.fromisoformat(end_date) if end_date else None,
+        category_id=category_id or None,
+        notes=notes.strip(),
+        active=True,
+        created_by=current_user.id,
+    )
+    db.add(fe)
+    db.commit()
+    redirect_year = year or date.today().year
+    return RedirectResponse(url=f"/reports/activity?year={redirect_year}", status_code=303)
+
+
+@router.post("/activity/fixed-expense/{fe_id}/delete", name="report_activity_fixed_delete")
+async def report_activity_fixed_delete(
+    fe_id: int,
+    year: int = Form(None),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    fe = db.query(FixedExpense).get(fe_id)
+    if fe:
+        db.delete(fe)
+        db.commit()
+    redirect_year = year or date.today().year
+    return RedirectResponse(url=f"/reports/activity?year={redirect_year}", status_code=303)
