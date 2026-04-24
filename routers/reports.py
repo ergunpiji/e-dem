@@ -134,6 +134,67 @@ async def report_cash_flow(
             if week_start <= due <= weeks_end:
                 cc_txns_due.append((txn, due))
 
+    # --- Maaş + Sabit Gider projeksiyonlarını önceden hesapla ---
+    import calendar as _cal
+
+    # 8 haftanın kapsadığı ay-yıl kombinasyonları
+    covered_months: set = set()
+    for i in range(weeks):
+        d = week_start + timedelta(weeks=i)
+        covered_months.add((d.year, d.month))
+        covered_months.add(((d + timedelta(days=6)).year, (d + timedelta(days=6)).month))
+
+    # Aktif çalışanlar
+    active_employees = db.query(Employee).filter(
+        Employee.active == True, Employee.gross_salary > 0  # noqa: E712
+    ).all()
+
+    # Ödenmiş maaş dönemleri (çalışan bazlı)
+    from collections import defaultdict as _dd
+    paid_salary_periods: dict = _dd(set)
+    for sp in db.query(SalaryPayment).all():
+        paid_salary_periods[sp.employee_id].add(sp.period)
+
+    # Aktif sabit giderler
+    active_fixed = db.query(FixedExpense).filter(FixedExpense.active == True).all()  # noqa: E712
+
+    # date → list[dict]
+    proj_outflows: dict = _dd(list)
+
+    for yr, mo in covered_months:
+        period_key = f"{yr:04d}-{mo:02d}"
+        # Maaş projeksiyonu (ayın 25'i)
+        try:
+            pay_date = date(yr, mo, 25)
+        except ValueError:
+            pay_date = date(yr, mo, _cal.monthrange(yr, mo)[1])
+        for emp in active_employees:
+            if period_key not in paid_salary_periods[emp.id]:
+                proj_outflows[pay_date].append({
+                    "type": "salary",
+                    "label": f"Maaş — {emp.name}",
+                    "sub": "Brüt Projeksiyon",
+                    "date": pay_date,
+                    "amount": emp.gross_salary,
+                })
+
+        # Sabit gider projeksiyonu
+        for fe in active_fixed:
+            if mo not in _fixed_expense_months(fe, yr):
+                continue
+            try:
+                fe_date = date(yr, mo, fe.start_date.day)
+            except ValueError:
+                fe_date = date(yr, mo, _cal.monthrange(yr, mo)[1])
+            proj_outflows[fe_date].append({
+                "type": "fixed",
+                "label": fe.label,
+                "sub": "Sabit Gider",
+                "date": fe_date,
+                "amount": fe.amount,
+            })
+    # ---------------------------------------------------------------
+
     weeks_data = []
     for i in range(weeks):
         wstart = week_start + timedelta(weeks=i)
@@ -255,6 +316,11 @@ async def report_cash_flow(
                 "date": m.movement_date,
                 "amount": m.amount,
             })
+
+        # Maaş + Sabit Gider projeksiyonları
+        for proj_date, items in proj_outflows.items():
+            if wstart <= proj_date <= wend:
+                outgoing.extend(items)
 
         total_in = sum(x["amount"] for x in incoming)
         total_out = sum(x["amount"] for x in outgoing)

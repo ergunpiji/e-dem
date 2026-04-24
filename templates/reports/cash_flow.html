@@ -194,10 +194,12 @@
                     {% for item in w.outgoing %}
                     <div class="cf-entry d-flex justify-content-between align-items-start">
                       <div>
-                        {% if item.type == 'cc_stmt' %}
+                        {% if item.type == 'cc_stmt' or item.type == 'cc_txn' %}
                         <span class="fw-semibold" style="color:#7c3aed;"><i class="bi bi-credit-card-2-front me-1"></i>{{ item.label }}</span>
-                        {% elif item.type == 'cheque' %}
-                        <span class="fw-semibold" style="color:#dc2626;">{{ item.label }}</span>
+                        {% elif item.type == 'salary' %}
+                        <span class="fw-semibold" style="color:#0369a1;"><i class="bi bi-person-fill me-1"></i>{{ item.label }}</span>
+                        {% elif item.type == 'fixed' %}
+                        <span class="fw-semibold" style="color:#b45309;"><i class="bi bi-pin-fill me-1"></i>{{ item.label }}</span>
                         {% else %}
                         <span class="fw-semibold" style="color:#dc2626;">{{ item.label }}</span>
                         {% endif %}
@@ -207,9 +209,11 @@
                           {{ item.date | date_tr }}
                           {% if item.type == 'cc_stmt' %}<span class="badge ms-1" style="background:#ede9fe;color:#6d28d9;font-size:9px;">KK Ekstre</span>{% endif %}
                           {% if item.type == 'cheque' %}<span class="badge bg-secondary ms-1" style="font-size:9px;">Çek</span>{% endif %}
+                          {% if item.type == 'salary' %}<span class="badge ms-1" style="background:#e0f2fe;color:#0369a1;font-size:9px;">Maaş Proj.</span>{% endif %}
+                          {% if item.type == 'fixed' %}<span class="badge ms-1" style="background:#fef3c7;color:#b45309;font-size:9px;">Sabit Gider</span>{% endif %}
                         </div>
                       </div>
-                      <span style="color:{% if item.type == 'cc_stmt' %}#7c3aed{% else %}#dc2626{% endif %};font-weight:600;white-space:nowrap;">
+                      <span style="color:{% if item.type in ('cc_stmt','cc_txn') %}#7c3aed{% elif item.type == 'salary' %}#0369a1{% elif item.type == 'fixed' %}#b45309{% else %}#dc2626{% endif %};font-weight:600;white-space:nowrap;">
                         -{{ item.amount | money }}
                       </span>
                     </div>
