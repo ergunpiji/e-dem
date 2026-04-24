@@ -71,32 +71,28 @@
       </div>
     </div>
 
-    <!-- Referanslar -->
-    {% if refs %}
-    <div class="section-card mb-3">
-      <div class="card-head">Referans Numaraları</div>
-      <div class="p-3 d-flex flex-wrap gap-2">
-        {% for r in refs %}
-        <a href="/references/{{ r.id }}" class="badge bg-primary text-decoration-none" style="font-size:12px;padding:6px 12px">
-          {{ r.ref_no }}
-        </a>
-        {% endfor %}
-      </div>
-    </div>
-    {% elif hbf.reference %}
-    <div class="section-card mb-3">
-      <div class="card-head">Referans</div>
-      <div class="p-3">
-        <a href="/references/{{ hbf.reference.id }}" class="badge bg-primary text-decoration-none" style="font-size:12px;padding:6px 12px">
-          {{ hbf.reference.ref_no }}
-        </a>
-      </div>
-    </div>
-    {% endif %}
+    <!-- Referans bazlı harcama bölümleri -->
+    {% set pm_map = {'nakit':'Nakit','kredi_karti':'Kredi K.','banka':'Banka/EFT','cek':'Çek'} %}
+    {% set doc_map = {'fatura':'Fatura','fis':'Fiş','gider_pusulasi':'Gider P.','diger':'Diğer'} %}
 
-    <!-- Harcama Kalemleri -->
+    {% for sec in items %}
+    {% set sec_items = sec.get('items', []) %}
+    {% set sec_total = sec_items | sum(attribute='amount_with_vat') %}
     <div class="section-card mb-3">
-      <div class="card-head">Harcama Kalemleri</div>
+      <!-- Bölüm başlığı -->
+      <div style="background:#f0f7ff;border-bottom:1px solid #dbeafe;padding:10px 18px;display:flex;align-items:center;gap:10px;">
+        {% if sec.get('ref_id') %}
+        <a href="/references/{{ sec.ref_id }}" class="text-decoration-none">
+          <span style="background:#1e40af;color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">{{ sec.ref_no }}</span>
+        </a>
+        {% elif sec.get('ref_no') %}
+        <span style="background:#1e40af;color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700">{{ sec.ref_no }}</span>
+        {% endif %}
+        {% if sec.get('ref_title') %}
+        <span style="font-size:13px;color:#374151">{{ sec.ref_title }}</span>
+        {% endif %}
+      </div>
+      <!-- Kalemler -->
       <table class="items-tbl">
         <thead>
           <tr>
@@ -110,28 +106,32 @@
           </tr>
         </thead>
         <tbody>
-          {% for item in items %}
+          {% for item in sec_items %}
           <tr>
             <td>{{ item.date or '—' }}</td>
             <td>{{ item.description or '—' }}</td>
-            <td>
-              {% set pm_map = {'nakit':'Nakit','kredi_karti':'Kredi K.','banka':'Banka/EFT','cek':'Çek'} %}
-              <span class="pay-badge">{{ pm_map.get(item.payment, item.payment or '—') }}</span>
-            </td>
-            <td>
-              {% set doc_map = {'fatura':'Fatura','fis':'Fiş','gider_pusulasi':'Gider P.','diger':'Diğer'} %}
-              <span class="doc-badge">{{ doc_map.get(item.document_type, item.document_type or '—') }}</span>
-            </td>
+            <td><span class="pay-badge">{{ pm_map.get(item.get('payment',''), item.get('payment','—')) }}</span></td>
+            <td><span class="doc-badge">{{ doc_map.get(item.get('document_type',''), item.get('document_type','—')) }}</span></td>
             <td class="text-end fw-semibold">{{ item.get('amount_with_vat', item.get('amount', 0)) | money }}</td>
             <td class="text-end text-muted">{{ item.get('vat_amount', 0) | money }}</td>
             <td class="text-end">{{ item.get('amount_without_vat', item.get('amount', 0)) | money }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-4">Kalem yok.</td></tr>
+          <tr><td colspan="7" class="text-center text-muted py-3">Kalem yok.</td></tr>
           {% endfor %}
         </tbody>
       </table>
+      <!-- Bölüm toplamı -->
+      <div style="padding:7px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:right;font-size:12px;color:#64748b">
+        Bölüm Toplam: <strong style="color:#1e293b">
+          {% set st = namespace(v=0) %}{% for i in sec_items %}{% set st.v = st.v + i.get('amount_with_vat', i.get('amount',0)) %}{% endfor %}
+          {{ st.v | money }}
+        </strong>
+      </div>
     </div>
+    {% else %}
+    <div class="alert alert-secondary">Kalem yok.</div>
+    {% endfor %}
 
     <!-- Özet -->
     <div class="d-flex justify-content-end mb-3">

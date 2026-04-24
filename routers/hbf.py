@@ -22,13 +22,30 @@ router = APIRouter(prefix="/hbf", tags=["hbf"])
 
 
 def _parse_items(items_json: str) -> tuple[list, float]:
+    """
+    items_json iki formatta gelebilir:
+      - Yeni (gruplu): [{ref_id, ref_no, ref_title, items:[...]}]
+      - Eski (düz):    [{description, amount, ...}]
+    Her zaman gruplu listeyi döndürür (detay/liste şablonu için tutarlılık).
+    """
     try:
-        items = json.loads(items_json or "[]")
+        data = json.loads(items_json or "[]")
     except Exception:
-        items = []
-    # total = KDV dahil genel toplam
-    total = sum(float(i.get("amount_with_vat", i.get("amount", 0))) for i in items)
-    return items, total
+        data = []
+    if not data:
+        return [], 0.0
+    # Gruplu format tespiti: ilk elemanın "items" anahtarı varsa
+    if isinstance(data[0], dict) and "items" in data[0]:
+        sections = data
+        total = sum(
+            float(item.get("amount_with_vat", item.get("amount", 0)))
+            for sec in sections
+            for item in sec.get("items", [])
+        )
+        return sections, total
+    # Eski düz format → tek anonim section olarak sar
+    total = sum(float(i.get("amount_with_vat", i.get("amount", 0))) for i in data)
+    return [{"ref_id": None, "ref_no": "", "ref_title": "", "items": data}], total
 
 
 def _parse_refs(refs_json: str) -> tuple[list, int | None]:
@@ -163,8 +180,14 @@ async def hbf_detail(
     cash_books = db.query(CashBook).all()
     bank_accounts = db.query(BankAccount).all()
 
-    kdv_haric = sum(float(i.get("amount_without_vat", i.get("amount", 0))) for i in items)
-    kdv_toplam = sum(float(i.get("vat_amount", 0)) for i in items)
+    kdv_haric = sum(
+        float(item.get("amount_without_vat", item.get("amount", 0)))
+        for sec in items for item in sec.get("items", [])
+    )
+    kdv_toplam = sum(
+        float(item.get("vat_amount", 0))
+        for sec in items for item in sec.get("items", [])
+    )
 
     return templates.TemplateResponse(
         "hbf/detail.html",
