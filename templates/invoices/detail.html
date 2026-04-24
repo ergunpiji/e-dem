@@ -65,9 +65,11 @@
         <form method="post" action="/invoices/{{ invoice.id }}/pay" id="payForm">
           <div class="mb-2">
             <label class="form-label small mb-1">Tutar (KDV dahil)</label>
-            <input type="number" name="pay_amount" class="form-control form-control-sm"
-                   step="0.01" min="0.01" max="{{ remaining | round(2) }}"
-                   value="{{ remaining | round(2) }}" required>
+            <input type="text" inputmode="decimal" id="payAmountDisplay"
+                   class="form-control form-control-sm"
+                   data-raw="{{ remaining | round(2) }}"
+                   autocomplete="off" required>
+            <input type="hidden" name="pay_amount" id="payAmountHidden" value="{{ remaining | round(2) }}">
           </div>
 
           <div class="mb-2">
@@ -237,6 +239,33 @@ togglePayFields();
 const dateInput = document.querySelector('input[name="pay_date"]');
 if (dateInput && !dateInput.value) {
   dateInput.value = new Date().toISOString().split('T')[0];
+}
+
+// Tutar: Türk formatı (1.500.000,00)
+function formatTR(val) {
+  const n = parseFloat(String(val).replace(',', '.'));
+  if (isNaN(n)) return '';
+  return n.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function parseTR(s) {
+  return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+}
+const payDisplay = document.getElementById('payAmountDisplay');
+const payHidden  = document.getElementById('payAmountHidden');
+if (payDisplay) {
+  payDisplay.value = formatTR(payDisplay.dataset.raw);
+  payDisplay.addEventListener('input', () => {
+    const raw = parseTR(payDisplay.value);
+    payHidden.value = raw;
+  });
+  payDisplay.addEventListener('blur', () => {
+    const raw = parseTR(payDisplay.value);
+    if (raw) payDisplay.value = formatTR(raw);
+    payHidden.value = raw;
+  });
+  document.getElementById('payForm').addEventListener('submit', () => {
+    payHidden.value = parseTR(payDisplay.value);
+  });
 }
 </script>
 {% endblock %}
