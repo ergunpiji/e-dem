@@ -15,7 +15,10 @@
         <tr>
           <td class="fw-semibold">{{ u.name }}</td>
           <td>{{ u.email }}</td>
-          <td><span class="badge {% if u.is_admin %}bg-danger{% else %}bg-secondary{% endif %}">{{ "Admin" if u.is_admin else "Kullanıcı" }}</span></td>
+          <td>
+            <span class="badge {% if u.is_admin %}bg-danger{% else %}bg-secondary{% endif %}">{{ "Admin" if u.is_admin else "Kullanıcı" }}</span>
+            {% if u.is_approver %}<span class="badge bg-info text-dark ms-1">Genel Müdür</span>{% endif %}
+          </td>
           <td><span class="badge {% if u.active %}bg-success{% else %}bg-secondary{% endif %}">{{ "Aktif" if u.active else "Pasif" }}</span></td>
           <td class="text-end"><a href="/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Düzenle</a></td>
         </tr>

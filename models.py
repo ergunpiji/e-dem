@@ -29,6 +29,7 @@ class User(Base):
     email = Column(String(200), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
+    is_approver = Column(Boolean, default=False, nullable=False)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -574,6 +575,54 @@ class FixedExpense(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     category = relationship("GeneralExpenseCategory")
+
+
+# ---------------------------------------------------------------------------
+# HBF — Harcama Bildirim Formu
+# ---------------------------------------------------------------------------
+
+class HBF(Base):
+    __tablename__ = "hbf_forms"
+
+    id = Column(Integer, primary_key=True)
+    hbf_no = Column(String(30), unique=True, nullable=False)
+    ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    title = Column(String(200), nullable=False)
+    items_json = Column(Text)           # JSON: [{description, amount, receipt_no}]
+    total_amount = Column(Float, default=0.0, nullable=False)
+    status = Column(
+        Enum("taslak", "beklemede", "onaylandi", "reddedildi", "odendi",
+             name="hbf_status_enum"),
+        default="taslak", nullable=False,
+    )
+    notes = Column(Text)
+    approval_note = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    paid_at = Column(Date, nullable=True)
+    payment_method = Column(String(20), nullable=True)
+    bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
+    cash_book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=True)
+    general_expense_id = Column(Integer, ForeignKey("general_expenses.id"), nullable=True)
+
+    reference = relationship("Reference")
+    employee = relationship("Employee")
+    creator = relationship("User", foreign_keys=[created_by])
+    approver = relationship("User", foreign_keys=[approved_by])
+    bank_account = relationship("BankAccount")
+    cash_book = relationship("CashBook")
+
+
+HBF_STATUS_LABELS = {
+    "taslak":     "Taslak",
+    "beklemede":  "Beklemede",
+    "onaylandi":  "Onaylandı",
+    "reddedildi": "Reddedildi",
+    "odendi":     "Ödendi",
+}
 
 
 # ---------------------------------------------------------------------------

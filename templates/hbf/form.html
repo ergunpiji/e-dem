@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <form method="post">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent border-0">
+          <h6 class="mb-0">Genel Bilgiler</h6>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Başlık <span class="text-danger">*</span></label>
+              <input type="text" name="title" class="form-control" required
+                     value="{{ hbf.title if hbf else '' }}" placeholder="Harcamanın kısa açıklaması">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Çalışan</label>
+              <select name="employee_id" class="form-select">
+                <option value="">— Seçiniz —</option>
+                {% for emp in employees %}
+                <option value="{{ emp.id }}" {% if hbf and hbf.employee_id == emp.id %}selected{% endif %}>
+                  {{ emp.name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Referans</label>
+              <select name="ref_id" class="form-select">
+                <option value="">— Seçiniz —</option>
+                {% for ref in references %}
+                <option value="{{ ref.id }}" {% if hbf and hbf.ref_id == ref.id %}selected{% endif %}>
+                  {{ ref.ref_no }} — {{ ref.title }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notlar</label>
+              <textarea name="notes" class="form-control" rows="2">{{ hbf.notes if hbf else '' }}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Harcama Kalemleri -->
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent border-0 d-flex align-items-center">
+          <h6 class="mb-0">Harcama Kalemleri</h6>
+          <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="addRow()">
+            <i class="bi bi-plus-lg me-1"></i>Satır Ekle
+          </button>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0" id="items-table">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3" style="width:40%">Açıklama</th>
+                <th style="width:20%">Kategori</th>
+                <th class="text-end" style="width:20%">Tutar (₺)</th>
+                <th style="width:15%">Tarih</th>
+                <th style="width:5%"></th>
+              </tr>
+            </thead>
+            <tbody id="items-body"></tbody>
+          </table>
+        </div>
+        <div class="card-footer bg-transparent d-flex justify-content-end">
+          <span class="fw-bold me-2">Toplam:</span>
+          <span id="total-display" class="fw-bold text-primary">₺0,00</span>
+        </div>
+      </div>
+
+      <input type="hidden" name="items_json" id="items_json">
+
+      <div class="d-flex gap-2 justify-content-end">
+        <a href="/hbf{% if hbf %}/{{ hbf.id }}{% endif %}" class="btn btn-outline-secondary">İptal</a>
+        <button type="submit" name="action" value="taslak" class="btn btn-outline-primary">
+          <i class="bi bi-save me-1"></i>Taslak Kaydet
+        </button>
+        <button type="submit" name="action" value="gonder" class="btn btn-primary" onclick="return confirm('Onaya göndermek istediğinize emin misiniz?')">
+          <i class="bi bi-send me-1"></i>Onaya Gönder
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const INITIAL_ITEMS = {{ (hbf.items_json if hbf else '[]') | safe }};
+const CATEGORIES = [
+  "Yemek & İçecek","Ulaşım","Konaklama","Kırtasiye","Temsil & Ağırlama",
+  "Yakıt","Temizlik","Teknik","Diğer"
+];
+
+function addRow(item) {
+  const body = document.getElementById('items-body');
+  const idx = body.rows.length;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="ps-3">
+      <input type="text" class="form-control form-control-sm item-desc" placeholder="Açıklama"
+             value="${item ? escHtml(item.description) : ''}">
+    </td>
+    <td>
+      <select class="form-select form-select-sm item-cat">
+        ${CATEGORIES.map(c => `<option${item && item.category === c ? ' selected' : ''}>${c}</option>`).join('')}
+      </select>
+    </td>
+    <td>
+      <input type="text" class="form-control form-control-sm text-end item-amount" inputmode="decimal"
+             placeholder="0,00" value="${item ? fmtNum(item.amount) : ''}">
+    </td>
+    <td>
+      <input type="date" class="form-control form-control-sm item-date"
+             value="${item ? (item.date || '') : ''}">
+    </td>
+    <td class="text-center">
+      <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove(); calcTotal()">
+        <i class="bi bi-trash"></i>
+      </button>
+    </td>`;
+  body.appendChild(tr);
+  tr.querySelector('.item-amount').addEventListener('input', calcTotal);
+}
+
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function fmtNum(n) {
+  const v = parseFloat(n) || 0;
+  return v.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function parseNum(s) {
+  return parseFloat(String(s).replace(/\./g,'').replace(',','.')) || 0;
+}
+
+function calcTotal() {
+  let total = 0;
+  document.querySelectorAll('.item-amount').forEach(inp => total += parseNum(inp.value));
+  document.getElementById('total-display').textContent = '₺' + fmtNum(total);
+}
+
+document.querySelector('form').addEventListener('submit', function() {
+  const rows = document.querySelectorAll('#items-body tr');
+  const items = [];
+  rows.forEach(tr => {
+    items.push({
+      description: tr.querySelector('.item-desc').value,
+      category: tr.querySelector('.item-cat').value,
+      amount: parseNum(tr.querySelector('.item-amount').value),
+      date: tr.querySelector('.item-date').value,
+    });
+  });
+  document.getElementById('items_json').value = JSON.stringify(items);
+});
+
+// Init
+INITIAL_ITEMS.forEach(addRow);
+if (!INITIAL_ITEMS.length) addRow();
+calcTotal();
+</script>
+{% endblock %}

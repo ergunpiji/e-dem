@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block topbar_actions %}
+{% if hbf.status == 'taslak' and (hbf.created_by == current_user.id or current_user.is_admin) %}
+<a href="/hbf/{{ hbf.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Düzenle</a>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <!-- Sol: Detaylar -->
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <div class="text-muted small mb-1">HBF No</div>
+            <div class="fw-bold">{{ hbf.hbf_no }}</div>
+          </div>
+          <div class="col-sm-6">
+            <div class="text-muted small mb-1">Durum</div>
+            {% set s = hbf.status %}
+            <span class="badge fs-6 {% if s=='taslak' %}bg-secondary{% elif s=='beklemede' %}bg-warning text-dark{% elif s=='onaylandi' %}bg-info text-dark{% elif s=='reddedildi' %}bg-danger{% elif s=='odendi' %}bg-success{% endif %}">
+              {{ status_labels[s] }}
+            </span>
+          </div>
+          <div class="col-sm-6">
+            <div class="text-muted small mb-1">Çalışan</div>
+            <div>{{ hbf.employee.name if hbf.employee else '—' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <div class="text-muted small mb-1">Referans</div>
+            <div>
+              {% if hbf.reference %}
+              <a href="/references/{{ hbf.reference.id }}">{{ hbf.reference.ref_no }}</a>
+              {% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-sm-6">
+            <div class="text-muted small mb-1">Oluşturan</div>
+            <div>{{ hbf.creator.name if hbf.creator else '—' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <div class="text-muted small mb-1">Tarih</div>
+            <div>{{ hbf.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
+          </div>
+          {% if hbf.notes %}
+          <div class="col-12">
+            <div class="text-muted small mb-1">Notlar</div>
+            <div>{{ hbf.notes }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Harcama Kalemleri -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent border-0">
+        <h6 class="mb-0">Harcama Kalemleri</h6>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Açıklama</th>
+              <th>Kategori</th>
+              <th>Tarih</th>
+              <th class="text-end pe-3">Tutar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+            <tr>
+              <td class="ps-3">{{ item.description }}</td>
+              <td>{{ item.category or '—' }}</td>
+              <td>{{ item.date or '—' }}</td>
+              <td class="text-end pe-3 fw-semibold">{{ item.amount | money }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted text-center py-3">Kalem yok.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="table-light">
+              <td colspan="3" class="text-end fw-bold ps-3">Toplam</td>
+              <td class="text-end pe-3 fw-bold text-primary">{{ hbf.total_amount | money }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Onay bilgisi -->
+    {% if hbf.approved_by and hbf.approval_note %}
+    <div class="alert {% if hbf.status == 'reddedildi' %}alert-danger{% else %}alert-info{% endif %}">
+      <strong>{{ hbf.approver.name if hbf.approver else '' }}</strong> ({{ hbf.approved_at.strftime('%d.%m.%Y') }}):
+      {{ hbf.approval_note }}
+    </div>
+    {% endif %}
+
+    <!-- Ödeme bilgisi -->
+    {% if hbf.status == 'odendi' %}
+    <div class="alert alert-success">
+      <i class="bi bi-check-circle me-1"></i>
+      <strong>{{ hbf.paid_at.strftime('%d.%m.%Y') if hbf.paid_at else '' }}</strong> tarihinde
+      {{ 'nakit' if hbf.payment_method == 'nakit' else 'banka transferi' }} ile ödendi.
+      {% if hbf.bank_account %}· {{ hbf.bank_account.name }}{% endif %}
+      {% if hbf.cash_book %}· {{ hbf.cash_book.name }}{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Sağ: İşlemler -->
+  <div class="col-lg-4">
+    <!-- Taslak → Onaya Gönder -->
+    {% if hbf.status == 'taslak' and (hbf.created_by == current_user.id or current_user.is_admin) %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="mb-3">İşlemler</h6>
+        <form method="post" action="/hbf/{{ hbf.id }}/submit">
+          <button class="btn btn-primary w-100" onclick="return confirm('Onaya gönderilsin mi?')">
+            <i class="bi bi-send me-1"></i>Onaya Gönder
+          </button>
+        </form>
+        {% if hbf.created_by == current_user.id or current_user.is_admin %}
+        <hr>
+        <form method="post" action="/hbf/{{ hbf.id }}/delete">
+          <button class="btn btn-outline-danger w-100 btn-sm" onclick="return confirm('Silinsin mi?')">
+            <i class="bi bi-trash me-1"></i>Sil
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Onayla / Reddet (approver/admin, beklemede) -->
+    {% if hbf.status == 'beklemede' and (current_user.is_admin or current_user.is_approver) %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="mb-3">Onay</h6>
+        <form method="post" action="/hbf/{{ hbf.id }}/approve" class="mb-2">
+          <div class="mb-2">
+            <textarea name="approval_note" class="form-control form-control-sm" rows="2" placeholder="Onay notu (isteğe bağlı)"></textarea>
+          </div>
+          <button class="btn btn-success w-100" onclick="return confirm('Onaylanacak, emin misiniz?')">
+            <i class="bi bi-check-lg me-1"></i>Onayla
+          </button>
+        </form>
+        <form method="post" action="/hbf/{{ hbf.id }}/reject">
+          <div class="mb-2">
+            <textarea name="approval_note" class="form-control form-control-sm" rows="2" placeholder="Red gerekçesi"></textarea>
+          </div>
+          <button class="btn btn-outline-danger w-100">
+            <i class="bi bi-x-lg me-1"></i>Reddet
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Ödeme kaydı (admin, onaylandi) -->
+    {% if hbf.status == 'onaylandi' and current_user.is_admin %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="mb-3">Ödeme Kaydı</h6>
+        <form method="post" action="/hbf/{{ hbf.id }}/pay">
+          <div class="mb-2">
+            <label class="form-label small">Ödeme Tarihi</label>
+            <input type="date" name="pay_date" class="form-control form-control-sm"
+                   value="{{ today.isoformat() if today else '' }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Ödeme Yöntemi</label>
+            <select name="payment_method" class="form-select form-select-sm" id="pm-select" onchange="togglePayFields()">
+              {% for val, lbl in payment_methods %}
+              <option value="{{ val }}">{{ lbl }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div id="bank-field" class="mb-2" style="display:none">
+            <label class="form-label small">Banka Hesabı</label>
+            <select name="bank_account_id" class="form-select form-select-sm">
+              <option value="">— Seçiniz —</option>
+              {% for ba in bank_accounts %}
+              <option value="{{ ba.id }}">{{ ba.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div id="cash-field" class="mb-2" style="display:none">
+            <label class="form-label small">Kasa</label>
+            <select name="cash_book_id" class="form-select form-select-sm">
+              <option value="">— Seçiniz —</option>
+              {% for cb in cash_books %}
+              <option value="{{ cb.id }}">{{ cb.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="alert alert-warning py-2 mb-2" style="font-size:13px">
+            Toplam: <strong>{{ hbf.total_amount | money }}</strong>
+          </div>
+          <button class="btn btn-success w-100" onclick="return confirm('Ödeme kaydedilsin mi?')">
+            <i class="bi bi-cash-coin me-1"></i>Ödeme Kaydet
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function togglePayFields() {
+  const pm = document.getElementById('pm-select').value;
+  document.getElementById('bank-field').style.display = pm === 'banka' ? '' : 'none';
+  document.getElementById('cash-field').style.display = pm === 'nakit' ? '' : 'none';
+}
+document.addEventListener('DOMContentLoaded', togglePayFields);
+</script>
+{% endblock %}

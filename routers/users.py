@@ -96,6 +96,7 @@ async def user_edit_post(
     email: str = Form(...),
     password: str = Form(""),
     is_admin: str = Form("0"),
+    is_approver: str = Form("0"),
     active: str = Form("1"),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -116,6 +117,7 @@ async def user_edit_post(
     u.name = name.strip()
     u.email = email
     u.is_admin = (is_admin == "1")
+    u.is_approver = (is_approver == "1")
     u.active = (active == "1")
     if password.strip():
         u.password_hash = hash_password(password.strip())

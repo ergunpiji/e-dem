@@ -173,6 +173,9 @@
     <a href="/employees/new" class="sidebar-link {% if '/employees/new' in request.url.path %}active{% endif %}">
       <i class="bi bi-person-plus"></i> Yeni Çalışan
     </a>
+    <a href="/hbf" class="sidebar-link {% if request.url.path.startswith('/hbf') %}active{% endif %}">
+      <i class="bi bi-receipt"></i> Harcama Bildirimleri
+    </a>
 
     <!-- Yönetim (admin only) -->
     {% if current_user and current_user.is_admin %}

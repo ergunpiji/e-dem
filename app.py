@@ -139,6 +139,7 @@ from routers import credit_cards as credit_cards_router
 from routers import general_expenses as general_expenses_router
 from routers import employees as employees_router
 from routers import reports as reports_router
+from routers import hbf as hbf_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -154,3 +155,4 @@ app.include_router(credit_cards_router.router)
 app.include_router(general_expenses_router.router)
 app.include_router(employees_router.router)
 app.include_router(reports_router.router)
+app.include_router(hbf_router.router)

@@ -133,6 +133,15 @@ _EVENT_TYPE_CODES = {
 }
 
 
+def generate_hbf_no(db) -> str:
+    from models import HBF
+    from datetime import date as _date
+    yymm = _date.today().strftime("%y%m")
+    prefix = f"HBF-{yymm}-"
+    count = db.query(HBF).filter(HBF.hbf_no.like(f"{prefix}%")).count()
+    return f"{prefix}{count + 1:03d}"
+
+
 def generate_ref_no(db, event_type: str, customer_code: str, check_in) -> str:
     from models import Reference
     tip = _EVENT_TYPE_CODES.get(event_type, "ETK")
@@ -184,6 +193,8 @@ def _migrate(engine) -> None:
         "ALTER TABLE vendor_prepayments ADD COLUMN IF NOT EXISTS ref_id INTEGER",
         # Customer active alanı
         "ALTER TABLE customers ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true",
+        # User is_approver alanı
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approver BOOLEAN DEFAULT false",
     ]
     with engine.begin() as conn:
         for sql in migrations:
