@@ -300,6 +300,8 @@ class CashEntry(Base):
     entry_type = Column(Enum("giris", "cikis", name="cash_entry_type_enum"), nullable=False)
     amount = Column(Float, nullable=False)
     description = Column(String(300))
+    category = Column(String(100), nullable=True)
+    related_party = Column(String(150), nullable=True)
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
 

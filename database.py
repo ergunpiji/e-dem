@@ -205,6 +205,8 @@ def _migrate(engine) -> None:
         "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS cash_return_amount FLOAT DEFAULT 0",
         "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS closed_at DATE",
         "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS closed_by INTEGER",
+        "ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
+        "ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS related_party VARCHAR(150)",
     ]
     with engine.begin() as conn:
         for sql in migrations:

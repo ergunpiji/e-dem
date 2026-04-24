@@ -1,69 +1,263 @@
 {% extends "base.html" %}
-{% block page_title %}{{ book.name }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addEntryModal">
+  <i class="bi bi-plus-lg me-1"></i>Hareket Ekle
+</button>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .kpi-card { background:#fff; border-radius:12px; padding:20px 24px; border:1px solid #e2e8f0; }
+  .kpi-card .kpi-label { font-size:12px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+  .kpi-card .kpi-value { font-size:26px; font-weight:800; margin-top:4px; line-height:1.1; }
+
+  .filter-bar { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:16px; }
+
+  .entries-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  .entries-card table { margin:0; }
+  .entries-card thead th { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; padding:10px 14px; border-bottom:2px solid #e2e8f0; white-space:nowrap; background:#fafafa; }
+  .entries-card tbody td { padding:10px 14px; border-bottom:1px solid #f1f5f9; font-size:13.5px; vertical-align:middle; }
+  .entries-card tbody tr:last-child td { border-bottom:none; }
+  .entries-card tbody tr:hover { background:#f8fafc; }
+
+  .pill { display:inline-block; width:28px; height:16px; border-radius:4px; }
+  .pill.giris { background:#16a34a; }
+  .pill.cikis { background:#dc2626; }
+
+  .cat-link { color:#2563eb; text-decoration:none; font-size:12px; }
+  .cat-link:hover { text-decoration:underline; }
+
+  .amt-giris { color:#16a34a; font-weight:700; }
+  .amt-cikis { color:#dc2626; font-weight:700; }
+
+  .action-btn { background:none; border:1px solid #e2e8f0; border-radius:6px; padding:3px 7px; cursor:pointer; color:#64748b; font-size:13px; transition:all .12s; }
+  .action-btn:hover { border-color:#94a3b8; color:#1e293b; }
+  .action-btn.del:hover { border-color:#fca5a5; color:#dc2626; background:#fef2f2; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row g-3">
+<!-- KPI Kartları -->
+<div class="row g-3 mb-3">
   <div class="col-md-4">
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-body text-center">
-        <div class="text-muted small mb-1">Mevcut Bakiye</div>
-        <div class="fs-1 fw-bold {% if balance >= 0 %}text-success{% else %}text-danger{% endif %}">{{ balance | money }}</div>
-        <div class="text-muted small">{{ book.currency }}</div>
+    <div class="kpi-card">
+      <div class="kpi-label">Mevcut Bakiye</div>
+      <div class="kpi-value {% if balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+        {{ balance | money }}
       </div>
-    </div>
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">Hareket Ekle</h6>
-        <form method="post" action="/cash/{{ book.id }}/entry">
-          <div class="mb-2">
-            <input type="date" name="entry_date" class="form-control form-control-sm" required>
-          </div>
-          <div class="mb-2">
-            <select name="entry_type" class="form-select form-select-sm">
-              <option value="giris">Giriş (+)</option>
-              <option value="cikis">Çıkış (-)</option>
-            </select>
-          </div>
-          <div class="mb-2">
-            <input type="number" name="amount" step="0.01" class="form-control form-control-sm" placeholder="Tutar" required>
-          </div>
-          <div class="mb-2">
-            <input type="text" name="description" class="form-control form-control-sm" placeholder="Açıklama">
-          </div>
-          <button type="submit" class="btn btn-primary btn-sm w-100">Ekle</button>
-        </form>
-      </div>
+      <div class="text-muted" style="font-size:11px;margin-top:2px">{{ book.currency }}</div>
     </div>
   </div>
-  <div class="col-md-8">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent border-0"><span class="fw-semibold">Hareketler</span></div>
-      <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-          <thead class="table-light">
-            <tr><th>Tarih</th><th>Açıklama</th><th class="text-end">Giriş</th><th class="text-end">Çıkış</th><th></th></tr>
-          </thead>
-          <tbody>
-            {% for e in entries %}
-            <tr>
-              <td>{{ e.entry_date | date_tr }}</td>
-              <td>{{ e.description or "—" }}</td>
-              <td class="text-end text-success">{% if e.entry_type == 'giris' %}{{ e.amount | money }}{% endif %}</td>
-              <td class="text-end text-danger">{% if e.entry_type == 'cikis' %}{{ e.amount | money }}{% endif %}</td>
-              <td>
-                {% if current_user.is_admin %}
-                <form method="post" action="/cash/{{ book.id }}/entry/{{ e.id }}/delete" style="display:inline" onsubmit="return confirm('Sil?')">
-                  <button class="btn btn-xs btn-outline-danger btn-sm py-0"><i class="bi bi-trash"></i></button>
-                </form>
-                {% endif %}
-              </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" class="text-center text-muted py-4">Henüz hareket yok.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <div class="col-md-4">
+    <div class="kpi-card">
+      <div class="kpi-label">Toplam Giriş <span class="text-muted fw-normal">(Filtreli)</span></div>
+      <div class="kpi-value text-success">{{ toplam_giris | money }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="kpi-card">
+      <div class="kpi-label">Toplam Çıkış <span class="text-muted fw-normal">(Filtreli)</span></div>
+      <div class="kpi-value text-danger">{{ toplam_cikis | money }}</div>
     </div>
   </div>
 </div>
+
+<!-- Filtre -->
+<div class="filter-bar">
+  <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+    <select name="type_filter" class="form-select form-select-sm" style="width:160px">
+      <option value="" {% if not type_filter %}selected{% endif %}>Tür: Hepsi</option>
+      <option value="giris"  {% if type_filter=='giris' %}selected{% endif %}>Giriş</option>
+      <option value="cikis"  {% if type_filter=='cikis' %}selected{% endif %}>Çıkış</option>
+    </select>
+    <select name="category_filter" class="form-select form-select-sm" style="width:180px">
+      <option value="" {% if not category_filter %}selected{% endif %}>Kategori: Hepsi</option>
+      {% for cat in all_categories %}
+      <option value="{{ cat }}" {% if category_filter==cat %}selected{% endif %}>{{ cat }}</option>
+      {% endfor %}
+    </select>
+    <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:145px">
+    <input type="date" name="date_to"   value="{{ date_to }}"   class="form-control form-control-sm" style="width:145px">
+    <button type="submit" class="btn btn-primary btn-sm px-4">Filtrele</button>
+    <a href="/cash/{{ book.id }}" class="btn btn-outline-secondary btn-sm">Temizle</a>
+  </form>
+</div>
+
+<!-- Hareket Tablosu -->
+<div class="entries-card">
+  <table class="table table-hover mb-0">
+    <thead>
+      <tr>
+        <th>Tarih</th>
+        <th>Tür</th>
+        <th>Kategori</th>
+        <th>Açıklama</th>
+        <th>İlgili Taraf</th>
+        <th class="text-end">Tutar</th>
+        <th style="width:80px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.entry_date | date_tr }}</td>
+        <td><span class="pill {{ e.entry_type }}"></span></td>
+        <td>
+          {% if e.category %}
+          <span style="font-size:12px;color:#374151">{{ e.category }}</span>
+          {% if e.related_party %}
+          <span class="text-muted">·</span>
+          <span class="cat-link">{{ e.related_party }}</span>
+          {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ e.description or '—' }}</td>
+        <td style="font-size:13px;color:#374151">{{ e.related_party or '—' }}</td>
+        <td class="text-end {% if e.entry_type=='giris' %}amt-giris{% else %}amt-cikis{% endif %}">
+          {% if e.entry_type=='giris' %}+{% else %}-{% endif %}{{ e.amount | money }}
+        </td>
+        <td class="text-end">
+          {% if current_user.is_admin %}
+          <button class="action-btn me-1" title="Düzenle"
+                  onclick="openEdit({{ e.id }}, '{{ e.entry_date }}', '{{ e.entry_type }}', {{ e.amount }}, '{{ (e.description or '') | replace("'","") }}', '{{ (e.category or '') | replace("'","") }}', '{{ (e.related_party or '') | replace("'","") }}')">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <form method="post" action="/cash/{{ book.id }}/entry/{{ e.id }}/delete" class="d-inline">
+            <button type="button" class="action-btn del" title="Sil"
+                    onclick="if(confirm('Bu hareket silinsin mi?')) this.closest('form').submit()">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-center text-muted py-5">Hareket bulunamadı.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Hareket Ekle Modal -->
+<div class="modal fade" id="addEntryModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Hareket Ekle</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/cash/{{ book.id }}/entry">
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small">Tarih <span class="text-danger">*</span></label>
+              <input type="date" name="entry_date" class="form-control form-control-sm"
+                     value="{{ today_str }}" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Tür <span class="text-danger">*</span></label>
+              <select name="entry_type" class="form-select form-select-sm">
+                <option value="giris">Giriş (+)</option>
+                <option value="cikis">Çıkış (-)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Tutar <span class="text-danger">*</span></label>
+              <input type="number" name="amount" step="0.01" min="0.01"
+                     class="form-control form-control-sm" placeholder="0,00" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Kategori</label>
+              <input type="text" name="category" class="form-control form-control-sm"
+                     placeholder="avans, tahsilat…" list="cat-list">
+              <datalist id="cat-list">
+                {% for cat in all_categories %}<option value="{{ cat }}">{% endfor %}
+              </datalist>
+            </div>
+            <div class="col-12">
+              <label class="form-label small">İlgili Taraf</label>
+              <input type="text" name="related_party" class="form-control form-control-sm" placeholder="Kişi veya firma adı">
+            </div>
+            <div class="col-12">
+              <label class="form-label small">Açıklama</label>
+              <input type="text" name="description" class="form-control form-control-sm" placeholder="Açıklama">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-success btn-sm px-4">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Düzenle Modal -->
+<div class="modal fade" id="editEntryModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-pencil me-2"></i>Hareketi Düzenle</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="editForm">
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small">Tarih</label>
+              <input type="date" name="entry_date" id="edit_date" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Tür</label>
+              <select name="entry_type" id="edit_type" class="form-select form-select-sm">
+                <option value="giris">Giriş (+)</option>
+                <option value="cikis">Çıkış (-)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Tutar</label>
+              <input type="number" name="amount" id="edit_amount" step="0.01" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Kategori</label>
+              <input type="text" name="category" id="edit_category" class="form-control form-control-sm" list="cat-list">
+            </div>
+            <div class="col-12">
+              <label class="form-label small">İlgili Taraf</label>
+              <input type="text" name="related_party" id="edit_party" class="form-control form-control-sm">
+            </div>
+            <div class="col-12">
+              <label class="form-label small">Açıklama</label>
+              <input type="text" name="description" id="edit_desc" class="form-control form-control-sm">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-primary btn-sm px-4">Güncelle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// Hareket ekle modalı için bugünün tarihi
+document.querySelector('#addEntryModal input[name="entry_date"]').value =
+  new Date().toISOString().split('T')[0];
+
+function openEdit(id, dt, typ, amt, desc, cat, party) {
+  document.getElementById('editForm').action = `/cash/{{ book.id }}/entry/${id}/edit`;
+  document.getElementById('edit_date').value     = dt;
+  document.getElementById('edit_type').value     = typ;
+  document.getElementById('edit_amount').value   = amt;
+  document.getElementById('edit_desc').value     = desc;
+  document.getElementById('edit_category').value = cat;
+  document.getElementById('edit_party').value    = party;
+  new bootstrap.Modal(document.getElementById('editEntryModal')).show();
+}
+</script>
 {% endblock %}
