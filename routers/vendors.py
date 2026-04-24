@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import FinancialVendor, Invoice, Cheque, User
+from models import FinancialVendor, Invoice, Cheque, User, CashBook, BankAccount, CreditCard, PAYMENT_METHODS
 from templates_config import templates
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
@@ -184,6 +184,10 @@ async def vendor_detail(
 
     cheques = db.query(Cheque).filter(Cheque.vendor_id == vendor_id).order_by(Cheque.due_date.desc()).all()
 
+    cash_books    = db.query(CashBook).all()
+    bank_accounts = db.query(BankAccount).all()
+    credit_cards  = db.query(CreditCard).all()
+
     total_amount  = sum(i.amount for i in invoices)
     paid_amount   = sum(i.amount for i in invoices if i.status == "paid")
     unpaid_amount = sum(i.amount for i in invoices if i.status == "approved")
@@ -200,6 +204,8 @@ async def vendor_detail(
             "total_amount": total_amount, "paid_amount": paid_amount,
             "unpaid_amount": unpaid_amount, "overdue_amount": overdue_amount,
             "period": period, "today": today,
+            "cash_books": cash_books, "bank_accounts": bank_accounts,
+            "credit_cards": credit_cards, "payment_methods": PAYMENT_METHODS,
             "page_title": v.name,
         },
     )
