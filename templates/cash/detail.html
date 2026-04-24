@@ -248,16 +248,23 @@
         </td>
         {% if current_user.is_admin %}
         <td class="text-end">
-          {% if not row.close_rec %}
-          <button class="btn btn-outline-warning btn-sm py-0"
-                  onclick="openCloseModal('{{ row.date }}', {{ row.closing }})">
-            <i class="bi bi-lock me-1"></i>Kapat
-          </button>
-          {% else %}
-          <span class="close-info" title="{{ row.close_rec.closed_at.strftime('%d.%m.%Y %H:%M') if row.close_rec.closed_at else '' }}">
-            <i class="bi bi-person me-1"></i>{{ row.close_rec.closer.name if row.close_rec.closer else '—' }}
-          </span>
-          {% endif %}
+          <div class="d-flex gap-1 justify-content-end align-items-center">
+            <button class="btn btn-outline-info btn-sm py-0"
+                    onclick="openDailySummary('{{ row.date }}', {{ row.opening }}, {{ row.closing }}, {{ row.giris }}, {{ row.cikis }},
+                      {% if row.close_rec %}{{ row.close_rec.physical_count }}, {{ row.close_rec.difference }}{% else %}null, null{% endif %})">
+              <i class="bi bi-eye"></i>
+            </button>
+            {% if not row.close_rec %}
+            <button class="btn btn-outline-warning btn-sm py-0"
+                    onclick="openCloseModal('{{ row.date }}', {{ row.closing }})">
+              <i class="bi bi-lock me-1"></i>Kapat
+            </button>
+            {% else %}
+            <span class="close-info" title="{{ row.close_rec.closed_at.strftime('%d.%m.%Y %H:%M') if row.close_rec.closed_at else '' }}">
+              <i class="bi bi-person me-1"></i>{{ row.close_rec.closer.name if row.close_rec.closer else '—' }}
+            </span>
+            {% endif %}
+          </div>
         </td>
         {% endif %}
       </tr>
@@ -378,6 +385,73 @@
   </div>
 </div>
 
+<!-- ══ MODAL: Günlük Özet ══ -->
+<div class="modal fade" id="dailySummaryModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header" style="background:linear-gradient(135deg,#1a3a5c,#1e5f8c);color:#fff;border-radius:8px 8px 0 0">
+        <h6 class="modal-title" id="summaryModalTitle"><i class="bi bi-calendar-day me-2"></i>Günlük Özet</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <!-- KPI şeridi -->
+        <div class="d-flex gap-0" style="border-bottom:1px solid #e2e8f0">
+          <div class="text-center py-3 flex-fill" style="border-right:1px solid #e2e8f0">
+            <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Açılış</div>
+            <div id="s_opening" style="font-size:18px;font-weight:800;margin-top:2px">—</div>
+          </div>
+          <div class="text-center py-3 flex-fill" style="border-right:1px solid #e2e8f0">
+            <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Giriş</div>
+            <div id="s_giris" style="font-size:18px;font-weight:800;margin-top:2px;color:#16a34a">—</div>
+          </div>
+          <div class="text-center py-3 flex-fill" style="border-right:1px solid #e2e8f0">
+            <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Çıkış</div>
+            <div id="s_cikis" style="font-size:18px;font-weight:800;margin-top:2px;color:#dc2626">—</div>
+          </div>
+          <div class="text-center py-3 flex-fill">
+            <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Kapanış</div>
+            <div id="s_closing" style="font-size:18px;font-weight:800;margin-top:2px">—</div>
+          </div>
+        </div>
+        <!-- Sayım satırı (sadece kapalı günlerde gösterilir) -->
+        <div id="s_countRow" class="d-none d-flex gap-0" style="border-bottom:1px solid #e2e8f0;background:#f0fdf4">
+          <div class="text-center py-2 flex-fill" style="border-right:1px solid #e2e8f0">
+            <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Fiziksel Sayım</div>
+            <div id="s_physical" style="font-size:15px;font-weight:700;margin-top:1px">—</div>
+          </div>
+          <div class="text-center py-2 flex-fill">
+            <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Fark</div>
+            <div id="s_diff" style="font-size:15px;font-weight:700;margin-top:1px">—</div>
+          </div>
+        </div>
+        <!-- Hareket tablosu -->
+        <div style="padding:0">
+          <table class="table table-sm mb-0">
+            <thead style="background:#fafafa;position:sticky;top:0">
+              <tr>
+                <th style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;padding:8px 14px">Tür</th>
+                <th style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;padding:8px 14px">Kategori</th>
+                <th style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;padding:8px 14px">Açıklama</th>
+                <th style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;padding:8px 14px">İlgili Taraf</th>
+                <th style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;padding:8px 14px;text-align:right">Tutar</th>
+              </tr>
+            </thead>
+            <tbody id="summaryTableBody">
+              <tr><td colspan="5" class="text-center text-muted py-4">Hareket yok.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a id="excelExportBtn" href="#" class="btn btn-success btn-sm px-3">
+          <i class="bi bi-file-earmark-excel me-1"></i>Excel İndir
+        </a>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Kapat</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL: Gün Sonu Kapat ══ -->
 <div class="modal fade" id="closeModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -425,6 +499,68 @@
 </div>
 
 <script>
+const ENTRIES_BY_DATE = {{ entries_json | safe }};
+const BOOK_ID = {{ book.id }};
+
+function _money(v) {
+  return new Intl.NumberFormat('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2}).format(v || 0) + ' ₺';
+}
+
+function openDailySummary(dateStr, opening, closing, giris, cikis, physical, diff) {
+  // Başlık
+  const [y,m,d] = dateStr.split('-');
+  document.getElementById('summaryModalTitle').innerHTML =
+    `<i class="bi bi-calendar-day me-2"></i>Günlük Özet — ${d}.${m}.${y}`;
+
+  // KPI
+  document.getElementById('s_opening').textContent = _money(opening);
+  document.getElementById('s_giris').textContent   = '+' + _money(giris);
+  document.getElementById('s_cikis').textContent   = '-' + _money(cikis);
+  const closingEl = document.getElementById('s_closing');
+  closingEl.textContent = _money(closing);
+  closingEl.style.color = closing >= 0 ? '#16a34a' : '#dc2626';
+
+  // Sayım satırı
+  const countRow = document.getElementById('s_countRow');
+  if (physical !== null) {
+    countRow.classList.remove('d-none');
+    document.getElementById('s_physical').textContent = _money(physical);
+    const diffEl = document.getElementById('s_diff');
+    diffEl.textContent = (diff >= 0 ? '+' : '') + _money(diff);
+    diffEl.style.color = diff === 0 ? '#16a34a' : '#dc2626';
+  } else {
+    countRow.classList.add('d-none');
+  }
+
+  // Hareket tablosu
+  const tbody = document.getElementById('summaryTableBody');
+  const dayEntries = ENTRIES_BY_DATE[dateStr] || [];
+  if (!dayEntries.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Bu güne ait hareket yok.</td></tr>';
+  } else {
+    tbody.innerHTML = dayEntries.map(e => `
+      <tr>
+        <td style="padding:8px 14px">
+          <span class="badge ${e.type==='giris' ? 'bg-success' : 'bg-danger'}" style="font-size:11px">
+            ${e.type==='giris' ? 'Giriş' : 'Çıkış'}
+          </span>
+        </td>
+        <td style="padding:8px 14px;font-size:13px">${e.cat || '—'}</td>
+        <td style="padding:8px 14px;font-size:13px">${e.desc || '—'}</td>
+        <td style="padding:8px 14px;font-size:13px">${e.party || '—'}</td>
+        <td style="padding:8px 14px;font-size:13px;text-align:right;font-weight:700;color:${e.type==='giris'?'#16a34a':'#dc2626'}">
+          ${e.type==='giris' ? '+' : '-'}${_money(e.amount)}
+        </td>
+      </tr>`).join('');
+  }
+
+  // Excel link
+  document.getElementById('excelExportBtn').href =
+    `/cash/${BOOK_ID}/daily-export?export_date=${dateStr}`;
+
+  new bootstrap.Modal(document.getElementById('dailySummaryModal')).show();
+}
+
 // Hareket ekle: bugün veya açık bir gün seçilebilir
 document.getElementById('add_date').value = '{{ today_str }}';
 

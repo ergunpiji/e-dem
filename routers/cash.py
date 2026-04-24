@@ -4,9 +4,13 @@ Nakit kasa yönetimi
 
 from collections import defaultdict
 from datetime import date, datetime
+import io
+import json
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -182,6 +186,24 @@ async def cash_detail(
     # Günlük özet
     daily_rows, _ = _daily_summary(db, book_id)
 
+    # Tüm hareketleri tarih bazlı grupla (popup için JSON)
+    all_entries_raw = (
+        db.query(CashEntry)
+        .filter(CashEntry.book_id == book_id)
+        .order_by(CashEntry.entry_date, CashEntry.id)
+        .all()
+    )
+    ebd: dict = defaultdict(list)
+    for e in all_entries_raw:
+        ebd[e.entry_date.isoformat()].append({
+            "type": e.entry_type,
+            "amount": e.amount,
+            "desc": e.description or "",
+            "cat": e.category or "",
+            "party": e.related_party or "",
+        })
+    entries_json = json.dumps(ebd)
+
     today = date.today()
     today_closed = today in closed_dates
 
@@ -198,6 +220,7 @@ async def cash_detail(
             "tab": tab,
             "daily_rows": daily_rows,
             "closed_dates": closed_dates,
+            "entries_json": entries_json,
             "today": today,
             "today_closed": today_closed,
             "today_str": today.isoformat(),
@@ -293,6 +316,114 @@ async def cash_entry_delete(
     db.delete(e)
     db.commit()
     return RedirectResponse(url=f"/cash/{book_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/{book_id}/daily-export", name="cash_daily_export")
+async def cash_daily_export(
+    book_id: int,
+    export_date: str = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    book = db.query(CashBook).get(book_id)
+    if not book:
+        raise HTTPException(status_code=404)
+
+    d = date.fromisoformat(export_date)
+    entries = (
+        db.query(CashEntry)
+        .filter(CashEntry.book_id == book_id, CashEntry.entry_date == d)
+        .order_by(CashEntry.id)
+        .all()
+    )
+    opening = _balance_before(db, book_id, d)
+    close_rec = db.query(CashDayClose).filter(
+        CashDayClose.book_id == book_id,
+        CashDayClose.close_date == d,
+    ).first()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = d.strftime("%d.%m.%Y")
+
+    # Başlık satırı
+    header_fill = PatternFill("solid", fgColor="1A3A5C")
+    header_font = Font(color="FFFFFF", bold=True, size=11)
+    ws.merge_cells("A1:F1")
+    ws["A1"] = f"Kasa: {book.name}  —  {d.strftime('%d.%m.%Y')}"
+    ws["A1"].font = Font(color="FFFFFF", bold=True, size=13)
+    ws["A1"].fill = header_fill
+    ws["A1"].alignment = Alignment(horizontal="center")
+    ws.row_dimensions[1].height = 22
+
+    # Açılış bakiyesi
+    ws.append([])
+    ws.append(["Açılış Bakiyesi", "", "", "", "", opening])
+    ws.cell(ws.max_row, 1).font = Font(bold=True)
+    ws.cell(ws.max_row, 6).font = Font(bold=True)
+
+    # Sütun başlıkları
+    ws.append([])
+    col_headers = ["Tür", "Kategori", "İlgili Taraf", "Açıklama", "Giriş (₺)", "Çıkış (₺)"]
+    ws.append(col_headers)
+    ch_row = ws.max_row
+    ch_fill = PatternFill("solid", fgColor="1E5F8C")
+    for col_idx, _ in enumerate(col_headers, 1):
+        cell = ws.cell(ch_row, col_idx)
+        cell.fill = ch_fill
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center")
+
+    total_giris = 0.0
+    total_cikis = 0.0
+    for e in entries:
+        g = e.amount if e.entry_type == "giris" else ""
+        c = e.amount if e.entry_type == "cikis" else ""
+        ws.append([
+            "Giriş" if e.entry_type == "giris" else "Çıkış",
+            e.category or "",
+            e.related_party or "",
+            e.description or "",
+            g, c,
+        ])
+        if e.entry_type == "giris":
+            total_giris += e.amount
+        else:
+            total_cikis += e.amount
+
+    ws.append([])
+    closing_sys = opening + total_giris - total_cikis
+    summary_rows = [
+        ("Toplam Giriş", total_giris, "E"),
+        ("Toplam Çıkış", total_cikis, "F"),
+        ("Kapanış Bakiyesi (Sistem)", closing_sys, "F"),
+    ]
+    if close_rec:
+        summary_rows += [
+            ("Fiziksel Sayım", close_rec.physical_count, "F"),
+            ("Fark", close_rec.difference, "F"),
+        ]
+    for label, val, _ in summary_rows:
+        ws.append([label, "", "", "", "", ""])
+        r = ws.max_row
+        ws.cell(r, 1).font = Font(bold=True)
+        ws.merge_cells(f"A{r}:E{r}")
+        ws.cell(r, 6).value = val
+        ws.cell(r, 6).font = Font(bold=True)
+
+    # Sütun genişlikleri
+    for col, width in zip("ABCDEF", [10, 20, 22, 30, 14, 14]):
+        ws.column_dimensions[col].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"kasa_{book.name}_{d.strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{book_id}/close", name="cash_day_close")
