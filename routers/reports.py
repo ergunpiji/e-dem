@@ -168,31 +168,23 @@ async def report_cash_flow(
                 "amount": c.amount,
             })
 
-        # KK ekstre ödemeleri → due_date'e göre
-        for stmt in db.query(CreditCardStatement).filter(
-            CreditCardStatement.status == "unpaid",
-            CreditCardStatement.due_date >= wstart,
-            CreditCardStatement.due_date <= wend,
-        ).all():
-            outgoing.append({
-                "type": "cc_stmt",
-                "label": f"KK Ekstre — {stmt.card.name if stmt.card else ''}",
-                "sub": stmt.card.bank_name if stmt.card else "",
-                "date": stmt.due_date,
-                "amount": stmt.total_amount,
-            })
-
-        # Kredi kartı bireysel işlemleri → txn_date'e göre
-        for txn in db.query(CreditCardTxn).filter(
-            CreditCardTxn.is_refund == False,
-            CreditCardTxn.txn_date >= wstart,
-            CreditCardTxn.txn_date <= wend,
-        ).all():
+        # KK harcamaları → ekstrenin son ödeme gününe göre (işlem bazında)
+        for txn in (
+            db.query(CreditCardTxn)
+            .join(CreditCardStatement, CreditCardTxn.statement_id == CreditCardStatement.id)
+            .filter(
+                CreditCardTxn.is_refund == False,
+                CreditCardStatement.status == "unpaid",
+                CreditCardStatement.due_date >= wstart,
+                CreditCardStatement.due_date <= wend,
+            )
+            .all()
+        ):
             outgoing.append({
                 "type": "cc_txn",
-                "label": txn.description or "KK İşlemi",
+                "label": txn.description or "KK Harcaması",
                 "sub": txn.card.name if txn.card else "Kredi Kartı",
-                "date": txn.txn_date,
+                "date": txn.statement.due_date,
                 "amount": txn.amount,
             })
 
