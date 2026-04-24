@@ -15,7 +15,7 @@ from auth import get_current_user, require_admin
 from database import get_db
 from models import (
     Invoice, GeneralExpense, CashEntry, BankMovement,
-    CreditCardStatement, Cheque, Customer, FinancialVendor,
+    CreditCardStatement, CreditCardTxn, Cheque, Customer, FinancialVendor,
     Employee, SalaryPayment, EmployeeBenefit, User,
     AnnualBudget, BudgetLine, FixedExpense, GeneralExpenseCategory,
 )
@@ -180,6 +180,20 @@ async def report_cash_flow(
                 "sub": stmt.card.bank_name if stmt.card else "",
                 "date": stmt.due_date,
                 "amount": stmt.total_amount,
+            })
+
+        # Kredi kartı bireysel işlemleri → txn_date'e göre
+        for txn in db.query(CreditCardTxn).filter(
+            CreditCardTxn.is_refund == False,
+            CreditCardTxn.txn_date >= wstart,
+            CreditCardTxn.txn_date <= wend,
+        ).all():
+            outgoing.append({
+                "type": "cc_txn",
+                "label": txn.description or "KK İşlemi",
+                "sub": txn.card.name if txn.card else "Kredi Kartı",
+                "date": txn.txn_date,
+                "amount": txn.amount,
             })
 
         # Kasa çıkışları
