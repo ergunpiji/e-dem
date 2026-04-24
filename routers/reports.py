@@ -571,6 +571,242 @@ async def report_activity(
     )
 
 
+@router.get("/activity/export", name="report_activity_export")
+async def report_activity_export(
+    year: int = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    import openpyxl
+    from openpyxl.styles import (
+        Font, PatternFill, Alignment, Border, Side, numbers
+    )
+    from openpyxl.utils import get_column_letter
+
+    if not year:
+        year = date.today().year
+    today = date.today()
+    year_prev = year - 1
+
+    def is_past(m: int) -> bool:
+        return year < today.year or (year == today.year and m <= today.month)
+
+    MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+              "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
+
+    # --- Veri hesaplama (report_activity ile aynı mantık) ---
+    curr_by_cat_month: dict = defaultdict(lambda: defaultdict(float))
+    for e in db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year
+    ).all():
+        curr_by_cat_month[e.category_id or 0][e.expense_date.month] += e.amount or 0
+
+    prev_by_cat: dict = defaultdict(float)
+    for e in db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year_prev
+    ).all():
+        prev_by_cat[e.category_id or 0] += e.amount or 0
+
+    budget = db.query(AnnualBudget).filter(AnnualBudget.year == year).first()
+    budget_by_cat: dict = {}
+    cats_with_bl: set = set()
+    if budget:
+        for bl in budget.lines:
+            if bl.category_id:
+                budget_by_cat[bl.category_id] = [
+                    getattr(bl, f"month_{m}", 0.0) for m in range(1, 13)
+                ]
+                cats_with_bl.add(bl.category_id)
+
+    cats_with_curr = {cid for cid, mm in curr_by_cat_month.items()
+                      if cid != 0 and any(v > 0 for v in mm.values())}
+    cats_with_prev = {cid for cid, tot in prev_by_cat.items() if cid != 0 and tot > 0}
+    active_cat_id_set = cats_with_bl | cats_with_curr | cats_with_prev
+
+    top_cats = db.query(GeneralExpenseCategory).filter(
+        GeneralExpenseCategory.parent_id.is_(None)
+    ).order_by(GeneralExpenseCategory.sort_order).all()
+
+    sections = []
+    grand_prev = 0.0
+    grand_curr_ytd = 0.0
+    grand_monthly = [0.0] * 12
+    grand_forecast = 0.0
+
+    for top_cat in top_cats:
+        children = sorted(top_cat.children, key=lambda c: c.sort_order) if top_cat.children else [top_cat]
+        rows = []
+        for child in children:
+            active = child.id in active_cat_id_set
+            prev_total = prev_by_cat.get(child.id, 0.0)
+            monthly = [curr_by_cat_month[child.id].get(m, 0.0) for m in range(1, 13)]
+            curr_ytd = sum(monthly[m - 1] for m in range(1, 13) if is_past(m))
+            budget_months = budget_by_cat.get(child.id, [0.0] * 12)
+            forecast = sum(
+                monthly[m - 1] if is_past(m) else budget_months[m - 1]
+                for m in range(1, 13)
+            )
+            rows.append({
+                "label": child.name, "active": active,
+                "prev_total": prev_total, "curr_ytd": curr_ytd,
+                "monthly": monthly, "budget": budget_months, "forecast": forecast,
+            })
+
+        active_rows = [r for r in rows if r["active"]]
+        sec_prev = sum(r["prev_total"] for r in active_rows)
+        sec_ytd = sum(r["curr_ytd"] for r in active_rows)
+        sec_monthly = [sum(r["monthly"][i] for r in active_rows) for i in range(12)]
+        sec_forecast = sum(r["forecast"] for r in active_rows)
+        grand_prev += sec_prev
+        grand_curr_ytd += sec_ytd
+        for i in range(12):
+            grand_monthly[i] += sec_monthly[i]
+        grand_forecast += sec_forecast
+
+        sections.append({
+            "label": top_cat.name,
+            "rows": rows,
+            "prev_total": sec_prev, "curr_ytd": sec_ytd,
+            "monthly_total": sec_monthly, "forecast": sec_forecast,
+        })
+
+    # --- Excel oluştur ---
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Faaliyet {year}"
+
+    NUM_FMT = '#,##0.00'
+
+    def _side():
+        return Side(style="thin", color="BBBBBB")
+
+    def _border():
+        s = _side()
+        return Border(left=s, right=s, top=s, bottom=s)
+
+    # Stil sabitleri
+    HDR_FILL   = PatternFill("solid", fgColor="1E293B")
+    HDR_FONT   = Font(bold=True, color="FFFFFF", size=10)
+    SEC_FILL   = PatternFill("solid", fgColor="E2E8F0")
+    SEC_FONT   = Font(bold=True, color="1E293B", size=10)
+    GRAND_FILL = PatternFill("solid", fgColor="1E293B")
+    GRAND_FONT = Font(bold=True, color="FCA5A5", size=11)
+    PAST_FONT  = Font(bold=True, color="1E293B", size=10)
+    BGET_FONT  = Font(italic=True, color="64748B", size=9)
+    CENTER     = Alignment(horizontal="center", vertical="center")
+    RIGHT      = Alignment(horizontal="right",  vertical="center")
+    LEFT       = Alignment(horizontal="left",   vertical="center")
+
+    # Sütun başlıkları: GİDER KALEMİ | ÖNCEKİ YIL | YTD | Oca..Ara | TAHMİN
+    # Her ay için 2 satır: Gerçekleşen + Bütçe
+    # Basit yapı: tek satır — gerçekleşen/bütçe alt alta değil, yan yana
+    headers = ["Gider Kalemi", f"{year_prev} Gerç.", f"{year} YTD",
+               *MONTHS, "Tahmin"]
+    bget_headers = ["", "", "", *[f"{m} (Bütçe)" for m in MONTHS], ""]
+
+    # Satır 1: başlık
+    ws.append(headers)
+    hdr_row = ws.max_row
+    for col, _ in enumerate(headers, 1):
+        cell = ws.cell(hdr_row, col)
+        cell.fill = HDR_FILL
+        cell.font = HDR_FONT
+        cell.alignment = CENTER if col > 1 else LEFT
+        cell.border = _border()
+
+    # Satır 2: bütçe başlıkları
+    ws.append(bget_headers)
+    bg_row = ws.max_row
+    for col, val in enumerate(bget_headers, 1):
+        cell = ws.cell(bg_row, col)
+        if val:
+            cell.fill = PatternFill("solid", fgColor="F8FAFC")
+            cell.font = BGET_FONT
+            cell.alignment = CENTER
+            cell.border = _border()
+
+    def _write_row(label, prev, ytd, monthly, budget_months, forecast, is_section=False, is_grand=False):
+        row_data = [label, prev or None, ytd or None, *[v or None for v in monthly], forecast or None]
+        ws.append(row_data)
+        r = ws.max_row
+        for col in range(1, len(row_data) + 1):
+            cell = ws.cell(r, col)
+            cell.border = _border()
+            if is_grand:
+                cell.fill = GRAND_FILL
+                cell.font = GRAND_FONT
+                cell.alignment = RIGHT if col > 1 else LEFT
+            elif is_section:
+                cell.fill = SEC_FILL
+                cell.font = SEC_FONT
+                cell.alignment = RIGHT if col > 1 else LEFT
+            else:
+                cell.font = PAST_FONT
+                cell.alignment = RIGHT if col > 1 else LEFT
+            if col > 1 and cell.value is not None:
+                cell.number_format = NUM_FMT
+
+        # Bütçe satırı
+        brow_data = ["", None, None, *[v or None for v in budget_months], None]
+        ws.append(brow_data)
+        br = ws.max_row
+        for col in range(1, len(brow_data) + 1):
+            cell = ws.cell(br, col)
+            cell.border = _border()
+            cell.font = BGET_FONT
+            cell.alignment = RIGHT if col > 1 else LEFT
+            if col > 1 and cell.value is not None:
+                cell.number_format = NUM_FMT
+
+    for section in sections:
+        # Section header
+        sec_budget = [sum(r["budget"][i] for r in section["rows"]) for i in range(12)]
+        _write_row(
+            section["label"].upper(),
+            section["prev_total"], section["curr_ytd"],
+            section["monthly_total"], sec_budget, section["forecast"],
+            is_section=True,
+        )
+        for row in section["rows"]:
+            if not row["active"]:
+                continue
+            _write_row(
+                "  " + row["label"],
+                row["prev_total"], row["curr_ytd"],
+                row["monthly"], row["budget"], row["forecast"],
+            )
+
+    # Grand total
+    _write_row(
+        "TOPLAM GİDERLER",
+        grand_prev, grand_curr_ytd,
+        grand_monthly, [0.0] * 12, grand_forecast,
+        is_grand=True,
+    )
+
+    # Sütun genişlikleri
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 14
+    for i in range(4, 4 + 12):
+        ws.column_dimensions[get_column_letter(i)].width = 13
+    ws.column_dimensions[get_column_letter(16)].width = 14
+
+    ws.freeze_panes = "B3"
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"faaliyet-raporu-{year}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/activity/budget", name="report_activity_budget_save")
 async def report_activity_budget_save(
     request: Request,
