@@ -79,6 +79,8 @@ class FinancialVendor(Base):
     invoices = relationship("Invoice", back_populates="vendor")
     cheques = relationship("Cheque", back_populates="vendor")
     general_expenses = relationship("GeneralExpense", back_populates="vendor")
+    prepayments = relationship("VendorPrepayment", back_populates="vendor",
+                               cascade="all, delete-orphan", order_by="VendorPrepayment.payment_date")
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +344,33 @@ class InvoicePayment(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     invoice = relationship("Invoice", back_populates="payments")
+    bank_account = relationship("BankAccount")
+    cash_book = relationship("CashBook")
+    credit_card = relationship("CreditCard")
+    cheque = relationship("Cheque")
+
+
+class VendorPrepayment(Base):
+    """Tedarikçiye fatura kesilmeden yapılan ön/avans ödeme."""
+    __tablename__ = "vendor_prepayments"
+
+    id = Column(Integer, primary_key=True)
+    vendor_id = Column(Integer, ForeignKey("financial_vendors.id"), nullable=False)
+    payment_date = Column(Date, nullable=False)
+    amount = Column(Float, nullable=False)
+    payment_method = Column(
+        Enum("nakit", "banka", "kredi_karti", "cek", name="vp_method_enum"),
+        nullable=False
+    )
+    bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
+    cash_book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=True)
+    credit_card_id = Column(Integer, ForeignKey("credit_cards.id"), nullable=True)
+    cheque_id = Column(Integer, ForeignKey("cheques.id"), nullable=True)
+    notes = Column(String(300))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    vendor = relationship("FinancialVendor", back_populates="prepayments")
     bank_account = relationship("BankAccount")
     cash_book = relationship("CashBook")
     credit_card = relationship("CreditCard")

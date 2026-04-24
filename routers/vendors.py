@@ -2,13 +2,18 @@
 Finansal Tedarikçi (FinancialVendor) yönetimi
 """
 
+from datetime import date as _date
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import FinancialVendor, Invoice, Cheque, User, CashBook, BankAccount, CreditCard, PAYMENT_METHODS
+from models import (
+    FinancialVendor, Invoice, Cheque, User, CashBook, BankAccount, CreditCard,
+    VendorPrepayment, CashEntry, BankMovement, CreditCardTxn,
+    PAYMENT_METHODS,
+)
 from templates_config import templates
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
@@ -182,30 +187,37 @@ async def vendor_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from datetime import date, timedelta
+    from datetime import timedelta
     v = db.query(FinancialVendor).get(vendor_id)
     if not v:
         raise HTTPException(status_code=404)
 
-    today = date.today()
+    today = _date.today()
     inv_q = db.query(Invoice).filter(Invoice.vendor_id == vendor_id)
     if period != "all":
         cutoff = today - timedelta(days=int(period))
         inv_q = inv_q.filter(Invoice.invoice_date >= cutoff)
     invoices = inv_q.order_by(Invoice.invoice_date.desc()).all()
 
+    prepayments = (
+        db.query(VendorPrepayment)
+        .filter(VendorPrepayment.vendor_id == vendor_id)
+        .order_by(VendorPrepayment.payment_date.desc())
+        .all()
+    )
     cheques = db.query(Cheque).filter(Cheque.vendor_id == vendor_id).order_by(Cheque.due_date.desc()).all()
 
     cash_books    = db.query(CashBook).all()
     bank_accounts = db.query(BankAccount).all()
     credit_cards  = db.query(CreditCard).all()
 
-    total_amount  = sum(i.amount for i in invoices)
-    paid_amount   = sum(i.amount for i in invoices if i.status == "paid")
-    unpaid_amount = sum(i.amount for i in invoices if i.status == "approved")
+    # KDV dahil tutarlar
+    total_amount   = sum(i.total_with_vat for i in invoices)
+    paid_amount    = sum(i.paid_amount for i in invoices) + sum(p.amount for p in prepayments)
+    unpaid_amount  = sum(i.remaining for i in invoices if i.status in ("approved", "partial"))
     overdue_amount = sum(
-        i.amount for i in invoices
-        if i.status == "approved" and i.due_date and i.due_date < today
+        i.remaining for i in invoices
+        if i.status in ("approved", "partial") and i.due_date and i.due_date < today
     )
 
     return templates.TemplateResponse(
@@ -213,6 +225,7 @@ async def vendor_detail(
         {
             "request": request, "current_user": current_user,
             "vendor": v, "invoices": invoices, "cheques": cheques,
+            "prepayments": prepayments,
             "total_amount": total_amount, "paid_amount": paid_amount,
             "unpaid_amount": unpaid_amount, "overdue_amount": overdue_amount,
             "period": period, "today": today,
@@ -221,6 +234,96 @@ async def vendor_detail(
             "page_title": v.name,
         },
     )
+
+
+@router.post("/{vendor_id}/prepayment", name="vendor_prepayment")
+async def vendor_prepayment(
+    vendor_id: int,
+    amount: float = Form(...),
+    pay_date: str = Form(""),
+    payment_method: str = Form(...),
+    bank_account_id: int = Form(None),
+    cash_book_id: int = Form(None),
+    credit_card_id: int = Form(None),
+    cheque_no: str = Form(""),
+    cheque_bank: str = Form(""),
+    cheque_date: str = Form(""),
+    cheque_due_date: str = Form(""),
+    notes: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    v = db.query(FinancialVendor).get(vendor_id)
+    if not v:
+        raise HTTPException(status_code=404)
+
+    pdate = _date.fromisoformat(pay_date) if pay_date else _date.today()
+    desc = f"Ön Ödeme — {v.name}"
+
+    pmt = VendorPrepayment(
+        vendor_id=vendor_id,
+        payment_date=pdate,
+        amount=amount,
+        payment_method=payment_method,
+        bank_account_id=bank_account_id if payment_method == "banka" else None,
+        cash_book_id=cash_book_id if payment_method == "nakit" else None,
+        credit_card_id=credit_card_id if payment_method == "kredi_karti" else None,
+        notes=notes.strip(),
+        created_by=current_user.id,
+    )
+
+    if payment_method == "nakit" and cash_book_id:
+        db.add(CashEntry(
+            book_id=cash_book_id, entry_date=pdate,
+            entry_type="cikis", amount=amount, description=desc,
+        ))
+    elif payment_method == "banka" and bank_account_id:
+        db.add(BankMovement(
+            account_id=bank_account_id, movement_date=pdate,
+            movement_type="cikis", amount=amount, description=desc,
+        ))
+    elif payment_method == "kredi_karti" and credit_card_id:
+        db.add(CreditCardTxn(
+            card_id=credit_card_id, txn_date=pdate,
+            amount=amount, description=desc,
+        ))
+    elif payment_method == "cek":
+        from models import Cheque as ChequeModel
+        cheque = ChequeModel(
+            vendor_id=vendor_id,
+            cheque_type="verilen",
+            cheque_no=cheque_no.strip(),
+            bank=cheque_bank.strip(),
+            amount=amount,
+            currency="TRY",
+            cheque_date=_date.fromisoformat(cheque_date) if cheque_date else pdate,
+            due_date=_date.fromisoformat(cheque_due_date) if cheque_due_date else pdate,
+            status="beklemede",
+        )
+        db.add(cheque)
+        db.flush()
+        pmt.cheque_id = cheque.id
+
+    db.add(pmt)
+    db.commit()
+    return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{vendor_id}/prepayment/{pmt_id}/delete", name="vendor_prepayment_delete")
+async def vendor_prepayment_delete(
+    vendor_id: int,
+    pmt_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pmt = db.query(VendorPrepayment).filter(
+        VendorPrepayment.id == pmt_id,
+        VendorPrepayment.vendor_id == vendor_id,
+    ).first()
+    if pmt:
+        db.delete(pmt)
+        db.commit()
+    return RedirectResponse(url=f"/vendors/{vendor_id}", status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/{vendor_id}/edit", response_class=HTMLResponse, name="vendor_edit_get")
