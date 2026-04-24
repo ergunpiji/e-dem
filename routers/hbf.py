@@ -489,10 +489,10 @@ async def hbf_pay(
     ge = GeneralExpense(
         category_id=cat_id,
         employee_id=hbf.employee_id,
-        description=f"{hbf.hbf_no}: {hbf.title}",
+        description=f"HBF {hbf.hbf_no}: {hbf.title}",
         amount=hbf.total_amount,
         expense_date=pdate,
-        source="hbf",
+        source="manual",
         created_by=current_user.id,
     )
     db.add(ge)
