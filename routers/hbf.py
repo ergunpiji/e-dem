@@ -26,8 +26,19 @@ def _parse_items(items_json: str) -> tuple[list, float]:
         items = json.loads(items_json or "[]")
     except Exception:
         items = []
-    total = sum(float(i.get("amount", 0)) for i in items)
+    # total = KDV dahil genel toplam
+    total = sum(float(i.get("amount_with_vat", i.get("amount", 0))) for i in items)
     return items, total
+
+
+def _parse_refs(refs_json: str) -> tuple[list, int | None]:
+    """refs_json → (list, first_ref_id)"""
+    try:
+        refs = json.loads(refs_json or "[]")
+    except Exception:
+        refs = []
+    first_id = refs[0]["id"] if refs else None
+    return refs, first_id
 
 
 def _hbf_expense_category(db) -> int:
@@ -76,6 +87,11 @@ async def hbf_list(
 # Yeni HBF
 # ---------------------------------------------------------------------------
 
+def _refs_for_template(db):
+    refs = db.query(Reference).filter(Reference.status == "aktif").order_by(Reference.ref_no).all()
+    return [{"id": r.id, "ref_no": r.ref_no, "title": r.title} for r in refs]
+
+
 @router.get("/new", response_class=HTMLResponse, name="hbf_new_get")
 async def hbf_new_get(
     request: Request,
@@ -83,12 +99,12 @@ async def hbf_new_get(
     db: Session = Depends(get_db),
 ):
     employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()  # noqa: E712
-    references = db.query(Reference).filter(Reference.status == "aktif").order_by(Reference.ref_no).all()
     return templates.TemplateResponse(
         "hbf/form.html",
         {
             "request": request, "current_user": current_user,
-            "hbf": None, "employees": employees, "references": references,
+            "hbf": None, "employees": employees,
+            "refs_data": json.dumps(_refs_for_template(db), ensure_ascii=False),
             "page_title": "Yeni Harcama Bildirimi",
         },
     )
@@ -96,8 +112,7 @@ async def hbf_new_get(
 
 @router.post("/new", name="hbf_new_post")
 async def hbf_new_post(
-    title: str = Form(...),
-    ref_id: int = Form(None),
+    refs_json: str = Form("[]"),
     employee_id: int = Form(None),
     items_json: str = Form("[]"),
     notes: str = Form(""),
@@ -106,12 +121,15 @@ async def hbf_new_post(
     db: Session = Depends(get_db),
 ):
     items, total = _parse_items(items_json)
+    refs, first_ref_id = _parse_refs(refs_json)
+    ref_nos = ", ".join(r["ref_no"] for r in refs) if refs else None
     hbf_status = "beklemede" if action == "gonder" else "taslak"
     hbf = HBF(
         hbf_no=generate_hbf_no(db),
-        ref_id=ref_id or None,
+        ref_id=first_ref_id,
+        refs_json=refs_json if refs else None,
         employee_id=employee_id or None,
-        title=title.strip(),
+        title=ref_nos or "HBF",
         items_json=json.dumps(items, ensure_ascii=False),
         total_amount=total,
         status=hbf_status,
@@ -141,14 +159,19 @@ async def hbf_detail(
         raise HTTPException(status_code=403)
 
     items, _ = _parse_items(hbf.items_json)
+    refs, _ = _parse_refs(hbf.refs_json)
     cash_books = db.query(CashBook).all()
     bank_accounts = db.query(BankAccount).all()
+
+    kdv_haric = sum(float(i.get("amount_without_vat", i.get("amount", 0))) for i in items)
+    kdv_toplam = sum(float(i.get("vat_amount", 0)) for i in items)
 
     return templates.TemplateResponse(
         "hbf/detail.html",
         {
             "request": request, "current_user": current_user,
-            "hbf": hbf, "items": items,
+            "hbf": hbf, "items": items, "refs": refs,
+            "kdv_haric": kdv_haric, "kdv_toplam": kdv_toplam,
             "status_labels": HBF_STATUS_LABELS,
             "cash_books": cash_books, "bank_accounts": bank_accounts,
             "payment_methods": PAYMENT_METHODS,
@@ -175,12 +198,12 @@ async def hbf_edit_get(
     if hbf.created_by != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403)
     employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()  # noqa: E712
-    references = db.query(Reference).filter(Reference.status == "aktif").order_by(Reference.ref_no).all()
     return templates.TemplateResponse(
         "hbf/form.html",
         {
             "request": request, "current_user": current_user,
-            "hbf": hbf, "employees": employees, "references": references,
+            "hbf": hbf, "employees": employees,
+            "refs_data": json.dumps(_refs_for_template(db), ensure_ascii=False),
             "page_title": f"Düzenle — {hbf.hbf_no}",
         },
     )
@@ -189,8 +212,7 @@ async def hbf_edit_get(
 @router.post("/{hbf_id}/edit", name="hbf_edit_post")
 async def hbf_edit_post(
     hbf_id: int,
-    title: str = Form(...),
-    ref_id: int = Form(None),
+    refs_json: str = Form("[]"),
     employee_id: int = Form(None),
     items_json: str = Form("[]"),
     notes: str = Form(""),
@@ -202,8 +224,11 @@ async def hbf_edit_post(
     if not hbf or hbf.status != "taslak":
         raise HTTPException(status_code=404)
     items, total = _parse_items(items_json)
-    hbf.title = title.strip()
-    hbf.ref_id = ref_id or None
+    refs, first_ref_id = _parse_refs(refs_json)
+    ref_nos = ", ".join(r["ref_no"] for r in refs) if refs else None
+    hbf.refs_json = refs_json if refs else None
+    hbf.ref_id = first_ref_id
+    hbf.title = ref_nos or hbf.title or "HBF"
     hbf.employee_id = employee_id or None
     hbf.items_json = json.dumps(items, ensure_ascii=False)
     hbf.total_amount = total

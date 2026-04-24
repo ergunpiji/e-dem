@@ -1,99 +1,159 @@
 {% extends "base.html" %}
 {% block page_title %}{{ page_title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .hbf-header {
+    background: linear-gradient(135deg, #1a3a5c 0%, #1e5f8c 100%);
+    border-radius: 12px; padding: 24px 32px; margin-bottom: 20px; color: #fff;
+  }
+  .hbf-header .label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
+  .hbf-header h4 { margin: 4px 0 0; font-size: 22px; font-weight: 700; }
+  .hbf-header .meta { margin-top: 12px; display: flex; gap: 24px; flex-wrap: wrap; }
+  .hbf-header .meta-item { font-size: 12px; opacity: .8; }
+  .hbf-header .meta-item strong { display: block; font-size: 13px; opacity: 1; }
+
+  .section-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0; margin-bottom: 16px; overflow: hidden; }
+  .section-card .card-head { padding: 12px 20px; border-bottom: 1px solid #f1f5f9; font-weight: 700; font-size: 13px; }
+
+  .items-tbl { width: 100%; border-collapse: collapse; }
+  .items-tbl thead th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; padding: 8px 12px; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+  .items-tbl tbody td { padding: 7px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+  .items-tbl tfoot td { padding: 8px 12px; font-size: 13px; background: #f8fafc; }
+
+  .summary-box { background: linear-gradient(135deg, #1a3a5c 0%, #1e5f8c 100%); border-radius: 10px; padding: 16px 20px; color: #fff; }
+  .summary-box .row-item { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; opacity: .85; }
+  .summary-box .grand { display: flex; justify-content: space-between; font-size: 17px; font-weight: 800; padding-top: 8px; margin-top: 6px; border-top: 1px solid rgba(255,255,255,.3); }
+  .summary-box .grand-label { letter-spacing: .06em; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+
+  .status-badge-lg { font-size: 13px; padding: 5px 14px; border-radius: 20px; font-weight: 700; }
+  .pay-badge { background: #e0f2fe; color: #0369a1; border-radius: 4px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+  .doc-badge { background: #f0fdf4; color: #15803d; border-radius: 4px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+</style>
+{% endblock %}
+
 {% block topbar_actions %}
 {% if hbf.status == 'taslak' and (hbf.created_by == current_user.id or current_user.is_admin) %}
 <a href="/hbf/{{ hbf.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Düzenle</a>
 {% endif %}
 {% endblock %}
+
 {% block content %}
 <div class="row g-3">
-  <!-- Sol: Detaylar -->
+  <!-- Sol: Ana içerik -->
   <div class="col-lg-8">
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-body">
-        <div class="row g-3">
-          <div class="col-sm-6">
-            <div class="text-muted small mb-1">HBF No</div>
-            <div class="fw-bold">{{ hbf.hbf_no }}</div>
-          </div>
-          <div class="col-sm-6">
-            <div class="text-muted small mb-1">Durum</div>
-            {% set s = hbf.status %}
-            <span class="badge fs-6 {% if s=='taslak' %}bg-secondary{% elif s=='beklemede' %}bg-warning text-dark{% elif s=='onaylandi' %}bg-info text-dark{% elif s=='reddedildi' %}bg-danger{% elif s=='odendi' %}bg-success{% endif %}">
-              {{ status_labels[s] }}
-            </span>
-          </div>
-          <div class="col-sm-6">
-            <div class="text-muted small mb-1">Çalışan</div>
-            <div>{{ hbf.employee.name if hbf.employee else '—' }}</div>
-          </div>
-          <div class="col-sm-6">
-            <div class="text-muted small mb-1">Referans</div>
-            <div>
-              {% if hbf.reference %}
-              <a href="/references/{{ hbf.reference.id }}">{{ hbf.reference.ref_no }}</a>
-              {% else %}—{% endif %}
-            </div>
-          </div>
-          <div class="col-sm-6">
-            <div class="text-muted small mb-1">Oluşturan</div>
-            <div>{{ hbf.creator.name if hbf.creator else '—' }}</div>
-          </div>
-          <div class="col-sm-6">
-            <div class="text-muted small mb-1">Tarih</div>
-            <div>{{ hbf.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
-          </div>
-          {% if hbf.notes %}
-          <div class="col-12">
-            <div class="text-muted small mb-1">Notlar</div>
-            <div>{{ hbf.notes }}</div>
-          </div>
-          {% endif %}
+    <!-- Header -->
+    <div class="hbf-header">
+      <div class="label">Harcama Bildirim Formu</div>
+      <h4>{{ hbf.hbf_no }}</h4>
+      <div class="meta">
+        <div class="meta-item">
+          <strong>Durum</strong>
+          {% set s = hbf.status %}
+          <span class="badge {% if s=='taslak' %}bg-secondary{% elif s=='beklemede' %}bg-warning text-dark{% elif s=='onaylandi' %}bg-info text-dark{% elif s=='reddedildi' %}bg-danger{% elif s=='odendi' %}bg-success{% endif %}">
+            {{ status_labels[s] }}
+          </span>
+        </div>
+        <div class="meta-item">
+          <strong>Oluşturan</strong>
+          {{ hbf.creator.name if hbf.creator else '—' }}
+        </div>
+        <div class="meta-item">
+          <strong>Tarih</strong>
+          {{ hbf.created_at.strftime('%d.%m.%Y') }}
+        </div>
+        {% if hbf.employee %}
+        <div class="meta-item">
+          <strong>Çalışan</strong>
+          {{ hbf.employee.name }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Referanslar -->
+    {% if refs %}
+    <div class="section-card mb-3">
+      <div class="card-head">Referans Numaraları</div>
+      <div class="p-3 d-flex flex-wrap gap-2">
+        {% for r in refs %}
+        <a href="/references/{{ r.id }}" class="badge bg-primary text-decoration-none" style="font-size:12px;padding:6px 12px">
+          {{ r.ref_no }}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% elif hbf.reference %}
+    <div class="section-card mb-3">
+      <div class="card-head">Referans</div>
+      <div class="p-3">
+        <a href="/references/{{ hbf.reference.id }}" class="badge bg-primary text-decoration-none" style="font-size:12px;padding:6px 12px">
+          {{ hbf.reference.ref_no }}
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Harcama Kalemleri -->
+    <div class="section-card mb-3">
+      <div class="card-head">Harcama Kalemleri</div>
+      <table class="items-tbl">
+        <thead>
+          <tr>
+            <th>Tarih</th>
+            <th>Açıklama</th>
+            <th>Ödeme</th>
+            <th>Belge</th>
+            <th class="text-end">Tutar (KDV Dahil)</th>
+            <th class="text-end">KDV Tutarı</th>
+            <th class="text-end">KDV Hariç</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>{{ item.date or '—' }}</td>
+            <td>{{ item.description or '—' }}</td>
+            <td>
+              {% set pm_map = {'nakit':'Nakit','kredi_karti':'Kredi K.','banka':'Banka/EFT','cek':'Çek'} %}
+              <span class="pay-badge">{{ pm_map.get(item.payment, item.payment or '—') }}</span>
+            </td>
+            <td>
+              {% set doc_map = {'fatura':'Fatura','fis':'Fiş','gider_pusulasi':'Gider P.','diger':'Diğer'} %}
+              <span class="doc-badge">{{ doc_map.get(item.document_type, item.document_type or '—') }}</span>
+            </td>
+            <td class="text-end fw-semibold">{{ item.get('amount_with_vat', item.get('amount', 0)) | money }}</td>
+            <td class="text-end text-muted">{{ item.get('vat_amount', 0) | money }}</td>
+            <td class="text-end">{{ item.get('amount_without_vat', item.get('amount', 0)) | money }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">Kalem yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Özet -->
+    <div class="d-flex justify-content-end mb-3">
+      <div class="summary-box">
+        <div class="row-item"><span>KDV Hariç Toplam</span><span>{{ kdv_haric | money }}</span></div>
+        <div class="row-item"><span>KDV</span><span>{{ kdv_toplam | money }}</span></div>
+        <div class="grand">
+          <span class="grand-label">Genel Toplam</span>
+          <span>{{ hbf.total_amount | money }}</span>
         </div>
       </div>
     </div>
 
-    <!-- Harcama Kalemleri -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent border-0">
-        <h6 class="mb-0">Harcama Kalemleri</h6>
-      </div>
-      <div class="card-body p-0">
-        <table class="table table-sm mb-0">
-          <thead class="table-light">
-            <tr>
-              <th class="ps-3">Açıklama</th>
-              <th>Kategori</th>
-              <th>Tarih</th>
-              <th class="text-end pe-3">Tutar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in items %}
-            <tr>
-              <td class="ps-3">{{ item.description }}</td>
-              <td>{{ item.category or '—' }}</td>
-              <td>{{ item.date or '—' }}</td>
-              <td class="text-end pe-3 fw-semibold">{{ item.amount | money }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="4" class="text-muted text-center py-3">Kalem yok.</td></tr>
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr class="table-light">
-              <td colspan="3" class="text-end fw-bold ps-3">Toplam</td>
-              <td class="text-end pe-3 fw-bold text-primary">{{ hbf.total_amount | money }}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>
+    {% if hbf.notes %}
+    <div class="alert alert-light border"><strong>Not:</strong> {{ hbf.notes }}</div>
+    {% endif %}
 
-    <!-- Onay bilgisi -->
-    {% if hbf.approved_by and hbf.approval_note %}
+    <!-- Onay notu -->
+    {% if hbf.approval_note %}
     <div class="alert {% if hbf.status == 'reddedildi' %}alert-danger{% else %}alert-info{% endif %}">
-      <strong>{{ hbf.approver.name if hbf.approver else '' }}</strong> ({{ hbf.approved_at.strftime('%d.%m.%Y') }}):
+      <strong>{{ hbf.approver.name if hbf.approver else '' }}</strong>
+      {% if hbf.approved_at %}({{ hbf.approved_at.strftime('%d.%m.%Y') }}){% endif %}:
       {{ hbf.approval_note }}
     </div>
     {% endif %}
@@ -112,29 +172,24 @@
 
   <!-- Sağ: İşlemler -->
   <div class="col-lg-4">
-    <!-- Taslak → Onaya Gönder -->
     {% if hbf.status == 'taslak' and (hbf.created_by == current_user.id or current_user.is_admin) %}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body">
         <h6 class="mb-3">İşlemler</h6>
-        <form method="post" action="/hbf/{{ hbf.id }}/submit">
+        <form method="post" action="/hbf/{{ hbf.id }}/submit" class="mb-2">
           <button class="btn btn-primary w-100" onclick="return confirm('Onaya gönderilsin mi?')">
             <i class="bi bi-send me-1"></i>Onaya Gönder
           </button>
         </form>
-        {% if hbf.created_by == current_user.id or current_user.is_admin %}
-        <hr>
         <form method="post" action="/hbf/{{ hbf.id }}/delete">
           <button class="btn btn-outline-danger w-100 btn-sm" onclick="return confirm('Silinsin mi?')">
             <i class="bi bi-trash me-1"></i>Sil
           </button>
         </form>
-        {% endif %}
       </div>
     </div>
     {% endif %}
 
-    <!-- Onayla / Reddet (approver/admin, beklemede) -->
     {% if hbf.status == 'beklemede' and (current_user.is_admin or current_user.is_approver) %}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body">
@@ -143,7 +198,7 @@
           <div class="mb-2">
             <textarea name="approval_note" class="form-control form-control-sm" rows="2" placeholder="Onay notu (isteğe bağlı)"></textarea>
           </div>
-          <button class="btn btn-success w-100" onclick="return confirm('Onaylanacak, emin misiniz?')">
+          <button class="btn btn-success w-100">
             <i class="bi bi-check-lg me-1"></i>Onayla
           </button>
         </form>
@@ -159,7 +214,6 @@
     </div>
     {% endif %}
 
-    <!-- Ödeme kaydı (admin, onaylandi) -->
     {% if hbf.status == 'onaylandi' and current_user.is_admin %}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body">
@@ -167,8 +221,7 @@
         <form method="post" action="/hbf/{{ hbf.id }}/pay">
           <div class="mb-2">
             <label class="form-label small">Ödeme Tarihi</label>
-            <input type="date" name="pay_date" class="form-control form-control-sm"
-                   value="{{ today.isoformat() if today else '' }}">
+            <input type="date" name="pay_date" class="form-control form-control-sm" value="{{ today.isoformat() }}">
           </div>
           <div class="mb-2">
             <label class="form-label small">Ödeme Yöntemi</label>
@@ -181,19 +234,15 @@
           <div id="bank-field" class="mb-2" style="display:none">
             <label class="form-label small">Banka Hesabı</label>
             <select name="bank_account_id" class="form-select form-select-sm">
-              <option value="">— Seçiniz —</option>
-              {% for ba in bank_accounts %}
-              <option value="{{ ba.id }}">{{ ba.name }}</option>
-              {% endfor %}
+              <option value="">—</option>
+              {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
             </select>
           </div>
           <div id="cash-field" class="mb-2" style="display:none">
             <label class="form-label small">Kasa</label>
             <select name="cash_book_id" class="form-select form-select-sm">
-              <option value="">— Seçiniz —</option>
-              {% for cb in cash_books %}
-              <option value="{{ cb.id }}">{{ cb.name }}</option>
-              {% endfor %}
+              <option value="">—</option>
+              {% for cb in cash_books %}<option value="{{ cb.id }}">{{ cb.name }}</option>{% endfor %}
             </select>
           </div>
           <div class="alert alert-warning py-2 mb-2" style="font-size:13px">

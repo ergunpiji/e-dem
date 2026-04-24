@@ -21,9 +21,8 @@
       <thead class="table-light">
         <tr>
           <th class="ps-3">HBF No</th>
-          <th>Başlık</th>
-          <th>Çalışan</th>
-          <th>Referans</th>
+          <th>Çalışan / Oluşturan</th>
+          <th>Referanslar</th>
           <th class="text-end">Tutar</th>
           <th>Durum</th>
           <th>Tarih</th>
@@ -36,9 +35,15 @@
           <td class="ps-3">
             <a href="/hbf/{{ hbf.id }}" class="text-decoration-none fw-semibold">{{ hbf.hbf_no }}</a>
           </td>
-          <td>{{ hbf.title }}</td>
-          <td>{{ hbf.employee.name if hbf.employee else '—' }}</td>
-          <td>{{ hbf.reference.ref_no if hbf.reference else '—' }}</td>
+          <td>{{ hbf.employee.name if hbf.employee else (hbf.creator.name if hbf.creator else '—') }}</td>
+          <td>
+            {% if hbf.refs_json %}
+              {% set rfs = hbf.refs_json | fromjson %}
+              {% for r in rfs %}<span class="badge bg-primary me-1" style="font-size:11px">{{ r.ref_no }}</span>{% endfor %}
+            {% elif hbf.reference %}
+              <span class="badge bg-primary" style="font-size:11px">{{ hbf.reference.ref_no }}</span>
+            {% else %}—{% endif %}
+          </td>
           <td class="text-end fw-semibold">{{ hbf.total_amount | money }}</td>
           <td>
             {% set s = hbf.status %}
@@ -54,7 +59,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="text-center text-muted py-4">Henüz kayıt yok.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">Henüz kayıt yok.</td></tr>
         {% endfor %}
       </tbody>
     </table>

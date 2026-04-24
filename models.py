@@ -595,11 +595,14 @@ class HBF(Base):
 
     id = Column(Integer, primary_key=True)
     hbf_no = Column(String(30), unique=True, nullable=False)
-    ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
+    ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)   # birincil ref (backward compat)
+    refs_json = Column(Text)            # JSON: [{"id":1,"ref_no":"TOP-ABC-2501-001"}]
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    title = Column(String(200), nullable=False)
-    items_json = Column(Text)           # JSON: [{description, amount, receipt_no}]
-    total_amount = Column(Float, default=0.0, nullable=False)
+    title = Column(String(200), nullable=True)
+    # items_json format: [{date, description, payment, document_type,
+    #   amount_with_vat, vat_rate, vat_amount, amount_without_vat}]
+    items_json = Column(Text)
+    total_amount = Column(Float, default=0.0, nullable=False)   # KDV dahil genel toplam
     status = Column(
         Enum("taslak", "beklemede", "onaylandi", "reddedildi", "odendi",
              name="hbf_status_enum"),

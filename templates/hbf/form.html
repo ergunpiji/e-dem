@@ -1,163 +1,317 @@
 {% extends "base.html" %}
 {% block page_title %}{{ page_title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .hbf-header {
+    background: linear-gradient(135deg, #1a3a5c 0%, #1e5f8c 100%);
+    border-radius: 12px;
+    padding: 24px 32px;
+    margin-bottom: 20px;
+    color: #fff;
+  }
+  .hbf-header .label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
+  .hbf-header h4 { margin: 4px 0 0; font-size: 22px; font-weight: 700; }
+
+  .section-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
+  .form-label { font-weight: 600; font-size: 13px; color: #374151; margin-bottom: 4px; }
+
+  /* Referans tag input */
+  .ref-tag-wrap {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 8px;
+    min-height: 42px; cursor: text; background: #fff;
+  }
+  .ref-tag-wrap:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+  .ref-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #eff6ff; color: #1d4ed8; border-radius: 4px;
+    padding: 2px 8px; font-size: 12px; font-weight: 600;
+  }
+  .ref-tag .rm { cursor: pointer; color: #93c5fd; font-size: 14px; line-height: 1; }
+  .ref-tag .rm:hover { color: #dc2626; }
+  .ref-ac {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 1050;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12); max-height: 220px; overflow-y: auto; display: none;
+  }
+  .ref-ac.open { display: block; }
+  .ref-ac-row { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f8fafc; }
+  .ref-ac-row:hover { background: #f0f7ff; }
+  .ref-ac-row .rno { font-weight: 600; color: #1e40af; }
+  .ref-ac-row .rtitle { color: #64748b; font-size: 12px; }
+  .ref-ac-empty { padding: 10px 12px; font-size: 13px; color: #94a3b8; }
+
+  /* Items table */
+  .items-tbl { width: 100%; border-collapse: collapse; }
+  .items-tbl thead th {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: #64748b; padding: 8px 8px; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+  }
+  .items-tbl tbody td { padding: 4px 4px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+  .items-tbl .form-control, .items-tbl .form-select { font-size: 12px; padding: 4px 8px; border-color: #e2e8f0; }
+  .items-tbl .form-control:focus, .items-tbl .form-select:focus { border-color: #3b82f6; box-shadow: none; }
+  .items-tbl .calc-val { text-align: right; font-size: 12px; color: #475569; background: #f8fafc; padding: 4px 8px; border-radius: 4px; }
+
+  .add-row-btn {
+    border: 2px dashed #cbd5e1; border-radius: 8px; padding: 8px 16px; font-size: 13px;
+    color: #64748b; background: #f8fafc; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .add-row-btn:hover { border-color: #3b82f6; color: #3b82f6; background: #eff6ff; }
+
+  /* Summary box */
+  .summary-box {
+    background: linear-gradient(135deg, #1a3a5c 0%, #1e5f8c 100%);
+    border-radius: 10px; padding: 16px 20px; color: #fff; min-width: 260px;
+  }
+  .summary-box .row-item { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; opacity: .85; }
+  .summary-box .grand { display: flex; justify-content: space-between; font-size: 17px; font-weight: 800; padding-top: 8px; margin-top: 6px; border-top: 1px solid rgba(255,255,255,.3); }
+  .summary-box .grand-label { letter-spacing: .06em; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-lg-9">
-    <form method="post">
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-transparent border-0">
-          <h6 class="mb-0">Genel Bilgiler</h6>
-        </div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-12">
-              <label class="form-label">Başlık <span class="text-danger">*</span></label>
-              <input type="text" name="title" class="form-control" required
-                     value="{{ hbf.title if hbf else '' }}" placeholder="Harcamanın kısa açıklaması">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Çalışan</label>
-              <select name="employee_id" class="form-select">
-                <option value="">— Seçiniz —</option>
-                {% for emp in employees %}
-                <option value="{{ emp.id }}" {% if hbf and hbf.employee_id == emp.id %}selected{% endif %}>
-                  {{ emp.name }}
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Referans</label>
-              <select name="ref_id" class="form-select">
-                <option value="">— Seçiniz —</option>
-                {% for ref in references %}
-                <option value="{{ ref.id }}" {% if hbf and hbf.ref_id == ref.id %}selected{% endif %}>
-                  {{ ref.ref_no }} — {{ ref.title }}
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-12">
-              <label class="form-label">Notlar</label>
-              <textarea name="notes" class="form-control" rows="2">{{ hbf.notes if hbf else '' }}</textarea>
-            </div>
-          </div>
-        </div>
-      </div>
+<form method="post" id="hbfForm">
+  <input type="hidden" name="refs_json" id="refs_json" value="">
+  <input type="hidden" name="items_json" id="items_json" value="">
 
-      <!-- Harcama Kalemleri -->
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-transparent border-0 d-flex align-items-center">
-          <h6 class="mb-0">Harcama Kalemleri</h6>
-          <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="addRow()">
-            <i class="bi bi-plus-lg me-1"></i>Satır Ekle
-          </button>
-        </div>
-        <div class="card-body p-0">
-          <table class="table table-sm mb-0" id="items-table">
-            <thead class="table-light">
-              <tr>
-                <th class="ps-3" style="width:40%">Açıklama</th>
-                <th style="width:20%">Kategori</th>
-                <th class="text-end" style="width:20%">Tutar (₺)</th>
-                <th style="width:15%">Tarih</th>
-                <th style="width:5%"></th>
-              </tr>
-            </thead>
-            <tbody id="items-body"></tbody>
-          </table>
-        </div>
-        <div class="card-footer bg-transparent d-flex justify-content-end">
-          <span class="fw-bold me-2">Toplam:</span>
-          <span id="total-display" class="fw-bold text-primary">₺0,00</span>
-        </div>
-      </div>
-
-      <input type="hidden" name="items_json" id="items_json">
-
-      <div class="d-flex gap-2 justify-content-end">
-        <a href="/hbf{% if hbf %}/{{ hbf.id }}{% endif %}" class="btn btn-outline-secondary">İptal</a>
-        <button type="submit" name="action" value="taslak" class="btn btn-outline-primary">
-          <i class="bi bi-save me-1"></i>Taslak Kaydet
-        </button>
-        <button type="submit" name="action" value="gonder" class="btn btn-primary" onclick="return confirm('Onaya göndermek istediğinize emin misiniz?')">
-          <i class="bi bi-send me-1"></i>Onaya Gönder
-        </button>
-      </div>
-    </form>
+  <!-- Başlık -->
+  <div class="hbf-header">
+    <div class="label">Harcama Bildirim Formu</div>
+    <h4>{{ page_title }}</h4>
   </div>
-</div>
+
+  <!-- Referanslar -->
+  <div class="section-card">
+    <label class="form-label">Referans Numaraları <span class="text-danger">*</span>
+      <span style="font-weight:400;color:#94a3b8;font-size:11px;">(Birden fazla ekleyebilirsiniz)</span>
+    </label>
+    <div style="position:relative;">
+      <div class="ref-tag-wrap" id="refTagWrap" onclick="document.getElementById('refSearch').focus()">
+        <input type="text" id="refSearch" autocomplete="off"
+               placeholder="Referans no veya etkinlik adı ara..."
+               style="border:none;outline:none;font-size:13px;min-width:200px;flex:1;background:transparent;">
+      </div>
+      <div class="ref-ac" id="refAc"></div>
+    </div>
+  </div>
+
+  <!-- Harcama Kalemleri -->
+  <div class="section-card">
+    <table class="items-tbl" id="itemsTable">
+      <thead>
+        <tr>
+          <th style="width:110px">Tarih</th>
+          <th>Açıklama</th>
+          <th style="width:110px">Ödeme</th>
+          <th style="width:100px">Belge</th>
+          <th style="width:120px;text-align:right">Tutar (KDV Dahil)</th>
+          <th style="width:70px">KDV %</th>
+          <th style="width:110px;text-align:right">KDV Tutarı</th>
+          <th style="width:110px;text-align:right">KDV Hariç</th>
+          <th style="width:32px"></th>
+        </tr>
+      </thead>
+      <tbody id="itemsBody"></tbody>
+    </table>
+    <div class="mt-2">
+      <button type="button" class="add-row-btn" onclick="addRow()">
+        <i class="bi bi-plus"></i> Satır Ekle
+      </button>
+    </div>
+  </div>
+
+  <!-- Alt: Özet + Butonlar -->
+  <div class="d-flex align-items-end gap-4 flex-wrap">
+    <div class="summary-box">
+      <div class="row-item"><span>KDV Hariç Toplam</span><span id="sumHaric">₺0,00</span></div>
+      <div class="row-item"><span>KDV</span><span id="sumKdv">₺0,00</span></div>
+      <div class="grand">
+        <span class="grand-label">Genel Toplam</span>
+        <span id="sumTotal">₺0,00</span>
+      </div>
+    </div>
+    <div class="d-flex flex-column gap-2">
+      <button type="submit" name="action" value="gonder" class="btn btn-primary"
+              onclick="return prepareSubmit() && confirm('Onaya gönderilsin mi?')">
+        <i class="bi bi-send me-1"></i>Onaya Gönder
+      </button>
+      <button type="submit" name="action" value="taslak" class="btn btn-outline-secondary"
+              onclick="return prepareSubmit()">
+        <i class="bi bi-floppy me-1"></i>Taslak Kaydet
+      </button>
+      <a href="/hbf{% if hbf %}/{{ hbf.id }}{% endif %}" class="text-center text-secondary" style="font-size:13px;text-decoration:none;">İptal</a>
+    </div>
+  </div>
+</form>
 
 <script>
+const ALL_REFS = {{ refs_data | safe }};
+const INITIAL_REFS = {{ (hbf.refs_json if hbf and hbf.refs_json else '[]') | safe }};
 const INITIAL_ITEMS = {{ (hbf.items_json if hbf else '[]') | safe }};
-const CATEGORIES = [
-  "Yemek & İçecek","Ulaşım","Konaklama","Kırtasiye","Temsil & Ağırlama",
-  "Yakıt","Temizlik","Teknik","Diğer"
+
+const VDV_RATES = [0, 0.01, 0.10, 0.20];
+const PAYMENT_OPTS = [
+  ['nakit','Nakit'], ['kredi_karti','Kredi Kartı'], ['banka','Banka/EFT'], ['cek','Çek']
+];
+const DOC_OPTS = [
+  ['fatura','Fatura'], ['fis','Fiş'], ['gider_pusulasi','Gider Pusulası'], ['diger','Diğer']
 ];
 
-function addRow(item) {
-  const body = document.getElementById('items-body');
-  const idx = body.rows.length;
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td class="ps-3">
-      <input type="text" class="form-control form-control-sm item-desc" placeholder="Açıklama"
-             value="${item ? escHtml(item.description) : ''}">
-    </td>
-    <td>
-      <select class="form-select form-select-sm item-cat">
-        ${CATEGORIES.map(c => `<option${item && item.category === c ? ' selected' : ''}>${c}</option>`).join('')}
-      </select>
-    </td>
-    <td>
-      <input type="text" class="form-control form-control-sm text-end item-amount" inputmode="decimal"
-             placeholder="0,00" value="${item ? fmtNum(item.amount) : ''}">
-    </td>
-    <td>
-      <input type="date" class="form-control form-control-sm item-date"
-             value="${item ? (item.date || '') : ''}">
-    </td>
-    <td class="text-center">
-      <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove(); calcTotal()">
-        <i class="bi bi-trash"></i>
-      </button>
-    </td>`;
-  body.appendChild(tr);
-  tr.querySelector('.item-amount').addEventListener('input', calcTotal);
+// ---- Ref tags ----
+let selectedRefs = [];
+
+function renderRefs() {
+  const wrap = document.getElementById('refTagWrap');
+  wrap.querySelectorAll('.ref-tag').forEach(t => t.remove());
+  const inp = document.getElementById('refSearch');
+  selectedRefs.forEach(r => {
+    const tag = document.createElement('span');
+    tag.className = 'ref-tag';
+    tag.innerHTML = `${escHtml(r.ref_no)} <span class="rm" data-id="${r.id}">×</span>`;
+    tag.querySelector('.rm').addEventListener('click', () => {
+      selectedRefs = selectedRefs.filter(x => x.id !== r.id);
+      renderRefs();
+    });
+    wrap.insertBefore(tag, inp);
+  });
 }
 
-function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
-function fmtNum(n) {
-  const v = parseFloat(n) || 0;
-  return v.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+function showRefAc(query) {
+  const ac = document.getElementById('refAc');
+  const q = query.toLowerCase().trim();
+  const results = ALL_REFS.filter(r =>
+    !selectedRefs.find(s => s.id === r.id) &&
+    (r.ref_no.toLowerCase().includes(q) || r.title.toLowerCase().includes(q))
+  ).slice(0, 12);
+  if (!results.length) {
+    ac.innerHTML = `<div class="ref-ac-empty">Sonuç bulunamadı</div>`;
+  } else {
+    ac.innerHTML = results.map(r =>
+      `<div class="ref-ac-row" data-id="${r.id}" data-ref_no="${escHtml(r.ref_no)}" data-title="${escHtml(r.title)}">
+        <span class="rno">${escHtml(r.ref_no)}</span> <span class="rtitle">— ${escHtml(r.title)}</span>
+      </div>`
+    ).join('');
+    ac.querySelectorAll('.ref-ac-row').forEach(row => {
+      row.addEventListener('mousedown', e => {
+        e.preventDefault();
+        selectedRefs.push({id: parseInt(row.dataset.id), ref_no: row.dataset.ref_no, title: row.dataset.title});
+        renderRefs();
+        document.getElementById('refSearch').value = '';
+        ac.classList.remove('open');
+      });
+    });
+  }
+  ac.classList.add('open');
+}
+
+document.getElementById('refSearch').addEventListener('input', function() {
+  if (this.value.length >= 1) showRefAc(this.value);
+  else document.getElementById('refAc').classList.remove('open');
+});
+document.getElementById('refSearch').addEventListener('focus', function() {
+  showRefAc(this.value || '');
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#refTagWrap') && !e.target.closest('#refAc'))
+    document.getElementById('refAc').classList.remove('open');
+});
+
+// ---- Items table ----
+function fmtMoney(n) {
+  return '₺' + (parseFloat(n)||0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 function parseNum(s) {
-  return parseFloat(String(s).replace(/\./g,'').replace(',','.')) || 0;
+  return parseFloat(String(s||0).replace(/\./g,'').replace(',','.')) || 0;
+}
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+
+function calcRow(tr) {
+  const withVat = parseNum(tr.querySelector('.i-amount').value);
+  const rate = parseFloat(tr.querySelector('.i-vat').value) || 0;
+  const vatAmt = rate > 0 ? withVat * rate / (1 + rate) : 0;
+  const withoutVat = withVat - vatAmt;
+  tr.querySelector('.i-vat-amt').textContent = fmtMoney(vatAmt);
+  tr.querySelector('.i-without-vat').textContent = fmtMoney(withoutVat);
+  tr.dataset.vatAmt = vatAmt;
+  tr.dataset.withoutVat = withoutVat;
+  tr.dataset.withVat = withVat;
+  calcTotals();
 }
 
-function calcTotal() {
-  let total = 0;
-  document.querySelectorAll('.item-amount').forEach(inp => total += parseNum(inp.value));
-  document.getElementById('total-display').textContent = '₺' + fmtNum(total);
+function calcTotals() {
+  let total = 0, kdv = 0, haric = 0;
+  document.querySelectorAll('#itemsBody tr').forEach(tr => {
+    total += parseFloat(tr.dataset.withVat || 0);
+    kdv   += parseFloat(tr.dataset.vatAmt || 0);
+    haric += parseFloat(tr.dataset.withoutVat || 0);
+  });
+  document.getElementById('sumTotal').textContent = fmtMoney(total);
+  document.getElementById('sumKdv').textContent   = fmtMoney(kdv);
+  document.getElementById('sumHaric').textContent = fmtMoney(haric);
 }
 
-document.querySelector('form').addEventListener('submit', function() {
-  const rows = document.querySelectorAll('#items-body tr');
+function addRow(item) {
+  const body = document.getElementById('itemsBody');
+  const tr = document.createElement('tr');
+  const payOpts = PAYMENT_OPTS.map(([v,l]) =>
+    `<option value="${v}"${item&&item.payment===v?' selected':''}>${l}</option>`).join('');
+  const docOpts = DOC_OPTS.map(([v,l]) =>
+    `<option value="${v}"${item&&item.document_type===v?' selected':''}>${l}</option>`).join('');
+  const vatOpts = VDV_RATES.map(r =>
+    `<option value="${r}"${item&&parseFloat(item.vat_rate)===r?' selected':''}>${Math.round(r*100)}%</option>`).join('');
+
+  tr.innerHTML = `
+    <td><input type="date" class="form-control i-date" value="${item ? (item.date||'') : ''}"></td>
+    <td><input type="text" class="form-control i-desc" placeholder="Açıklama" value="${item ? escHtml(item.description||'') : ''}"></td>
+    <td><select class="form-select i-pay">${payOpts}</select></td>
+    <td><select class="form-select i-doc">${docOpts}</select></td>
+    <td><input type="text" class="form-control text-end i-amount" inputmode="decimal" placeholder="0,00"
+         value="${item ? (parseFloat(item.amount_with_vat||item.amount||0)).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}) : ''}"></td>
+    <td><select class="form-select i-vat">${vatOpts}</select></td>
+    <td><div class="calc-val i-vat-amt">₺0,00</div></td>
+    <td><div class="calc-val i-without-vat">₺0,00</div></td>
+    <td class="text-center"><button type="button" class="btn btn-link text-danger p-0" style="font-size:16px"
+      onclick="this.closest('tr').remove();calcTotals()"><i class="bi bi-x-lg"></i></button></td>`;
+  body.appendChild(tr);
+  tr.querySelector('.i-amount').addEventListener('input', () => calcRow(tr));
+  tr.querySelector('.i-vat').addEventListener('change', () => calcRow(tr));
+  calcRow(tr);
+}
+
+function prepareSubmit() {
+  // refs
+  document.getElementById('refs_json').value = JSON.stringify(selectedRefs);
+  // items
+  const rows = document.querySelectorAll('#itemsBody tr');
   const items = [];
   rows.forEach(tr => {
+    const withVat = parseNum(tr.querySelector('.i-amount').value);
+    const rate = parseFloat(tr.querySelector('.i-vat').value) || 0;
+    const vatAmt = parseFloat(tr.dataset.vatAmt) || 0;
+    const withoutVat = parseFloat(tr.dataset.withoutVat) || 0;
     items.push({
-      description: tr.querySelector('.item-desc').value,
-      category: tr.querySelector('.item-cat').value,
-      amount: parseNum(tr.querySelector('.item-amount').value),
-      date: tr.querySelector('.item-date').value,
+      date: tr.querySelector('.i-date').value,
+      description: tr.querySelector('.i-desc').value,
+      payment: tr.querySelector('.i-pay').value,
+      document_type: tr.querySelector('.i-doc').value,
+      amount_with_vat: withVat,
+      vat_rate: rate,
+      vat_amount: vatAmt,
+      amount_without_vat: withoutVat,
     });
   });
   document.getElementById('items_json').value = JSON.stringify(items);
-});
+  return true;
+}
 
 // Init
-INITIAL_ITEMS.forEach(addRow);
-if (!INITIAL_ITEMS.length) addRow();
-calcTotal();
+selectedRefs = INITIAL_REFS;
+renderRefs();
+if (INITIAL_ITEMS.length) {
+  INITIAL_ITEMS.forEach(addRow);
+} else {
+  addRow();
+}
 </script>
 {% endblock %}
