@@ -516,12 +516,13 @@ async def report_activity(
     cats_with_prev = {cid for cid, tot in prev_by_cat.items() if cid != 0 and tot > 0}
     active_cat_id_set = cats_with_bl | cats_with_curr | cats_with_prev
 
-    # Tüm üst kategoriler (section)
+    # Sadece 2 ana başlık: Personel ve Genel Giderler
+    _REPORT_CATS = ["Personel (*)", "Genel Giderler"]
     top_cats = db.query(GeneralExpenseCategory).filter(
-        GeneralExpenseCategory.parent_id.is_(None)
+        GeneralExpenseCategory.parent_id.is_(None),
+        GeneralExpenseCategory.name.in_(_REPORT_CATS),
     ).order_by(GeneralExpenseCategory.sort_order).all()
 
-    # TÜM section ve row'ları oluştur (aktif olmayanlar da dahil, hidden olarak render edilir)
     sections = []
     grand_prev = 0.0
     grand_curr_ytd = 0.0
@@ -569,9 +570,10 @@ async def report_activity(
             grand_monthly[i] += sec_monthly[i]
         grand_forecast += sec_forecast
 
+        _lbl = "Personel" if top_cat.name == "Personel (*)" else top_cat.name
         sections.append({
             "cat_id": top_cat.id,
-            "label": top_cat.name,
+            "label": _lbl,
             "rows": rows,
             "prev_total": sec_prev,
             "curr_ytd": sec_ytd,
@@ -665,8 +667,10 @@ async def report_activity_export(
     cats_with_prev = {cid for cid, tot in prev_by_cat.items() if cid != 0 and tot > 0}
     active_cat_id_set = cats_with_bl | cats_with_curr | cats_with_prev
 
+    _REPORT_CATS = ["Personel (*)", "Genel Giderler"]
     top_cats = db.query(GeneralExpenseCategory).filter(
-        GeneralExpenseCategory.parent_id.is_(None)
+        GeneralExpenseCategory.parent_id.is_(None),
+        GeneralExpenseCategory.name.in_(_REPORT_CATS),
     ).order_by(GeneralExpenseCategory.sort_order).all()
 
     sections = []
@@ -705,8 +709,9 @@ async def report_activity_export(
             grand_monthly[i] += sec_monthly[i]
         grand_forecast += sec_forecast
 
+        _lbl = "Personel" if top_cat.name == "Personel (*)" else top_cat.name
         sections.append({
-            "label": top_cat.name,
+            "label": _lbl,
             "rows": rows,
             "prev_total": sec_prev, "curr_ytd": sec_ytd,
             "monthly_total": sec_monthly, "forecast": sec_forecast,
