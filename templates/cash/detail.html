@@ -2,6 +2,11 @@
 {% block page_title %}{{ page_title }}{% endblock %}
 
 {% block topbar_actions %}
+{% if current_user.is_admin %}
+<button class="btn btn-outline-info btn-sm" id="topbarOzetBtn">
+  <i class="bi bi-eye me-1"></i>Günlük Özet
+</button>
+{% endif %}
 {% if not today_closed and current_user.is_admin %}
 <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#closeModal">
   <i class="bi bi-lock me-1"></i>Gün Sonu Kapat
@@ -247,11 +252,12 @@
           {% endif %}
         </td>
         {% if current_user.is_admin %}
+        {% set phys = row.close_rec.physical_count if row.close_rec else 'null' %}
+        {% set fdiff = row.close_rec.difference if row.close_rec else 'null' %}
         <td class="text-end">
           <div class="d-flex gap-1 justify-content-end align-items-center">
             <button class="btn btn-outline-info btn-sm py-0"
-                    onclick="openDailySummary('{{ row.date }}', {{ row.opening }}, {{ row.closing }}, {{ row.giris }}, {{ row.cikis }},
-                      {% if row.close_rec %}{{ row.close_rec.physical_count }}, {{ row.close_rec.difference }}{% else %}null, null{% endif %})">
+                    onclick="openDailySummary('{{ row.date }}', {{ row.opening }}, {{ row.closing }}, {{ row.giris }}, {{ row.cikis }}, {{ phys }}, {{ fdiff }})">
               <i class="bi bi-eye"></i>
             </button>
             {% if not row.close_rec %}
@@ -560,6 +566,25 @@ function openDailySummary(dateStr, opening, closing, giris, cikis, physical, dif
 
   new bootstrap.Modal(document.getElementById('dailySummaryModal')).show();
 }
+
+// Topbar "Günlük Özet" butonu — bugünün özetini açar
+(function() {
+  const btn = document.getElementById('topbarOzetBtn');
+  if (!btn) return;
+  {% if today_row %}
+  btn.onclick = () => openDailySummary(
+    '{{ today_str }}',
+    {{ today_row.opening }},
+    {{ today_row.closing }},
+    {{ today_row.giris }},
+    {{ today_row.cikis }},
+    {{ today_row.close_rec.physical_count if today_row.close_rec else 'null' }},
+    {{ today_row.close_rec.difference if today_row.close_rec else 'null' }}
+  );
+  {% else %}
+  btn.onclick = () => openDailySummary('{{ today_str }}', 0, 0, 0, 0, null, null);
+  {% endif %}
+})();
 
 // Hareket ekle: bugün veya açık bir gün seçilebilir
 document.getElementById('add_date').value = '{{ today_str }}';

@@ -206,6 +206,7 @@ async def cash_detail(
 
     today = date.today()
     today_closed = today in closed_dates
+    today_row = next((r for r in daily_rows if r["date"] == today), None)
 
     return templates.TemplateResponse(
         "cash/detail.html",
@@ -224,6 +225,7 @@ async def cash_detail(
             "today": today,
             "today_closed": today_closed,
             "today_str": today.isoformat(),
+            "today_row": today_row,
             "page_title": f"Kasa — {book.name}",
         },
     )
@@ -342,13 +344,20 @@ async def cash_daily_export(
         CashDayClose.close_date == d,
     ).first()
 
+    TL_FMT = '₺ #,##0.00'
+
+    def _tl(cell, value, bold=False):
+        cell.value = value
+        cell.number_format = TL_FMT
+        if bold:
+            cell.font = Font(bold=True)
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = d.strftime("%d.%m.%Y")
 
     # Başlık satırı
     header_fill = PatternFill("solid", fgColor="1A3A5C")
-    header_font = Font(color="FFFFFF", bold=True, size=11)
     ws.merge_cells("A1:F1")
     ws["A1"] = f"Kasa: {book.name}  —  {d.strftime('%d.%m.%Y')}"
     ws["A1"].font = Font(color="FFFFFF", bold=True, size=13)
@@ -358,13 +367,14 @@ async def cash_daily_export(
 
     # Açılış bakiyesi
     ws.append([])
-    ws.append(["Açılış Bakiyesi", "", "", "", "", opening])
-    ws.cell(ws.max_row, 1).font = Font(bold=True)
-    ws.cell(ws.max_row, 6).font = Font(bold=True)
+    ws.append(["Açılış Bakiyesi", "", "", "", "", None])
+    r = ws.max_row
+    ws.cell(r, 1).font = Font(bold=True)
+    _tl(ws.cell(r, 6), opening, bold=True)
 
     # Sütun başlıkları
     ws.append([])
-    col_headers = ["Tür", "Kategori", "İlgili Taraf", "Açıklama", "Giriş (₺)", "Çıkış (₺)"]
+    col_headers = ["Tür", "Kategori", "İlgili Taraf", "Açıklama", "Giriş", "Çıkış"]
     ws.append(col_headers)
     ch_row = ws.max_row
     ch_fill = PatternFill("solid", fgColor="1E5F8C")
@@ -377,42 +387,47 @@ async def cash_daily_export(
     total_giris = 0.0
     total_cikis = 0.0
     for e in entries:
-        g = e.amount if e.entry_type == "giris" else ""
-        c = e.amount if e.entry_type == "cikis" else ""
-        ws.append([
+        row_data = [
             "Giriş" if e.entry_type == "giris" else "Çıkış",
             e.category or "",
             e.related_party or "",
             e.description or "",
-            g, c,
-        ])
+            None, None,
+        ]
+        ws.append(row_data)
+        r = ws.max_row
         if e.entry_type == "giris":
+            _tl(ws.cell(r, 5), e.amount)
+            ws.cell(r, 5).font = Font(color="1A7A3C")
             total_giris += e.amount
         else:
+            _tl(ws.cell(r, 6), e.amount)
+            ws.cell(r, 6).font = Font(color="C00000")
             total_cikis += e.amount
 
     ws.append([])
     closing_sys = opening + total_giris - total_cikis
-    summary_rows = [
-        ("Toplam Giriş", total_giris, "E"),
-        ("Toplam Çıkış", total_cikis, "F"),
-        ("Kapanış Bakiyesi (Sistem)", closing_sys, "F"),
+    summary_data = [
+        ("Toplam Giriş", total_giris, "1A7A3C"),
+        ("Toplam Çıkış", total_cikis, "C00000"),
+        ("Kapanış Bakiyesi (Sistem)", closing_sys, None),
     ]
     if close_rec:
-        summary_rows += [
-            ("Fiziksel Sayım", close_rec.physical_count, "F"),
-            ("Fark", close_rec.difference, "F"),
+        summary_data += [
+            ("Fiziksel Sayım", close_rec.physical_count, None),
+            ("Fark", close_rec.difference, "C00000" if close_rec.difference != 0 else "1A7A3C"),
         ]
-    for label, val, _ in summary_rows:
-        ws.append([label, "", "", "", "", ""])
+    for label, val, color in summary_data:
+        ws.append([label, "", "", "", "", None])
         r = ws.max_row
         ws.cell(r, 1).font = Font(bold=True)
         ws.merge_cells(f"A{r}:E{r}")
-        ws.cell(r, 6).value = val
-        ws.cell(r, 6).font = Font(bold=True)
+        _tl(ws.cell(r, 6), val, bold=True)
+        if color:
+            ws.cell(r, 6).font = Font(bold=True, color=color)
 
     # Sütun genişlikleri
-    for col, width in zip("ABCDEF", [10, 20, 22, 30, 14, 14]):
+    for col, width in zip("ABCDEF", [10, 20, 22, 30, 16, 16]):
         ws.column_dimensions[col].width = width
 
     buf = io.BytesIO()
