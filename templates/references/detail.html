@@ -6,6 +6,19 @@
 <a href="/invoices/new?ref_id={{ ref.id }}" class="btn btn-sm btn-primary">+ Fatura Ekle</a>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+  .fin-card {
+    border-radius: 12px;
+    padding: 16px 20px;
+    flex: 1;
+    min-width: 0;
+  }
+  .fin-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; margin-bottom: 4px; opacity: .75; }
+  .fin-value { font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row g-3">
   <div class="col-md-4">
@@ -30,7 +43,7 @@
     </div>
 
     <!-- Durum güncelle -->
-    <div class="card border-0 shadow-sm mb-3">
+    <div class="card border-0 shadow-sm">
       <div class="card-body">
         <h6 class="fw-bold mb-2">Durum Güncelle</h6>
         <form method="post" action="/references/{{ ref.id }}/status">
@@ -42,46 +55,56 @@
         </form>
       </div>
     </div>
-
-    <!-- Finansal Özet -->
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <h6 class="fw-bold mb-2">Finansal Özet</h6>
-        <div class="d-flex justify-content-between"><span class="text-muted">Kesilen Fatura</span><span class="text-success fw-semibold">{{ total_kesilen | money }}</span></div>
-        <div class="d-flex justify-content-between"><span class="text-muted">Gelen Fatura</span><span class="text-danger fw-semibold">{{ total_gelen | money }}</span></div>
-        <hr class="my-2">
-        <div class="d-flex justify-content-between"><span class="fw-semibold">Kar</span><span class="fw-bold {% if kar >= 0 %}text-success{% else %}text-danger{% endif %}">{{ kar | money }}</span></div>
-      </div>
-    </div>
   </div>
 
   <div class="col-md-8">
+    <!-- Finansal özet kartları -->
+    <div class="d-flex gap-3 mb-3 flex-wrap">
+      <div class="fin-card" style="background:#eff6ff; color:#1d4ed8;">
+        <div class="fin-label">Kesilen Fatura</div>
+        <div class="fin-value">{{ total_kesilen | money }}</div>
+      </div>
+      <div class="fin-card" style="background:#fef2f2; color:#b91c1c;">
+        <div class="fin-label">Gelen Fatura</div>
+        <div class="fin-value">{{ total_gelen | money }}</div>
+      </div>
+      <div class="fin-card" style="background:{% if kar >= 0 %}#f0fdf4{% else %}#fef2f2{% endif %}; color:{% if kar >= 0 %}#15803d{% else %}#b91c1c{% endif %};">
+        <div class="fin-label">Kar</div>
+        <div class="fin-value">{{ kar | money }}</div>
+      </div>
+    </div>
+
+    <!-- Fatura tablosu -->
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent border-0 d-flex align-items-center">
+      <div class="card-header bg-transparent border-0 d-flex align-items-center py-2">
         <span class="fw-semibold">Faturalar</span>
         <a href="/invoices/new?ref_id={{ ref.id }}" class="ms-auto btn btn-sm btn-primary">+ Fatura Ekle</a>
       </div>
       <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-          <thead class="table-light">
+        <table class="table table-hover mb-0" style="font-size:13px;">
+          <thead style="background:#f8fafc;">
             <tr>
-              <th>Fatura No</th>
-              <th>Tip</th>
-              <th>Tedarikçi</th>
-              <th>Tarih</th>
-              <th class="text-end">Tutar</th>
-              <th>Durum</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Fatura No</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Tip</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Tedarikçi</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Tarih</th>
+              <th class="text-end" style="font-size:11px;color:#64748b;text-transform:uppercase;">Tutar</th>
+              <th style="font-size:11px;color:#64748b;text-transform:uppercase;">Durum</th>
             </tr>
           </thead>
           <tbody>
             {% for inv in invoices %}
             <tr>
-              <td><a href="/invoices/{{ inv.id }}" class="text-decoration-none">{{ inv.invoice_no or ("#" ~ inv.id) }}</a></td>
-              <td><span class="badge bg-light text-dark">{{ inv.invoice_type }}</span></td>
-              <td>{{ inv.vendor.name if inv.vendor else "—" }}</td>
-              <td>{{ inv.invoice_date | date_tr }}</td>
+              <td><a href="/invoices/{{ inv.id }}" class="text-decoration-none fw-semibold text-dark">{{ inv.invoice_no or ("#" ~ inv.id) }}</a></td>
+              <td><span class="badge bg-light text-dark border" style="font-size:11px;">{{ inv.invoice_type }}</span></td>
+              <td class="text-muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ inv.vendor.name if inv.vendor else "—" }}</td>
+              <td class="text-muted">{{ inv.invoice_date | date_tr }}</td>
               <td class="text-end fw-semibold">{{ inv.amount | money }}</td>
-              <td><span class="badge {% if inv.status == 'paid' %}bg-success{% elif inv.status == 'approved' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ inv.status }}</span></td>
+              <td>
+                <span class="badge {% if inv.status == 'paid' %}bg-success{% elif inv.status == 'approved' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                  {{ inv.status }}
+                </span>
+              </td>
             </tr>
             {% else %}
             <tr><td colspan="6" class="text-center text-muted py-4">Bu referansa ait fatura yok.</td></tr>
