@@ -29,6 +29,14 @@
   .status-badge-lg { font-size: 13px; padding: 5px 14px; border-radius: 20px; font-weight: 700; }
   .pay-badge { background: #e0f2fe; color: #0369a1; border-radius: 4px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
   .doc-badge { background: #f0fdf4; color: #15803d; border-radius: 4px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+  .att-btn { background: none; border: none; padding: 2px 5px; cursor: pointer; border-radius: 5px; line-height: 1; }
+  .att-btn.has-file { color: #2563eb; }
+  .att-btn.has-file:hover { background: #eff6ff; }
+  .att-btn.no-file { color: #94a3b8; }
+  .att-btn.no-file:hover { color: #64748b; background: #f1f5f9; }
+  #previewModal .modal-body { padding: 0; min-height: 200px; }
+  #previewModal iframe { width: 100%; height: 75vh; border: none; }
+  #previewModal img { max-width: 100%; display: block; margin: auto; }
 </style>
 {% endblock %}
 
@@ -103,10 +111,13 @@
             <th class="text-end">Tutar (KDV Dahil)</th>
             <th class="text-end">KDV Tutarı</th>
             <th class="text-end">KDV Hariç</th>
+            <th class="text-center" style="width:42px">Belge</th>
           </tr>
         </thead>
         <tbody>
           {% for item in sec_items %}
+          {% set row_id = item.get('row_id', '') %}
+          {% set att = row_attachments.get(row_id) if row_id else none %}
           <tr>
             <td>{{ item.date or '—' }}</td>
             <td>{{ item.description or '—' }}</td>
@@ -115,9 +126,27 @@
             <td class="text-end fw-semibold">{{ item.get('amount_with_vat', item.get('amount', 0)) | money }}</td>
             <td class="text-end text-muted">{{ item.get('vat_amount', 0) | money }}</td>
             <td class="text-end">{{ item.get('amount_without_vat', item.get('amount', 0)) | money }}</td>
+            <td class="text-center">
+              {% if att %}
+                {% set fext = att.filename.rsplit('.',1)[-1].lower() %}
+                <button type="button" class="att-btn has-file"
+                        title="{{ att.original }}"
+                        onclick="openPreview('/static/uploads/hbf/{{ hbf.id }}/{{ att.filename }}','{{ fext }}','{{ att.original | replace("'","") }}')">
+                  <i class="bi bi-paperclip" style="font-size:16px"></i>
+                </button>
+              {% elif row_id and (current_user.is_admin or current_user.is_approver or hbf.created_by == current_user.id) %}
+                <button type="button" class="att-btn no-file"
+                        title="Belge yükle"
+                        onclick="openUpload('{{ row_id }}')">
+                  <i class="bi bi-upload" style="font-size:14px"></i>
+                </button>
+              {% else %}
+                <span class="text-muted" style="font-size:12px">—</span>
+              {% endif %}
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-3">Kalem yok.</td></tr>
+          <tr><td colspan="8" class="text-center text-muted py-3">Kalem yok.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -149,38 +178,17 @@
     <div class="alert alert-light border"><strong>Not:</strong> {{ hbf.notes }}</div>
     {% endif %}
 
-    <!-- Belgeler -->
+    <!-- Genel belgeler (satır bağlantısı olmayan) -->
+    {% if global_attachments %}
     <div class="section-card mb-3">
-      <div class="card-head d-flex align-items-center justify-content-between">
-        <span>Belgeler</span>
-        {% if current_user.is_admin or current_user.is_approver or hbf.created_by == current_user.id %}
-        <button class="btn btn-sm btn-outline-primary py-0" type="button"
-                data-bs-toggle="collapse" data-bs-target="#uploadForm">
-          <i class="bi bi-paperclip me-1"></i>Belge Ekle
-        </button>
-        {% endif %}
-      </div>
-      {% if current_user.is_admin or current_user.is_approver or hbf.created_by == current_user.id %}
-      <div class="collapse px-3 py-2 border-bottom" id="uploadForm">
-        <form method="post" action="/hbf/{{ hbf.id }}/upload" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
-          <input type="file" name="file" class="form-control form-control-sm" required
-                 accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.docx,.doc">
-          <button type="submit" class="btn btn-primary btn-sm text-nowrap">Yükle</button>
-        </form>
-        <div class="text-muted mt-1" style="font-size:11px">PDF, Görüntü, Excel, Word desteklenir</div>
-      </div>
-      {% endif %}
-      {% set attachments = hbf.attachments_json | fromjson if hbf.attachments_json else [] %}
-      {% if attachments %}
+      <div class="card-head">Diğer Belgeler</div>
       <ul class="list-group list-group-flush">
-        {% for att in attachments %}
+        {% for att in global_attachments %}
         <li class="list-group-item d-flex align-items-center gap-2 py-2">
           {% set ext = att.filename.rsplit('.',1)[-1].lower() %}
           <i class="bi {% if ext == 'pdf' %}bi-file-earmark-pdf text-danger{% elif ext in ('jpg','jpeg','png','webp') %}bi-file-earmark-image text-success{% elif ext in ('xlsx','xls') %}bi-file-earmark-excel text-success{% elif ext in ('docx','doc') %}bi-file-earmark-word text-primary{% else %}bi-file-earmark text-secondary{% endif %}" style="font-size:18px;flex-shrink:0"></i>
           <a href="/static/uploads/hbf/{{ hbf.id }}/{{ att.filename }}" target="_blank"
-             class="text-decoration-none flex-grow-1" style="font-size:13px">
-            {{ att.original }}
-          </a>
+             class="text-decoration-none flex-grow-1" style="font-size:13px">{{ att.original }}</a>
           <span class="text-muted" style="font-size:11px">{{ att.uploaded_at }}</span>
           {% if current_user.is_admin or hbf.created_by == current_user.id %}
           <form method="post" action="/hbf/{{ hbf.id }}/attachment/{{ att.filename }}/delete" class="mb-0">
@@ -193,9 +201,49 @@
         </li>
         {% endfor %}
       </ul>
-      {% else %}
-      <div class="text-muted text-center py-3" style="font-size:13px">Henüz belge eklenmemiş.</div>
-      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Upload Modal -->
+    <div class="modal fade" id="uploadModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title"><i class="bi bi-upload me-2"></i>Belge Yükle</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form method="post" action="/hbf/{{ hbf.id }}/upload" enctype="multipart/form-data">
+            <input type="hidden" name="row_id" id="uploadRowId">
+            <div class="modal-body">
+              <input type="file" name="file" class="form-control" required
+                     accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.docx,.doc">
+              <div class="text-muted mt-2" style="font-size:12px">PDF, Görüntü, Excel, Word desteklenir</div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+              <button type="submit" class="btn btn-primary btn-sm">Yükle</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div class="modal fade" id="previewModal" tabindex="-1">
+      <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title" id="previewTitle" style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80%"></h6>
+            <div class="ms-auto d-flex align-items-center gap-2">
+              <a id="previewDownload" href="#" target="_blank" class="btn btn-sm btn-outline-secondary py-0">
+                <i class="bi bi-download"></i>
+              </a>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+          </div>
+          <div class="modal-body" id="previewBody"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Onay notu -->
@@ -314,5 +362,34 @@ function togglePayFields() {
   document.getElementById('cash-field').style.display = pm === 'nakit' ? '' : 'none';
 }
 document.addEventListener('DOMContentLoaded', togglePayFields);
+
+function openUpload(rowId) {
+  document.getElementById('uploadRowId').value = rowId;
+  // Reset file input
+  const form = document.querySelector('#uploadModal form');
+  if (form) form.reset();
+  document.getElementById('uploadRowId').value = rowId;
+  new bootstrap.Modal(document.getElementById('uploadModal')).show();
+}
+
+function openPreview(url, ext, name) {
+  document.getElementById('previewTitle').textContent = name;
+  document.getElementById('previewDownload').href = url;
+  const body = document.getElementById('previewBody');
+  const imgExts = ['jpg','jpeg','png','webp','heic'];
+  if (ext === 'pdf') {
+    body.innerHTML = `<iframe src="${url}"></iframe>`;
+  } else if (imgExts.includes(ext)) {
+    body.innerHTML = `<div class="p-3"><img src="${url}" alt="${name}"></div>`;
+  } else {
+    body.innerHTML = `<div class="p-4 text-center"><i class="bi bi-file-earmark" style="font-size:48px;color:#94a3b8"></i><div class="mt-3"><a href="${url}" target="_blank" class="btn btn-primary"><i class="bi bi-download me-1"></i>İndir — ${name}</a></div></div>`;
+  }
+  new bootstrap.Modal(document.getElementById('previewModal')).show();
+}
+
+// Preview modal kapanınca iframe/img temizle (bellek sızıntısı önle)
+document.getElementById('previewModal').addEventListener('hidden.bs.modal', () => {
+  document.getElementById('previewBody').innerHTML = '';
+});
 </script>
 {% endblock %}

@@ -143,6 +143,12 @@ function fmt(n) {
 }
 function parseNum(s) { return parseFloat(String(s||0).replace(/\./g,'').replace(',','.')) || 0; }
 function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+function genUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+}
 function rowPayOpts(sel) {
   return PAYMENT_OPTS.map(([v,l]) => `<option value="${v}"${sel===v?' selected':''}>${l}</option>`).join('');
 }
@@ -157,6 +163,7 @@ function fmtInput(n) {
 
 function addItemRow(tbody, item) {
   const tr = document.createElement('tr');
+  tr.dataset.rowId = (item && item.row_id) ? item.row_id : genUUID();
   const withVatVal = item ? fmtInput(item.amount_with_vat || item.amount || 0) : '';
   const vatAmtVal  = item ? fmtInput(item.vat_amount || 0) : '';
   tr.innerHTML = `
@@ -316,6 +323,7 @@ function prepareSubmit() {
     if (tbody) tbody.querySelectorAll('tr').forEach(tr => {
       const withVat = parseNum(tr.querySelector('.i-amount').value);
       items.push({
+        row_id:             tr.dataset.rowId,
         date:               tr.querySelector('.i-date').value,
         description:        tr.querySelector('.i-desc').value,
         payment:            tr.querySelector('.i-pay').value,

@@ -196,6 +196,13 @@ async def hbf_detail(
         for sec in items for item in sec.get("items", [])
     )
 
+    try:
+        attachments = json.loads(hbf.attachments_json or "[]")
+    except Exception:
+        attachments = []
+    row_attachments = {a["row_id"]: a for a in attachments if a.get("row_id")}
+    global_attachments = [a for a in attachments if not a.get("row_id")]
+
     return templates.TemplateResponse(
         "hbf/detail.html",
         {
@@ -206,6 +213,8 @@ async def hbf_detail(
             "cash_books": cash_books, "bank_accounts": bank_accounts,
             "payment_methods": PAYMENT_METHODS,
             "today": _date.today(),
+            "row_attachments": row_attachments,
+            "global_attachments": global_attachments,
             "page_title": hbf.hbf_no,
         },
     )
@@ -417,6 +426,7 @@ async def hbf_delete(
 async def hbf_upload(
     hbf_id: int,
     file: UploadFile = File(...),
+    row_id: str = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -444,11 +454,22 @@ async def hbf_upload(
         attachments = json.loads(hbf.attachments_json or "[]")
     except Exception:
         attachments = []
-    attachments.append({
+
+    new_att = {
         "filename": safe_name,
         "original": file.filename,
         "uploaded_at": _date.today().isoformat(),
-    })
+    }
+    if row_id:
+        new_att["row_id"] = row_id
+        # Aynı satıra ait önceki dosyayı sil (replace semantics)
+        for old in [a for a in attachments if a.get("row_id") == row_id]:
+            old_path = os.path.join(UPLOAD_DIR, str(hbf_id), old["filename"])
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        attachments = [a for a in attachments if a.get("row_id") != row_id]
+
+    attachments.append(new_att)
     hbf.attachments_json = json.dumps(attachments, ensure_ascii=False)
     db.commit()
     return RedirectResponse(url=f"/hbf/{hbf_id}", status_code=status.HTTP_302_FOUND)
