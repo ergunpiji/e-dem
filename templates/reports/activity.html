@@ -1,49 +1,111 @@
 {% extends "base.html" %}
 {% block page_title %}Faaliyet Raporu — {{ year }}{% endblock %}
 
+{# Para formatı makrosu — TL eki ile #}
+{% macro m(v, zero="—") -%}
+  {%- if v and v != 0 -%}
+    <span class="mval">{{ v | money }}</span><span class="tl">&#8239;TL</span>
+  {%- else -%}
+    <span class="mzero">{{ zero }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
 {% block extra_css %}
 <style>
   .act-wrap { overflow-x: auto; }
-  .act-table { border-collapse: collapse; min-width: 100%; font-size: 12px; }
-  .act-table th, .act-table td { padding: 4px 8px; white-space: nowrap; border-bottom: 1px solid #e2e8f0; }
+  .act-table { border-collapse: collapse; min-width: 100%; font-size: 12.5px; }
+  .act-table th, .act-table td { padding: 5px 9px; white-space: nowrap; border-bottom: 1px solid #e2e8f0; }
+
   /* Sticky label column */
-  .act-table .col-label { position: sticky; left: 0; z-index: 2; min-width: 185px; max-width: 185px; overflow: hidden; text-overflow: ellipsis; background: white; }
+  .act-table .col-label {
+    position: sticky; left: 0; z-index: 2;
+    min-width: 190px; max-width: 190px;
+    overflow: hidden; text-overflow: ellipsis;
+    background: white;
+  }
+
   /* Header */
-  .act-table thead th { background: #1e293b; color: #94a3b8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; position: sticky; top: 0; z-index: 3; text-align: right; }
+  .act-table thead th {
+    background: #1e293b; color: #cbd5e1;
+    font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em;
+    position: sticky; top: 0; z-index: 3;
+    text-align: right;
+  }
   .act-table thead th.col-label { z-index: 4; text-align: left; background: #1e293b; }
-  /* Section rows */
-  .act-table .sec-row td { background: #334155; color: #e2e8f0; font-weight: 700; font-size: 11px; }
-  .act-table .sec-row .col-label { background: #334155; padding-left: 6px; }
+
+  /* Section header rows — açık arka plan, koyu metin */
+  .act-table .sec-row td {
+    background: #f1f5f9;
+    color: #1e293b;
+    font-weight: 700;
+    font-size: 11.5px;
+    border-top: 2px solid #94a3b8;
+    border-bottom: 1px solid #cbd5e1;
+  }
+  .act-table .sec-row .col-label { background: #f1f5f9; padding-left: 6px; }
+  .sec-row .col-ytd  { background: #dbeafe !important; color: #1d4ed8 !important; }
+  .sec-row .col-forecast { background: #dcfce7 !important; color: #15803d !important; }
+  .sec-row .budget-cell  { background: #fef9c3 !important; color: #92400e !important; }
+
   /* Data rows */
-  .act-table .data-row td { background: #fff; }
+  .act-table .data-row td { background: #fff; color: #334155; }
   .act-table .data-row:hover td { background: #f8fafc; }
-  .act-table .data-row .col-label { background: #fff; padding-left: 20px; font-weight: 400; color: #334155; }
+  .act-table .data-row .col-label { background: #fff; padding-left: 22px; font-weight: 400; color: #475569; }
   .act-table .data-row:hover .col-label { background: #f8fafc; }
+
   /* Grand total */
-  .act-table .grand-row td { background: #0f172a; color: #f1f5f9; font-weight: 800; }
-  .act-table .grand-row .col-label { background: #0f172a; padding-left: 6px; }
+  .act-table .grand-row td {
+    background: #1e293b;
+    color: #f8fafc;
+    font-weight: 800;
+    font-size: 12.5px;
+    border-top: 2px solid #334155;
+  }
+  .act-table .grand-row td .mval { color: #fde68a; }
+  .act-table .grand-row td .tl   { color: #fde68a; }
+  .act-table .grand-row .col-label { background: #1e293b; padding-left: 6px; }
+  .act-table .grand-row .col-ytd  { background: #1d3461 !important; }
+  .act-table .grand-row .col-ytd .mval { color: #93c5fd; }
+  .act-table .grand-row .col-ytd .tl   { color: #93c5fd; }
+  .act-table .grand-row .col-forecast  { background: #14532d !important; }
+  .act-table .grand-row .col-forecast .mval { color: #86efac; }
+  .act-table .grand-row .col-forecast .tl   { color: #86efac; }
+
   /* Numerics */
   .act-table td.num, .act-table th.num { text-align: right; }
-  .num-zero { color: #cbd5e1; }
+  .mzero { color: #cbd5e1; }
+  .tl { font-size: 9.5px; font-weight: 500; opacity: .65; letter-spacing: .02em; }
+
   /* YTD col */
-  .col-ytd { background: #eff6ff !important; color: #1d4ed8 !important; font-weight: 600; }
-  .sec-row .col-ytd { background: #1e3a5f !important; color: #93c5fd !important; }
-  .grand-row .col-ytd { background: #0c1f3d !important; color: #93c5fd !important; }
+  .col-ytd { background: #eff6ff !important; }
+  .col-ytd .mval { color: #1d4ed8; font-weight: 700; }
+  .col-ytd .tl   { color: #1d4ed8; }
+
   /* Forecast col */
-  .col-forecast { background: #f0fdf4 !important; color: #166534 !important; font-weight: 700; }
-  .sec-row .col-forecast { background: #14532d !important; color: #86efac !important; }
-  .grand-row .col-forecast { background: #052e16 !important; color: #86efac !important; }
+  .col-forecast { background: #f0fdf4 !important; }
+  .col-forecast .mval { color: #15803d; font-weight: 700; }
+  .col-forecast .tl   { color: #15803d; }
+
   /* Budget input */
-  .budget-input { width: 74px; border: 1px solid #fbbf24; border-radius: 3px; padding: 2px 4px; font-size: 11px; text-align: right; background: #fffbeb; display: block; }
+  .budget-input {
+    width: 80px; border: 1px solid #fbbf24; border-radius: 3px;
+    padding: 2px 5px; font-size: 11.5px; text-align: right;
+    background: #fffbeb; color: #78350f; display: block;
+  }
   .budget-input:focus { outline: none; border-color: #f59e0b; background: #fef3c7; }
   .budget-cell { background: #fffbeb !important; }
-  .sec-row .budget-cell { background: #78350f !important; }
+
   /* KPI */
-  .kpi-card { border-radius: 10px; padding: 12px 16px; flex: 1; min-width: 130px; }
-  /* Section reorder buttons */
-  .sec-move { background: none; border: none; color: rgba(255,255,255,.5); padding: 0 3px; font-size: 13px; cursor: pointer; line-height: 1; }
-  .sec-move:hover { color: white; }
-  /* Remove row button */
+  .kpi-card { border-radius: 10px; padding: 14px 18px; flex: 1; min-width: 140px; }
+  .kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .75; margin-bottom: 4px; }
+  .kpi-val { font-size: 19px; font-weight: 800; line-height: 1.1; }
+  .kpi-tl { font-size: 11px; font-weight: 600; opacity: .65; }
+
+  /* Section reorder */
+  .sec-move { background: none; border: none; color: #94a3b8; padding: 0 2px; font-size: 12px; cursor: pointer; line-height: 1; }
+  .sec-move:hover { color: #334155; }
+  /* Remove row */
   .rm-row { background: none; border: none; color: #94a3b8; font-size: 11px; cursor: pointer; padding: 0 2px; margin-left: 2px; }
   .rm-row:hover { color: #ef4444; }
 </style>
@@ -73,27 +135,27 @@
 {# KPI Cards #}
 <div class="d-flex gap-3 mb-3 flex-wrap">
   <div class="kpi-card" style="background:#f8fafc;border:1px solid #e2e8f0;">
-    <div style="font-size:10px;font-weight:700;opacity:.7;text-transform:uppercase;">{{ year_prev }} Gerçekleşen</div>
-    <div style="font-size:18px;font-weight:800;color:#1e293b;">{{ grand_prev | money }}</div>
+    <div class="kpi-label" style="color:#475569;">{{ year_prev }} Gerçekleşen</div>
+    <div class="kpi-val" style="color:#1e293b;">{{ grand_prev | money }} <span class="kpi-tl">TL</span></div>
   </div>
   <div class="kpi-card" style="background:#eff6ff;border:1px solid #bfdbfe;">
-    <div style="font-size:10px;font-weight:700;opacity:.8;text-transform:uppercase;color:#1d4ed8;">{{ year }} Gerçekleşen (YTD)</div>
-    <div style="font-size:18px;font-weight:800;color:#1d4ed8;">{{ grand_curr_ytd | money }}</div>
+    <div class="kpi-label" style="color:#1d4ed8;">{{ year }} Gerçekleşen (YTD)</div>
+    <div class="kpi-val" style="color:#1d4ed8;">{{ grand_curr_ytd | money }} <span class="kpi-tl">TL</span></div>
   </div>
   <div class="kpi-card" style="background:#f0fdf4;border:1px solid #bbf7d0;">
-    <div style="font-size:10px;font-weight:700;opacity:.8;text-transform:uppercase;color:#166534;">{{ year }} Öngörü</div>
-    <div style="font-size:18px;font-weight:800;color:#166534;">{{ grand_forecast | money }}</div>
+    <div class="kpi-label" style="color:#15803d;">{{ year }} Öngörü</div>
+    <div class="kpi-val" style="color:#15803d;">{{ grand_forecast | money }} <span class="kpi-tl">TL</span></div>
   </div>
   <div class="kpi-card" style="background:#fefce8;border:1px solid #fde68a;">
-    <div style="font-size:10px;font-weight:700;opacity:.8;text-transform:uppercase;color:#92400e;">Sabit Gider</div>
-    <div style="font-size:18px;font-weight:800;color:#92400e;">{{ fixed_monthly | sum | money }}</div>
+    <div class="kpi-label" style="color:#92400e;">Sabit Gider</div>
+    <div class="kpi-val" style="color:#92400e;">{{ fixed_monthly | sum | money }} <span class="kpi-tl">TL</span></div>
   </div>
 </div>
 
-<div class="mb-2 d-flex gap-3 align-items-center" style="font-size:11px;color:#64748b;">
-  <span style="background:#fff;border:1px solid #e2e8f0;padding:1px 7px;border-radius:3px;">Geçmiş = gerçekleşen</span>
-  <span style="background:#fffbeb;border:1px solid #fbbf24;padding:1px 7px;border-radius:3px;">Gelecek = bütçe (düzenlenebilir)</span>
-  <span style="background:#f0fdf4;padding:1px 7px;border-radius:3px;color:#166534;">Öngörü = gerçek + bütçe</span>
+<div class="mb-2 d-flex gap-3 align-items-center flex-wrap" style="font-size:11px;color:#64748b;">
+  <span style="background:#fff;border:1px solid #e2e8f0;padding:2px 8px;border-radius:4px;">Geçmiş = gerçekleşen</span>
+  <span style="background:#fffbeb;border:1px solid #fbbf24;padding:2px 8px;border-radius:4px;color:#92400e;">Gelecek = bütçe (düzenlenebilir)</span>
+  <span style="background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 8px;border-radius:4px;color:#15803d;">Öngörü = gerçek + bütçe</span>
   <span class="ms-auto text-muted">↑↓ section sırala · × satır kaldır · <strong>Kalemler</strong> butonuyla seç</span>
 </div>
 
@@ -109,7 +171,7 @@
           <th class="col-label">Gider Kalemi</th>
           <th class="num">{{ year_prev }}<br>Gerçekleşen</th>
           <th class="num col-ytd">{{ year }}<br>Gerçekleşen</th>
-          {% for m in months_short %}<th class="num">{{ m }}</th>{% endfor %}
+          {% for mo in months_short %}<th class="num">{{ mo }}</th>{% endfor %}
           <th class="num col-forecast">Öngörü</th>
         </tr>
       </thead>
@@ -125,26 +187,25 @@
             <button type="button" class="sec-move" onclick="moveSection({{ section.cat_id }}, 1)" title="Aşağı">▼</button>
             {{ section.label | upper }}
           </td>
-          <td class="num">{{ section.prev_total | money if section.prev_total else "—" }}</td>
-          <td class="num col-ytd">{{ section.curr_ytd | money if section.curr_ytd else "—" }}</td>
+          <td class="num">{{ m(section.prev_total) }}</td>
+          <td class="num col-ytd">{{ m(section.curr_ytd) }}</td>
           {% for i in range(12) %}
-            {% set m = i + 1 %}
-            {% if year < today.year or (year == today.year and m <= today.month) %}
-              <td class="num">{{ section.monthly_total[i] | money if section.monthly_total[i] else "—" }}</td>
+            {% set mo = i + 1 %}
+            {% if year < today.year or (year == today.year and mo <= today.month) %}
+              <td class="num">{{ m(section.monthly_total[i]) }}</td>
             {% else %}
-              <td class="num budget-cell">{{ section.budget_monthly[i] | money if section.budget_monthly[i] else "—" }}</td>
+              <td class="num budget-cell">{{ m(section.budget_monthly[i]) }}</td>
             {% endif %}
           {% endfor %}
-          <td class="num col-forecast">{{ section.forecast | money if section.forecast else "—" }}</td>
+          <td class="num col-forecast">{{ m(section.forecast) }}</td>
         </tr>
 
-        {# Data rows — ALL rendered, inactive ones are d-none + disabled #}
+        {# Data rows #}
         {% for row in section.rows %}
         <tr class="data-row {% if not row.active %}d-none{% endif %}"
             id="cat-row-{{ row.cat_id }}"
             data-section="{{ section.cat_id }}">
           <td class="col-label">
-            {# Hidden inputs for form submission — disabled when row is inactive #}
             <input type="hidden" name="show_cat_{{ row.cat_id }}" id="showcat-{{ row.cat_id }}"
                    value="1" {% if not row.active %}disabled{% endif %}>
             <input type="hidden" name="label_cat_{{ row.cat_id }}" value="{{ row.label }}">
@@ -154,16 +215,16 @@
                     onclick="setCatVisible({{ row.cat_id }}, {{ section.cat_id }}, false)">×</button>
             {% endif %}
           </td>
-          <td class="num {% if not row.prev_total %}num-zero{% endif %}">{{ row.prev_total | money }}</td>
-          <td class="num col-ytd {% if not row.curr_ytd %}num-zero{% endif %}">{{ row.curr_ytd | money }}</td>
+          <td class="num">{{ m(row.prev_total) }}</td>
+          <td class="num col-ytd">{{ m(row.curr_ytd) }}</td>
           {% for i in range(12) %}
-            {% set m = i + 1 %}
-            {% if year < today.year or (year == today.year and m <= today.month) %}
-              <td class="num {% if not row.monthly[i] %}num-zero{% endif %}">{{ row.monthly[i] | money }}</td>
+            {% set mo = i + 1 %}
+            {% if year < today.year or (year == today.year and mo <= today.month) %}
+              <td class="num">{{ m(row.monthly[i]) }}</td>
             {% else %}
               <td class="num budget-cell">
                 <input type="number" step="1" min="0"
-                       name="line_cat_{{ row.cat_id }}_month_{{ m }}"
+                       name="line_cat_{{ row.cat_id }}_month_{{ mo }}"
                        class="budget-input"
                        value="{{ row.budget[i] | int if row.budget[i] else '' }}"
                        placeholder="0"
@@ -171,7 +232,7 @@
               </td>
             {% endif %}
           {% endfor %}
-          <td class="num col-forecast {% if not row.forecast %}num-zero{% endif %}">{{ row.forecast | money }}</td>
+          <td class="num col-forecast">{{ m(row.forecast) }}</td>
         </tr>
         {% endfor %}
 
@@ -182,19 +243,19 @@
       <tbody>
         <tr class="grand-row">
           <td class="col-label">TOPLAM GİDERLER</td>
-          <td class="num">{{ grand_prev | money }}</td>
-          <td class="num col-ytd">{{ grand_curr_ytd | money }}</td>
+          <td class="num">{{ m(grand_prev) }}</td>
+          <td class="num col-ytd">{{ m(grand_curr_ytd) }}</td>
           {% for i in range(12) %}
-            {% set m = i + 1 %}
-            {% if year < today.year or (year == today.year and m <= today.month) %}
-              <td class="num">{{ grand_monthly[i] | money if grand_monthly[i] else "—" }}</td>
+            {% set mo = i + 1 %}
+            {% if year < today.year or (year == today.year and mo <= today.month) %}
+              <td class="num">{{ m(grand_monthly[i]) }}</td>
             {% else %}
               {% set ns = namespace(bsum=0) %}
               {% for section in sections %}{% set ns.bsum = ns.bsum + section.budget_monthly[i] %}{% endfor %}
-              <td class="num budget-cell">{{ ns.bsum | money if ns.bsum else "—" }}</td>
+              <td class="num budget-cell">{{ m(ns.bsum) }}</td>
             {% endif %}
           {% endfor %}
-          <td class="num col-forecast">{{ grand_forecast | money }}</td>
+          <td class="num col-forecast">{{ m(grand_forecast) }}</td>
         </tr>
       </tbody>
 
@@ -203,24 +264,34 @@
 </div>
 </form>
 
-{# Sabit Giderler listesi #}
+{# Sabit Giderler #}
 {% if fixed_expenses %}
 <div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-transparent border-0 py-2 d-flex align-items-center">
+  <div class="card-header bg-transparent border-0 py-2">
     <span class="fw-bold" style="font-size:13px;">Sabit Giderler</span>
   </div>
   <div class="card-body p-0">
-    <table class="table table-sm mb-0" style="font-size:12px;">
-      <thead style="background:#f8fafc;"><tr>
-        <th>Gider</th><th class="text-end">Tutar</th><th>Tekrar</th><th>Başlangıç</th><th>Bitiş</th><th></th>
-      </tr></thead>
+    <table class="table table-sm mb-0" style="font-size:12.5px;">
+      <thead style="background:#f8fafc;">
+        <tr>
+          <th>Gider</th>
+          <th class="text-end">Tutar</th>
+          <th>Tekrar</th>
+          <th>Başlangıç</th>
+          <th>Bitiş</th>
+          <th></th>
+        </tr>
+      </thead>
       <tbody>
         {% for fe in fixed_expenses %}
         <tr>
           <td class="fw-semibold">{{ fe.label }}</td>
-          <td class="text-end">{{ fe.amount | money }}</td>
+          <td class="text-end">{{ fe.amount | money }} <span class="tl">TL</span></td>
           <td><span class="badge bg-light text-dark border" style="font-size:10px;">
-            {% if fe.recurrence == 'monthly' %}Aylık{% elif fe.recurrence == 'quarterly' %}3 Aylık{% elif fe.recurrence == 'yearly' %}Yıllık{% else %}Tek Seferlik{% endif %}
+            {% if fe.recurrence == 'monthly' %}Aylık
+            {% elif fe.recurrence == 'quarterly' %}3 Aylık
+            {% elif fe.recurrence == 'yearly' %}Yıllık
+            {% else %}Tek Seferlik{% endif %}
           </span></td>
           <td class="text-muted">{{ fe.start_date | date_tr }}</td>
           <td class="text-muted">{{ fe.end_date | date_tr if fe.end_date else "Süresiz" }}</td>
@@ -347,7 +418,6 @@
 
 {% block extra_js %}
 <script>
-// Section ordering
 let sectionOrder = [{% for s in sections %}{{ s.cat_id }}{% if not loop.last %},{% endif %}{% endfor %}];
 
 function moveSection(catId, dir) {
@@ -355,20 +425,16 @@ function moveSection(catId, dir) {
   if (idx < 0) return;
   const newIdx = idx + dir;
   if (newIdx < 0 || newIdx >= sectionOrder.length) return;
-
   [sectionOrder[idx], sectionOrder[newIdx]] = [sectionOrder[newIdx], sectionOrder[idx]];
-
   const grandBody = document.querySelector('.grand-row').closest('tbody');
   const parent = grandBody.parentNode;
   sectionOrder.forEach(id => {
     const tbody = document.getElementById('section-body-' + id);
     if (tbody) parent.insertBefore(tbody, grandBody);
   });
-
   document.getElementById('sectionOrderInput').value = JSON.stringify(sectionOrder);
 }
 
-// Show/hide category rows
 function setCatVisible(catId, sectionId, visible) {
   const row = document.getElementById('cat-row-' + catId);
   if (!row) return;
@@ -392,7 +458,6 @@ function applyCategories() {
   bootstrap.Modal.getInstance(document.getElementById('catSelectModal')).hide();
 }
 
-// Sync modal checkboxes with current row visibility on modal open
 document.getElementById('catSelectModal').addEventListener('show.bs.modal', () => {
   document.querySelectorAll('.cat-cb').forEach(cb => {
     const row = document.getElementById('cat-row-' + cb.value);
