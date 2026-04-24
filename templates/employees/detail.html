@@ -168,36 +168,52 @@
     <!-- Avans Ver -->
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-transparent border-0 fw-semibold">Avans Ver</div>
-      <div class="card-body py-2">
-        <form method="post" action="/employees/{{ employee.id }}/advance" class="row g-2 align-items-end">
-          <div class="col-auto">
-            <label class="form-label small">Tarih</label>
-            <input type="date" name="advance_date" class="form-control form-control-sm" required value="{{ today }}">
-          </div>
-          <div class="col-auto">
-            <label class="form-label small">Tutar</label>
-            <input type="number" name="amount" step="0.01" class="form-control form-control-sm" required>
-          </div>
-          <div class="col-auto">
-            <label class="form-label small">Ödeme</label>
-            <select name="payment_method" class="form-select form-select-sm" id="advPayMethod">
-              <option value="nakit">Nakit</option>
-              <option value="banka">Banka</option>
-            </select>
-          </div>
-          <div class="col-auto d-none" id="advBankDiv">
-            <label class="form-label small">Banka Hesabı</label>
-            <select name="bank_account_id" class="form-select form-select-sm">
-              <option value="">—</option>
-              {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="col-auto">
-            <label class="form-label small">Neden</label>
-            <input type="text" name="reason" class="form-control form-control-sm">
-          </div>
-          <div class="col-auto">
-            <button type="submit" class="btn btn-sm btn-warning">Ver</button>
+      <div class="card-body pb-3">
+        <form method="post" action="/employees/{{ employee.id }}/advance">
+          <div class="row g-2 align-items-end">
+            <div class="col-auto">
+              <label class="form-label small">Avans Türü</label>
+              <select name="advance_type" class="form-select form-select-sm" id="advType" onchange="toggleAdvType()">
+                <option value="maas">Maaş Avansı</option>
+                <option value="is">İş Avansı</option>
+              </select>
+            </div>
+            <div class="col-auto d-none" id="advRefDiv">
+              <label class="form-label small">Referans <span class="text-danger">*</span></label>
+              <select name="ref_id" class="form-select form-select-sm" id="advRefSel">
+                <option value="">— Seçiniz —</option>
+                {% for ref in references %}<option value="{{ ref.id }}">{{ ref.ref_no }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-auto">
+              <label class="form-label small">Tarih</label>
+              <input type="date" name="advance_date" class="form-control form-control-sm" required value="{{ today }}">
+            </div>
+            <div class="col-auto">
+              <label class="form-label small">Tutar</label>
+              <input type="number" name="amount" step="0.01" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-auto">
+              <label class="form-label small">Ödeme</label>
+              <select name="payment_method" class="form-select form-select-sm" id="advPayMethod">
+                <option value="nakit">Nakit</option>
+                <option value="banka">Banka</option>
+              </select>
+            </div>
+            <div class="col-auto d-none" id="advBankDiv">
+              <label class="form-label small">Banka Hesabı</label>
+              <select name="bank_account_id" class="form-select form-select-sm">
+                <option value="">—</option>
+                {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-auto">
+              <label class="form-label small">Neden</label>
+              <input type="text" name="reason" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-sm btn-warning">Ver</button>
+            </div>
           </div>
         </form>
       </div>
@@ -210,43 +226,118 @@
       <div class="card-body p-0">
         <table class="table table-sm mb-0">
           <thead class="table-light">
-            <tr><th>Tarih</th><th>Neden</th><th class="text-end">Tutar</th><th class="text-end">Geri Ödenen</th><th>Durum</th><th></th></tr>
+            <tr><th>Tarih</th><th>Tür</th><th>Referans / Neden</th><th class="text-end">Tutar</th><th>Durum</th><th></th></tr>
           </thead>
           <tbody>
             {% for adv in advances %}
             <tr>
               <td>{{ adv.advance_date | date_tr }}</td>
-              <td>{{ adv.reason or "—" }}</td>
-              <td class="text-end">{{ adv.amount | money }}</td>
-              <td class="text-end">{{ adv.repaid_amount | money }}</td>
+              <td>
+                <span class="badge {% if adv.advance_type == 'is' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                  {{ "İş" if adv.advance_type == "is" else "Maaş" }}
+                </span>
+              </td>
+              <td>
+                {% if adv.reference %}
+                <a href="/references/{{ adv.reference.id }}" class="small">{{ adv.reference.ref_no }}</a>
+                {% elif adv.reason %}{{ adv.reason }}{% else %}—{% endif %}
+              </td>
+              <td class="text-end">
+                <div class="fw-semibold">{{ adv.amount | money }}</div>
+                {% if adv.repaid_amount %}
+                <div class="small text-muted">Kalan: {{ (adv.amount - adv.repaid_amount) | money }}</div>
+                {% endif %}
+              </td>
               <td>
                 <span class="badge {% if adv.status == 'closed' %}bg-success{% elif adv.status == 'partial' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                  {{ adv.status }}
+                  {{ {"open":"Açık","partial":"Kısmi","closed":"Kapalı"}[adv.status] }}
                 </span>
               </td>
               <td>
                 {% if adv.status != 'closed' %}
-                <button class="btn btn-xs btn-sm btn-outline-secondary py-0" type="button"
-                  data-bs-toggle="collapse" data-bs-target="#repay{{ adv.id }}">Geri Al</button>
-                <div class="collapse mt-2" id="repay{{ adv.id }}">
-                  <form method="post" action="/employees/{{ employee.id }}/advance/{{ adv.id }}/repay" class="row g-1">
-                    <div class="col-auto"><input type="date" name="repay_date" class="form-control form-control-sm" required></div>
-                    <div class="col-auto"><input type="number" name="repay_amount" step="0.01" class="form-control form-control-sm" placeholder="Tutar" required></div>
-                    <div class="col-auto">
-                      <select name="payment_method" class="form-select form-select-sm">
-                        <option value="nakit">Nakit</option>
-                        <option value="banka">Banka</option>
-                      </select>
+                  {% if adv.advance_type == 'is' and current_user.is_admin %}
+                  <!-- İş avansı kapatma -->
+                  <button class="btn btn-sm btn-outline-warning py-0 mb-1" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#closeIs{{ adv.id }}">Kapat</button>
+                  <div class="collapse mt-2" id="closeIs{{ adv.id }}">
+                    <div class="border rounded p-2 bg-light">
+                      <div class="small fw-semibold mb-2">İş Avansı Kapatma — Toplam: {{ adv.amount | money }}</div>
+                      <form method="post" action="/employees/{{ employee.id }}/advance/{{ adv.id }}/close-is">
+                        <div class="mb-2">
+                          <label class="form-label small">Kapatma Tarihi</label>
+                          <input type="date" name="close_date" class="form-control form-control-sm" required value="{{ today }}">
+                        </div>
+                        <div class="mb-2">
+                          <label class="form-label small">Harcama Kalemleri</label>
+                          <table class="table table-sm mb-1" id="closeItems{{ adv.id }}">
+                            <thead class="table-light"><tr><th>Açıklama</th><th class="text-end">Tutar</th><th></th></tr></thead>
+                            <tbody></tbody>
+                          </table>
+                          <button type="button" class="btn btn-xs btn-sm btn-outline-secondary py-0"
+                            onclick="addCloseItem({{ adv.id }})"><i class="bi bi-plus"></i> Satır Ekle</button>
+                          <input type="hidden" name="expense_items_json" id="closeItemsJson{{ adv.id }}">
+                        </div>
+                        <div class="mb-2">
+                          <label class="form-label small">Nakit İade (₺)</label>
+                          <input type="number" name="cash_return" step="0.01" class="form-control form-control-sm" value="0" id="cashRet{{ adv.id }}">
+                        </div>
+                        <div class="mb-2">
+                          <label class="form-label small">Kasa</label>
+                          <select name="cash_book_id" class="form-select form-select-sm">
+                            <option value="">—</option>
+                            {% for cb in cash_books %}<option value="{{ cb.id }}">{{ cb.name }}</option>{% endfor %}
+                          </select>
+                        </div>
+                        <div class="d-flex gap-2">
+                          <button type="submit" class="btn btn-sm btn-success"
+                            onclick="prepareCloseItems({{ adv.id }}); return true;">Kaydet & Kapat</button>
+                          <button type="button" class="btn btn-sm btn-outline-secondary"
+                            data-bs-toggle="collapse" data-bs-target="#closeIs{{ adv.id }}">İptal</button>
+                        </div>
+                      </form>
                     </div>
-                    <div class="col-auto">
-                      <select name="bank_account_id" class="form-select form-select-sm">
-                        <option value="">—</option>
-                        {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
-                      </select>
+                  </div>
+                  {% else %}
+                  <!-- Maaş avansı geri alma -->
+                  <button class="btn btn-xs btn-sm btn-outline-secondary py-0" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#repay{{ adv.id }}">Geri Al</button>
+                  <div class="collapse mt-2" id="repay{{ adv.id }}">
+                    <form method="post" action="/employees/{{ employee.id }}/advance/{{ adv.id }}/repay" class="row g-1">
+                      <div class="col-auto"><input type="date" name="repay_date" class="form-control form-control-sm" required value="{{ today }}"></div>
+                      <div class="col-auto"><input type="number" name="repay_amount" step="0.01" class="form-control form-control-sm" placeholder="Tutar" required></div>
+                      <div class="col-auto">
+                        <select name="payment_method" class="form-select form-select-sm">
+                          <option value="maas_kesintisi">Maaştan Düş</option>
+                          <option value="nakit">Nakit</option>
+                          <option value="banka">Banka</option>
+                        </select>
+                      </div>
+                      <div class="col-auto">
+                        <select name="bank_account_id" class="form-select form-select-sm">
+                          <option value="">—</option>
+                          {% for ba in bank_accounts %}<option value="{{ ba.id }}">{{ ba.name }}</option>{% endfor %}
+                        </select>
+                      </div>
+                      <div class="col-auto"><button type="submit" class="btn btn-sm btn-success">Kaydet</button></div>
+                    </form>
+                  </div>
+                  {% endif %}
+                {% else %}
+                  {% if adv.advance_type == 'is' and adv.expense_items_json %}
+                  <button class="btn btn-xs btn-sm btn-outline-secondary py-0" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#viewItems{{ adv.id }}">Detay</button>
+                  <div class="collapse mt-1" id="viewItems{{ adv.id }}">
+                    <div class="small p-2 bg-light rounded">
+                      {% set exp_items = adv.expense_items_json | fromjson %}
+                      {% for item in exp_items %}
+                      <div>{{ item.description }} — {{ item.amount | money }}</div>
+                      {% endfor %}
+                      {% if adv.cash_return_amount %}
+                      <div class="text-success">Nakit iade: {{ adv.cash_return_amount | money }}</div>
+                      {% endif %}
                     </div>
-                    <div class="col-auto"><button type="submit" class="btn btn-sm btn-success">Kaydet</button></div>
-                  </form>
-                </div>
+                  </div>
+                  {% endif %}
                 {% endif %}
               </td>
             </tr>
@@ -266,5 +357,30 @@ document.getElementById('salaryPayMethod').addEventListener('change', function()
 document.getElementById('advPayMethod').addEventListener('change', function() {
   document.getElementById('advBankDiv').classList.toggle('d-none', this.value !== 'banka');
 });
+function toggleAdvType() {
+  const isIs = document.getElementById('advType').value === 'is';
+  document.getElementById('advRefDiv').classList.toggle('d-none', !isIs);
+}
+
+function addCloseItem(advId) {
+  const tbody = document.querySelector(`#closeItems${advId} tbody`);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" class="form-control form-control-sm ci-desc" placeholder="Açıklama"></td>
+    <td><input type="number" step="0.01" class="form-control form-control-sm ci-amt" placeholder="0.00"></td>
+    <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove()"><i class="bi bi-x"></i></button></td>`;
+  tbody.appendChild(tr);
+}
+
+function prepareCloseItems(advId) {
+  const rows = document.querySelectorAll(`#closeItems${advId} tbody tr`);
+  const items = [];
+  rows.forEach(tr => {
+    const desc = tr.querySelector('.ci-desc').value;
+    const amt = parseFloat(tr.querySelector('.ci-amt').value) || 0;
+    if (desc || amt) items.push({description: desc, amount: amt});
+  });
+  document.getElementById(`closeItemsJson${advId}`).value = JSON.stringify(items);
+}
 </script>
 {% endblock %}

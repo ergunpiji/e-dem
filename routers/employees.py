@@ -2,6 +2,7 @@
 Çalışan yönetimi
 """
 
+import json
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,7 +14,7 @@ from models import (
     Employee, SalaryPayment, EmployeeBenefit, EmployeeAdvance,
     GeneralExpense, GeneralExpenseCategory,
     BankAccount, CashBook, CashEntry, BankMovement,
-    User
+    Reference, User
 )
 from templates_config import templates
 
@@ -136,6 +137,7 @@ async def employee_detail(
         raise HTTPException(status_code=404)
     bank_accounts = db.query(BankAccount).order_by(BankAccount.name).all()
     cash_books = db.query(CashBook).order_by(CashBook.name).all()
+    references = db.query(Reference).filter(Reference.status == "aktif").order_by(Reference.ref_no).all()
     return templates.TemplateResponse(
         "employees/detail.html",
         {
@@ -145,6 +147,7 @@ async def employee_detail(
             "benefits": sorted(emp.benefits, key=lambda x: x.period, reverse=True),
             "advances": sorted(emp.advances, key=lambda x: x.advance_date, reverse=True),
             "bank_accounts": bank_accounts, "cash_books": cash_books,
+            "references": references,
             "today": date.today().isoformat(),
             "page_title": emp.name,
         },
@@ -311,6 +314,8 @@ async def employee_advance_post(
     amount: float = Form(...),
     advance_date: str = Form(...),
     reason: str = Form(""),
+    advance_type: str = Form("maas"),
+    ref_id: int = Form(None),
     payment_method: str = Form("nakit"),
     bank_account_id: int = Form(None),
     current_user: User = Depends(get_current_user),
@@ -324,24 +329,27 @@ async def employee_advance_post(
     adv = EmployeeAdvance(
         employee_id=employee_id, amount=amount, advance_date=adv_date,
         reason=reason.strip(), status="open", repaid_amount=0,
+        advance_type=advance_type,
+        ref_id=ref_id if advance_type == "is" else None,
         payment_method=payment_method,
         bank_account_id=bank_account_id if payment_method == "banka" else None,
     )
     db.add(adv)
 
+    adv_type_label = "İş Avansı" if advance_type == "is" else "Maaş Avansı"
+    desc = f"{adv_type_label} — {emp.name}"
+
     if payment_method == "banka" and bank_account_id:
         db.add(BankMovement(
             account_id=bank_account_id, movement_date=adv_date,
-            movement_type="cikis", amount=amount,
-            description=f"Avans — {emp.name}",
+            movement_type="cikis", amount=amount, description=desc,
         ))
     elif payment_method == "nakit":
         book = db.query(CashBook).first()
         if book:
             db.add(CashEntry(
                 book_id=book.id, entry_date=adv_date,
-                entry_type="cikis", amount=amount,
-                description=f"Avans — {emp.name}",
+                entry_type="cikis", amount=amount, description=desc,
             ))
     db.commit()
     return RedirectResponse(url=f"/employees/{employee_id}", status_code=status.HTTP_302_FOUND)
@@ -364,25 +372,94 @@ async def employee_advance_repay(
     adv.repaid_amount = (adv.repaid_amount or 0) + repay_amount
     if adv.repaid_amount >= adv.amount:
         adv.status = "closed"
+        adv.closed_at = date.fromisoformat(repay_date)
+        adv.closed_by = current_user.id
     else:
         adv.status = "partial"
     rep_date = date.fromisoformat(repay_date)
     emp = db.query(Employee).get(employee_id)
 
-    if payment_method == "banka" and bank_account_id:
-        db.add(BankMovement(
-            account_id=bank_account_id, movement_date=rep_date,
-            movement_type="giris", amount=repay_amount,
-            description=f"Avans geri ödeme — {emp.name if emp else ''}",
-        ))
-    elif payment_method == "nakit":
-        book = db.query(CashBook).first()
-        if book:
-            db.add(CashEntry(
-                book_id=book.id, entry_date=rep_date,
-                entry_type="giris", amount=repay_amount,
-                description=f"Avans geri ödeme — {emp.name if emp else ''}",
+    # maas_kesintisi = maaştan düşüldü, nakit hareketi yok
+    if payment_method != "maas_kesintisi":
+        if payment_method == "banka" and bank_account_id:
+            db.add(BankMovement(
+                account_id=bank_account_id, movement_date=rep_date,
+                movement_type="giris", amount=repay_amount,
+                description=f"Maaş avansı geri ödeme — {emp.name if emp else ''}",
             ))
+        elif payment_method == "nakit":
+            book = db.query(CashBook).first()
+            if book:
+                db.add(CashEntry(
+                    book_id=book.id, entry_date=rep_date,
+                    entry_type="giris", amount=repay_amount,
+                    description=f"Maaş avansı geri ödeme — {emp.name if emp else ''}",
+                ))
+    db.commit()
+    return RedirectResponse(url=f"/employees/{employee_id}", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/{employee_id}/advance/{advance_id}/close-is", name="employee_advance_close_is")
+async def employee_advance_close_is(
+    employee_id: int,
+    advance_id: int,
+    close_date: str = Form(...),
+    expense_items_json: str = Form("[]"),
+    cash_return: float = Form(0.0),
+    cash_book_id: int = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """İş avansı kapatma: çalışan fiş/fatura ibraz eder, kalan nakit kasaya iade edilir."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403)
+    adv = db.query(EmployeeAdvance).get(advance_id)
+    if not adv or adv.employee_id != employee_id or adv.advance_type != "is":
+        raise HTTPException(status_code=404)
+
+    try:
+        items = json.loads(expense_items_json or "[]")
+    except Exception:
+        items = []
+
+    total_expenses = sum(float(i.get("amount", 0)) for i in items)
+    close_dt = date.fromisoformat(close_date)
+    emp = db.query(Employee).get(employee_id)
+
+    # Harcama kaydı oluştur (GeneralExpense)
+    if total_expenses > 0:
+        cat = db.query(GeneralExpenseCategory).filter_by(name="HBF Harcaması").first()
+        if not cat:
+            cat = db.query(GeneralExpenseCategory).first()
+        for item in items:
+            amt = float(item.get("amount", 0))
+            if amt <= 0:
+                continue
+            db.add(GeneralExpense(
+                category_id=cat.id if cat else None,
+                employee_id=employee_id,
+                description=item.get("description", "İş Avansı Harcaması"),
+                amount=amt,
+                expense_date=close_dt,
+                source="advance",
+                created_by=current_user.id,
+            ))
+
+    # Nakit iade → kasaya giriş
+    actual_return = min(cash_return, adv.amount - total_expenses)
+    if actual_return > 0 and cash_book_id:
+        db.add(CashEntry(
+            book_id=cash_book_id, entry_date=close_dt,
+            entry_type="giris", amount=actual_return,
+            description=f"İş avansı nakit iadesi — {emp.name if emp else ''}",
+        ))
+
+    adv.expense_items_json = json.dumps(items, ensure_ascii=False)
+    adv.cash_return_amount = actual_return
+    adv.repaid_amount = total_expenses + actual_return
+    adv.status = "closed"
+    adv.closed_at = close_dt
+    adv.closed_by = current_user.id
     db.commit()
     return RedirectResponse(url=f"/employees/{employee_id}", status_code=status.HTTP_302_FOUND)
 

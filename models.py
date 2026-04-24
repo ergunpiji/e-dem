@@ -505,6 +505,9 @@ class EmployeeAdvance(Base):
     amount = Column(Float, nullable=False)
     advance_date = Column(Date, nullable=False)
     reason = Column(String(300))
+    # "maas" = maaş avansı (maaştan kesilir), "is" = iş avansı (referansa bağlı, fiş ibrazıyla kapanır)
+    advance_type = Column(String(10), default="maas", nullable=False)
+    ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     status = Column(
         Enum("open", "partial", "closed", name="advance_status_enum"),
         default="open", nullable=False
@@ -512,9 +515,15 @@ class EmployeeAdvance(Base):
     repaid_amount = Column(Float, default=0.0, nullable=False)
     payment_method = Column(Enum("nakit", "banka", name="advance_payment_method_enum"), nullable=False)
     bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
+    # İş avansı kapatma: harcama ve kalan nakit iadesi
+    expense_items_json = Column(Text)       # [{description, amount}]
+    cash_return_amount = Column(Float, default=0.0)
+    closed_at = Column(Date, nullable=True)
+    closed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     employee = relationship("Employee", back_populates="advances")
     bank_account = relationship("BankAccount", back_populates="employee_advances")
+    reference = relationship("Reference")
 
 
 # ---------------------------------------------------------------------------

@@ -195,6 +195,13 @@ def _migrate(engine) -> None:
         "ALTER TABLE customers ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true",
         # User is_approver alanı
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approver BOOLEAN DEFAULT false",
+        # EmployeeAdvance avans tipi ve iş avansı kapatma alanları
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS advance_type VARCHAR(10) DEFAULT 'maas'",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS ref_id INTEGER",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS expense_items_json TEXT",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS cash_return_amount FLOAT DEFAULT 0",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS closed_at DATE",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS closed_by INTEGER",
     ]
     with engine.begin() as conn:
         for sql in migrations:
