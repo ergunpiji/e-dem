@@ -250,12 +250,16 @@ async def invoice_pay(
     total = inv.amount * (1 + inv.vat_rate)
     desc = f"Fatura {inv.invoice_no or inv.id}" + (f" — {inv.vendor.name}" if inv.vendor else "")
 
+    # Kesilen/komisyon → tahsilat (giris); gelen/diğer → ödeme (cikis)
+    is_income = inv.invoice_type in ("kesilen", "komisyon")
+    flow = "giris" if is_income else "cikis"
+
     if payment_method == "nakit" and cash_book_id:
         inv.cash_book_id = cash_book_id
         db.add(CashEntry(
             book_id=cash_book_id,
             entry_date=date.today(),
-            entry_type="cikis",
+            entry_type=flow,
             amount=total,
             description=desc,
             invoice_id=invoice_id,
@@ -267,7 +271,7 @@ async def invoice_pay(
         db.add(BankMovement(
             account_id=bank_account_id,
             movement_date=date.today(),
-            movement_type="cikis",
+            movement_type=flow,
             amount=total,
             description=desc,
             invoice_id=invoice_id,
@@ -288,7 +292,7 @@ async def invoice_pay(
     elif payment_method == "cek":
         cheque = Cheque(
             vendor_id=inv.vendor_id,
-            cheque_type="verilen",
+            cheque_type="alınan" if is_income else "verilen",
             cheque_no=cheque_no.strip(),
             bank=cheque_bank.strip(),
             amount=cheque_amount or total,
@@ -322,18 +326,20 @@ async def invoice_pay_bulk(
             continue
         total = inv.amount * (1 + inv.vat_rate)
         desc = f"Fatura {inv.invoice_no or inv.id}" + (f" — {inv.vendor.name}" if inv.vendor else "")
+        is_income = inv.invoice_type in ("kesilen", "komisyon")
+        flow = "giris" if is_income else "cikis"
         inv.payment_method = payment_method
         inv.paid_at = datetime.utcnow()
         inv.status = "paid"
         if payment_method == "nakit" and cash_book_id:
             inv.cash_book_id = cash_book_id
             db.add(CashEntry(book_id=cash_book_id, entry_date=date.today(),
-                entry_type="cikis", amount=total, description=desc,
+                entry_type=flow, amount=total, description=desc,
                 invoice_id=inv.id, ref_id=inv.ref_id))
         elif payment_method == "banka" and bank_account_id:
             inv.bank_account_id = bank_account_id
             db.add(BankMovement(account_id=bank_account_id, movement_date=date.today(),
-                movement_type="cikis", amount=total, description=desc,
+                movement_type=flow, amount=total, description=desc,
                 invoice_id=inv.id, ref_id=inv.ref_id))
         elif payment_method == "kredi_karti" and credit_card_id:
             inv.credit_card_id = credit_card_id

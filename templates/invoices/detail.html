@@ -31,13 +31,19 @@
       </div>
     </div>
 
+    {% set is_income = invoice.invoice_type in ('kesilen', 'komisyon') %}
     {% if invoice.status == 'approved' %}
     <div class="card border-0 shadow-sm">
       <div class="card-body">
-        <h6 class="fw-bold mb-3">Ödeme Yap</h6>
+        <h6 class="fw-bold mb-1">
+          {% if is_income %}Tahsilat Yap{% else %}Ödeme Yap{% endif %}
+        </h6>
+        {% if is_income %}
+        <p class="text-muted small mb-3">Müşteriden gelen ödeme banka hesabına veya kasaya eklenir.</p>
+        {% endif %}
         <form method="post" action="/invoices/{{ invoice.id }}/pay" id="payForm">
           <div class="mb-3">
-            <label class="form-label">Ödeme Yöntemi</label>
+            <label class="form-label">{% if is_income %}Tahsilat Yöntemi{% else %}Ödeme Yöntemi{% endif %}</label>
             <select name="payment_method" class="form-select" id="pmSelect" onchange="togglePayFields()">
               {% for val, label in payment_methods %}
               <option value="{{ val }}">{{ label }}</option>
@@ -73,20 +79,23 @@
             <input type="date" name="cheque_due_date" class="form-control mb-2" placeholder="Vade Tarihi">
           </div>
 
-          <button type="submit" class="btn btn-success w-100">Öde</button>
+          <button type="submit" class="btn btn-success w-100">
+            {% if is_income %}Tahsil Et{% else %}Öde{% endif %}
+          </button>
         </form>
       </div>
     </div>
     {% elif invoice.status == 'paid' %}
-    <div class="alert alert-success">
-      <i class="bi bi-check-circle"></i> Ödendi — {{ invoice.paid_at | datetime_tr }}
+    <div class="alert {% if is_income %}alert-primary{% else %}alert-success{% endif %}">
+      <i class="bi bi-check-circle"></i>
+      {% if is_income %}Tahsil Edildi{% else %}Ödendi{% endif %} — {{ invoice.paid_at | datetime_tr }}
     </div>
     {% endif %}
   </div>
   <div class="col-md-8">
     <div class="card border-0 shadow-sm">
       <div class="card-body">
-        <h6 class="fw-bold">Ödeme Detayı</h6>
+        <h6 class="fw-bold">{% if is_income %}Tahsilat Detayı{% else %}Ödeme Detayı{% endif %}</h6>
         {% if invoice.payment_method %}
         <p class="mb-0">Yöntem: <strong>{{ invoice.payment_method }}</strong></p>
         {% if invoice.bank_account %}<p class="mb-0">Banka: {{ invoice.bank_account.name }}</p>{% endif %}
@@ -94,7 +103,7 @@
         {% if invoice.credit_card %}<p class="mb-0">Kredi Kartı: {{ invoice.credit_card.name }}</p>{% endif %}
         {% if invoice.cheque %}<p class="mb-0">Çek No: {{ invoice.cheque.cheque_no }} — Vade: {{ invoice.cheque.due_date | date_tr }}</p>{% endif %}
         {% else %}
-        <p class="text-muted">Henüz ödeme bilgisi yok.</p>
+        <p class="text-muted">Henüz {% if is_income %}tahsilat{% else %}ödeme{% endif %} bilgisi yok.</p>
         {% endif %}
       </div>
     </div>
