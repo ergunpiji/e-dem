@@ -203,6 +203,12 @@
 <!-- Main Content -->
 <div class="main-content">
   <div class="topbar">
+    <button onclick="history.back()"
+            class="btn btn-sm btn-outline-secondary me-3 d-flex align-items-center"
+            style="padding:3px 9px;font-size:13px;border-radius:6px;flex-shrink:0;"
+            title="Geri">
+      <i class="bi bi-arrow-left" style="font-size:14px;"></i>
+    </button>
     <h5 class="mb-0 fw-semibold" style="color:#1e293b; font-size:15px;">
       {% block topbar_title %}{{ page_title | default("") }}{% endblock %}
     </h5>
