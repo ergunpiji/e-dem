@@ -412,22 +412,30 @@ async def report_activity(
     ).all():
         prev_by_cat[e.category_id or 0] += e.amount or 0
 
-    # Bütçe satırları
+    # Bütçe satırları — hangi kategoriler seçili?
     budget = db.query(AnnualBudget).filter(AnnualBudget.year == year).first()
     budget_by_cat: dict[int, list[float]] = {}
+    cats_with_bl: set[int] = set()
     if budget:
         for bl in budget.lines:
             if bl.category_id:
                 budget_by_cat[bl.category_id] = [
                     getattr(bl, f"month_{m}", 0.0) for m in range(1, 13)
                 ]
+                cats_with_bl.add(bl.category_id)
 
-    # Kategori hiyerarşisi (üst kategori = section)
+    # Aktif kategori = BudgetLine olan + gerçek verisi olan
+    cats_with_curr = {cid for cid, mm in curr_by_cat_month.items()
+                      if cid != 0 and any(v > 0 for v in mm.values())}
+    cats_with_prev = {cid for cid, tot in prev_by_cat.items() if cid != 0 and tot > 0}
+    active_cat_id_set = cats_with_bl | cats_with_curr | cats_with_prev
+
+    # Tüm üst kategoriler (section)
     top_cats = db.query(GeneralExpenseCategory).filter(
         GeneralExpenseCategory.parent_id.is_(None)
     ).order_by(GeneralExpenseCategory.sort_order).all()
 
-    # Section ve row yapısını kur
+    # TÜM section ve row'ları oluştur (aktif olmayanlar da dahil, hidden olarak render edilir)
     sections = []
     grand_prev = 0.0
     grand_curr_ytd = 0.0
@@ -439,6 +447,8 @@ async def report_activity(
         rows = []
 
         for child in children:
+            active = child.id in active_cat_id_set
+            has_actual = child.id in (cats_with_curr | cats_with_prev)
             prev_total = prev_by_cat.get(child.id, 0.0)
             monthly = [curr_by_cat_month[child.id].get(m, 0.0) for m in range(1, 13)]
             curr_ytd = sum(monthly[m - 1] for m in range(1, 13) if is_past(m))
@@ -450,6 +460,8 @@ async def report_activity(
             rows.append({
                 "cat_id": child.id,
                 "label": child.name,
+                "active": active,
+                "has_actual": has_actual,
                 "prev_total": prev_total,
                 "curr_ytd": curr_ytd,
                 "monthly": monthly,
@@ -457,11 +469,13 @@ async def report_activity(
                 "forecast": forecast,
             })
 
-        sec_prev = sum(r["prev_total"] for r in rows)
-        sec_ytd = sum(r["curr_ytd"] for r in rows)
-        sec_monthly = [sum(r["monthly"][i] for r in rows) for i in range(12)]
-        sec_budget = [sum(r["budget"][i] for r in rows) for i in range(12)]
-        sec_forecast = sum(r["forecast"] for r in rows)
+        # Grand totals: sadece aktif satırlar
+        active_rows = [r for r in rows if r["active"]]
+        sec_prev = sum(r["prev_total"] for r in active_rows)
+        sec_ytd = sum(r["curr_ytd"] for r in active_rows)
+        sec_monthly = [sum(r["monthly"][i] for r in active_rows) for i in range(12)]
+        sec_budget = [sum(r["budget"][i] for r in active_rows) for i in range(12)]
+        sec_forecast = sum(r["forecast"] for r in active_rows)
 
         grand_prev += sec_prev
         grand_curr_ytd += sec_ytd
@@ -478,6 +492,7 @@ async def report_activity(
             "monthly_total": sec_monthly,
             "budget_monthly": sec_budget,
             "forecast": sec_forecast,
+            "has_active": any(r["active"] for r in rows),
         })
 
     # Sabit giderler öngörüsü
@@ -516,7 +531,7 @@ async def report_activity_budget_save(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    from fastapi import status as http_status
+    import json as _json
     form = await request.form()
     year = int(form.get("year", date.today().year))
 
@@ -526,47 +541,47 @@ async def report_activity_budget_save(
         db.add(budget)
         db.flush()
 
-    # Mevcut satırları temizle
-    db.query(BudgetLine).filter(BudgetLine.budget_id == budget.id).delete()
-
-    # Form'dan satırları topla: line_TYPE_IDX_month_M
-    # Format: line_gelir_0_month_1, line_gelen_0_month_1, line_cat_7_month_1, ...
-    lines_map: dict[str, dict] = {}
-    for key, val in form.items():
-        if not key.startswith("line_"):
-            continue
-        parts = key.split("_")
-        # line_{type}_{idx_or_catid}_month_{m}
-        # e.g. line_gelir_0_month_1 → type=gelir, idx=0, m=1
-        # e.g. line_cat_7_month_3 → type=cat, idx=7, m=3
-        if len(parts) < 5:
-            continue
-        line_key = f"{parts[1]}_{parts[2]}"  # gelir_0 or cat_7
-        month_num = int(parts[-1])
-        if line_key not in lines_map:
-            lines_map[line_key] = {"type": parts[1], "idx": parts[2], "months": {}}
+    # Section sıralamasını güncelle (sort_order)
+    section_order_json = form.get("section_order_json", "")
+    if section_order_json:
         try:
-            lines_map[line_key]["months"][month_num] = float(val or 0)
-        except ValueError:
-            lines_map[line_key]["months"][month_num] = 0.0
+            order = _json.loads(section_order_json)
+            for idx, sec_id in enumerate(order):
+                cat = db.query(GeneralExpenseCategory).get(int(sec_id))
+                if cat and cat.parent_id is None:
+                    cat.sort_order = idx * 10
+        except Exception:
+            pass
 
-    # Label bilgisi
-    for line_key, data in lines_map.items():
-        label = form.get(f"label_{line_key}", line_key)
-        cat_id = None
-        if data["type"] == "cat":
+    # show_cat_N hidden input'larından hangi kategoriler seçili
+    active_cat_ids: set[int] = set()
+    for key in form.keys():
+        if key.startswith("show_cat_"):
             try:
-                cat_id = int(data["idx"])
+                active_cat_ids.add(int(key[9:]))
             except ValueError:
                 pass
+
+    # Mevcut satırları temizle, aktif olanları yeniden yaz
+    db.query(BudgetLine).filter(BudgetLine.budget_id == budget.id).delete()
+
+    for cat_id in active_cat_ids:
+        cat = db.query(GeneralExpenseCategory).get(cat_id)
+        if not cat:
+            continue
+        label = form.get(f"label_cat_{cat_id}", cat.name)
         bl = BudgetLine(
             budget_id=budget.id,
-            line_type=data["type"] if data["type"] != "cat" else "gider",
+            line_type="gider",
             category_id=cat_id,
             label=label,
         )
         for m in range(1, 13):
-            setattr(bl, f"month_{m}", data["months"].get(m, 0.0))
+            try:
+                val = float(form.get(f"line_cat_{cat_id}_month_{m}", 0) or 0)
+            except (ValueError, TypeError):
+                val = 0.0
+            setattr(bl, f"month_{m}", val)
         db.add(bl)
 
     db.commit()
@@ -599,8 +614,36 @@ async def report_activity_fixed_add(
         created_by=current_user.id,
     )
     db.add(fe)
+    db.flush()
+
+    redirect_year = year or dt_date.today().year
+
+    # Kategori seçildiyse bütçeyi otomatik doldur
+    if fe.category_id:
+        cat = db.query(GeneralExpenseCategory).get(fe.category_id)
+        bgt = db.query(AnnualBudget).filter(AnnualBudget.year == redirect_year).first()
+        if not bgt:
+            bgt = AnnualBudget(year=redirect_year, created_by=current_user.id)
+            db.add(bgt)
+            db.flush()
+        bl = db.query(BudgetLine).filter(
+            BudgetLine.budget_id == bgt.id,
+            BudgetLine.category_id == fe.category_id,
+        ).first()
+        if not bl:
+            bl = BudgetLine(
+                budget_id=bgt.id,
+                line_type="gider",
+                category_id=fe.category_id,
+                label=cat.name if cat else fe.label,
+            )
+            db.add(bl)
+            db.flush()
+        for m in _fixed_expense_months(fe, redirect_year):
+            current_val = getattr(bl, f"month_{m}", 0.0) or 0.0
+            setattr(bl, f"month_{m}", current_val + fe.amount)
+
     db.commit()
-    redirect_year = year or date.today().year
     return RedirectResponse(url=f"/reports/activity?year={redirect_year}", status_code=303)
 
 
