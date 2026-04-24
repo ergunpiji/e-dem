@@ -35,14 +35,14 @@ async def report_pl(
         year = date.today().year
 
     invoices = db.query(Invoice).filter(
-        Invoice.status.in_(["approved", "paid"]),
+        Invoice.status.in_(["approved", "partial", "paid"]),
         extract("year", Invoice.invoice_date) == year,
     ).all()
 
-    kesilen = sum(i.amount for i in invoices if i.invoice_type in ("kesilen", "komisyon"))
-    iade_kesilen = sum(i.amount for i in invoices if i.invoice_type == "iade_kesilen")
-    gelen = sum(i.amount for i in invoices if i.invoice_type == "gelen")
-    iade_gelen = sum(i.amount for i in invoices if i.invoice_type == "iade_gelen")
+    kesilen = sum(i.total_with_vat for i in invoices if i.invoice_type in ("kesilen", "komisyon"))
+    iade_kesilen = sum(i.total_with_vat for i in invoices if i.invoice_type == "iade_kesilen")
+    gelen = sum(i.total_with_vat for i in invoices if i.invoice_type == "gelen")
+    iade_gelen = sum(i.total_with_vat for i in invoices if i.invoice_type == "iade_gelen")
 
     net_gelir = (kesilen - iade_kesilen)
     net_maliyet = (gelen - iade_gelen)
@@ -74,6 +74,28 @@ async def report_pl(
     )
 
 
+def _cc_due_date(card, txn_date):
+    """KK txn için ödeme son tarihini kart ayarlarından hesaplar."""
+    import calendar as _cal
+    from datetime import timedelta as _td
+    sd = card.statement_day or 1
+    offset = card.payment_offset_days or 10
+    if txn_date.day < sd:
+        try:
+            close = txn_date.replace(day=sd)
+        except ValueError:
+            close = txn_date.replace(day=_cal.monthrange(txn_date.year, txn_date.month)[1])
+    else:
+        m, y = txn_date.month + 1, txn_date.year
+        if m > 12:
+            m, y = 1, y + 1
+        try:
+            close = txn_date.replace(year=y, month=m, day=sd)
+        except ValueError:
+            close = date(y, m, _cal.monthrange(y, m)[1])
+    return close + _td(days=offset)
+
+
 @router.get("/cash-flow", response_class=HTMLResponse, name="report_cash_flow")
 async def report_cash_flow(
     request: Request,
@@ -84,6 +106,33 @@ async def report_cash_flow(
     from datetime import timedelta
     today = date.today()
     week_start = today - timedelta(days=today.weekday())  # bu haftanın Pazartesi'si
+    weeks_end = week_start + timedelta(weeks=weeks)
+
+    # KK txn'larını önceden hesapla (statement'lı ve statement'sız)
+    cc_txns_due = []  # list of (txn, due_date)
+    for txn in (
+        db.query(CreditCardTxn)
+        .join(CreditCardStatement, CreditCardTxn.statement_id == CreditCardStatement.id)
+        .filter(
+            CreditCardTxn.is_refund == False,
+            CreditCardStatement.status == "unpaid",
+            CreditCardStatement.due_date >= week_start,
+            CreditCardStatement.due_date <= weeks_end,
+        ).all()
+    ):
+        cc_txns_due.append((txn, txn.statement.due_date))
+
+    for txn in (
+        db.query(CreditCardTxn)
+        .filter(
+            CreditCardTxn.is_refund == False,
+            CreditCardTxn.statement_id == None,  # noqa: E711
+        ).all()
+    ):
+        if txn.card:
+            due = _cc_due_date(txn.card, txn.txn_date)
+            if week_start <= due <= weeks_end:
+                cc_txns_due.append((txn, due))
 
     weeks_data = []
     for i in range(weeks):
@@ -168,25 +217,16 @@ async def report_cash_flow(
                 "amount": c.amount,
             })
 
-        # KK harcamaları → ekstrenin son ödeme gününe göre (işlem bazında)
-        for txn in (
-            db.query(CreditCardTxn)
-            .join(CreditCardStatement, CreditCardTxn.statement_id == CreditCardStatement.id)
-            .filter(
-                CreditCardTxn.is_refund == False,
-                CreditCardStatement.status == "unpaid",
-                CreditCardStatement.due_date >= wstart,
-                CreditCardStatement.due_date <= wend,
-            )
-            .all()
-        ):
-            outgoing.append({
-                "type": "cc_txn",
-                "label": txn.description or "KK Harcaması",
-                "sub": txn.card.name if txn.card else "Kredi Kartı",
-                "date": txn.statement.due_date,
-                "amount": txn.amount,
-            })
+        # KK harcamaları → son ödeme gününe göre (önceden hesaplanmış)
+        for txn, due_date in cc_txns_due:
+            if wstart <= due_date <= wend:
+                outgoing.append({
+                    "type": "cc_txn",
+                    "label": txn.description or "KK Harcaması",
+                    "sub": txn.card.name if txn.card else "Kredi Kartı",
+                    "date": due_date,
+                    "amount": txn.amount,
+                })
 
         # Kasa çıkışları
         for e in db.query(CashEntry).filter(
