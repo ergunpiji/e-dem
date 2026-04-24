@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin, hash_password
 from database import get_db
-from models import User
+from models import User, Employee
 from templates_config import templates
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -32,11 +32,14 @@ async def users_list(
 async def user_new_get(
     request: Request,
     current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
+    employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()
     return templates.TemplateResponse(
         "users/form.html",
         {"request": request, "current_user": current_user,
-         "user": None, "page_title": "Yeni Kullanıcı", "error": None},
+         "user": None, "employees": employees,
+         "page_title": "Yeni Kullanıcı", "error": None},
     )
 
 
@@ -47,15 +50,19 @@ async def user_new_post(
     email: str = Form(...),
     password: str = Form(...),
     is_admin: str = Form("0"),
+    is_approver: str = Form("0"),
+    employee_id: str = Form(""),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     email = email.strip().lower()
     if db.query(User).filter(User.email == email).first():
+        employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()
         return templates.TemplateResponse(
             "users/form.html",
             {"request": request, "current_user": current_user,
-             "user": None, "page_title": "Yeni Kullanıcı",
+             "user": None, "employees": employees,
+             "page_title": "Yeni Kullanıcı",
              "error": f"'{email}' e-posta adresi zaten kayıtlı."},
             status_code=400,
         )
@@ -64,9 +71,18 @@ async def user_new_post(
         email=email,
         password_hash=hash_password(password),
         is_admin=(is_admin == "1"),
+        is_approver=(is_approver == "1"),
         active=True,
     )
     db.add(u)
+    db.flush()
+    if employee_id:
+        emp = db.query(Employee).get(int(employee_id))
+        if emp:
+            old = db.query(Employee).filter(Employee.user_id == u.id).first()
+            if old:
+                old.user_id = None
+            emp.user_id = u.id
     db.commit()
     return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
 
@@ -81,10 +97,14 @@ async def user_edit_get(
     u = db.query(User).get(user_id)
     if not u:
         raise HTTPException(status_code=404)
+    employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()
+    linked_employee = db.query(Employee).filter(Employee.user_id == user_id).first()
+    u.linked_employee = linked_employee
     return templates.TemplateResponse(
         "users/form.html",
         {"request": request, "current_user": current_user,
-         "user": u, "page_title": f"Düzenle — {u.name}", "error": None},
+         "user": u, "employees": employees,
+         "page_title": f"Düzenle — {u.name}", "error": None},
     )
 
 
@@ -98,6 +118,7 @@ async def user_edit_post(
     is_admin: str = Form("0"),
     is_approver: str = Form("0"),
     active: str = Form("1"),
+    employee_id: str = Form(""),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -107,10 +128,14 @@ async def user_edit_post(
     email = email.strip().lower()
     existing = db.query(User).filter(User.email == email, User.id != user_id).first()
     if existing:
+        employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()
+        linked_employee = db.query(Employee).filter(Employee.user_id == user_id).first()
+        u.linked_employee = linked_employee
         return templates.TemplateResponse(
             "users/form.html",
             {"request": request, "current_user": current_user,
-             "user": u, "page_title": f"Düzenle — {u.name}",
+             "user": u, "employees": employees,
+             "page_title": f"Düzenle — {u.name}",
              "error": f"'{email}' e-posta adresi zaten kayıtlı."},
             status_code=400,
         )
@@ -121,6 +146,16 @@ async def user_edit_post(
     u.active = (active == "1")
     if password.strip():
         u.password_hash = hash_password(password.strip())
+
+    # employee-user link güncelle
+    old_link = db.query(Employee).filter(Employee.user_id == user_id).first()
+    if old_link:
+        old_link.user_id = None
+    if employee_id:
+        emp = db.query(Employee).get(int(employee_id))
+        if emp:
+            emp.user_id = user_id
+
     db.commit()
     return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
 

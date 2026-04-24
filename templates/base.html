@@ -177,6 +177,9 @@
     <a href="/hbf" class="sidebar-link {% if request.url.path.startswith('/hbf') %}active{% endif %}">
       <i class="bi bi-receipt"></i> Harcama Bildirimleri
     </a>
+    <a href="/advances" class="sidebar-link {% if request.url.path.startswith('/advances') %}active{% endif %}">
+      <i class="bi bi-cash-stack"></i> Avans Talepleri
+    </a>
 
     <!-- Yönetim (admin only) -->
     {% if current_user and current_user.is_admin %}

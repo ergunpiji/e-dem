@@ -450,11 +450,13 @@ class Employee(Base):
     active = Column(Boolean, default=True, nullable=False)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # bağlı kullanıcı hesabı
 
     salary_payments = relationship("SalaryPayment", back_populates="employee", cascade="all, delete-orphan")
     benefits = relationship("EmployeeBenefit", back_populates="employee", cascade="all, delete-orphan")
     advances = relationship("EmployeeAdvance", back_populates="employee", cascade="all, delete-orphan")
     general_expenses = relationship("GeneralExpense", back_populates="employee")
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class SalaryPayment(Base):
@@ -505,20 +507,28 @@ class EmployeeAdvance(Base):
     id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     amount = Column(Float, nullable=False)
-    advance_date = Column(Date, nullable=False)
+    advance_date = Column(Date, nullable=True)   # ödeme tarihi (onaylanınca set edilir)
     reason = Column(String(300))
-    # "maas" = maaş avansı (maaştan kesilir), "is" = iş avansı (referansa bağlı, fiş ibrazıyla kapanır)
+    # "maas" = maaş avansı, "is" = iş avansı (referansa bağlı)
     advance_type = Column(String(10), default="maas", nullable=False)
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
+    # Talep/onay akışı
+    approval_status = Column(String(20), default="onaylandi", nullable=False)
+    # talep | onaylandi | reddedildi
+    requested_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approval_note = Column(String(300), nullable=True)
+    # Ödeme
     status = Column(
         Enum("open", "partial", "closed", name="advance_status_enum"),
         default="open", nullable=False
     )
     repaid_amount = Column(Float, default=0.0, nullable=False)
-    payment_method = Column(Enum("nakit", "banka", name="advance_payment_method_enum"), nullable=False)
+    payment_method = Column(Enum("nakit", "banka", name="advance_payment_method_enum"), nullable=True)
     bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
-    # İş avansı kapatma: harcama ve kalan nakit iadesi
-    expense_items_json = Column(Text)       # [{description, amount}]
+    # İş avansı kapatma
+    expense_items_json = Column(Text)
     cash_return_amount = Column(Float, default=0.0)
     closed_at = Column(Date, nullable=True)
     closed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -526,6 +536,8 @@ class EmployeeAdvance(Base):
     employee = relationship("Employee", back_populates="advances")
     bank_account = relationship("BankAccount", back_populates="employee_advances")
     reference = relationship("Reference")
+    requester = relationship("User", foreign_keys=[requested_by])
+    approver = relationship("User", foreign_keys=[approved_by_id])
 
 
 # ---------------------------------------------------------------------------

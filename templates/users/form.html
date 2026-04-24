@@ -33,6 +33,19 @@
               <label class="form-check-label fw-semibold" for="is_approver">Genel Müdür (HBF onay yetkilisi)</label>
             </div>
           </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Çalışan Profili Bağla</label>
+            <select name="employee_id" class="form-select">
+              <option value="">— Bağlı değil —</option>
+              {% for emp in employees %}
+              <option value="{{ emp.id }}"
+                {% if user and user.linked_employee and user.linked_employee.id == emp.id %}selected{% endif %}>
+                {{ emp.name }}{% if emp.title %} — {{ emp.title }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Kullanıcı bu çalışan adına avans talebinde bulunabilir.</div>
+          </div>
           {% if user %}
           <div class="mb-3">
             <label class="form-label fw-semibold">Durum</label>

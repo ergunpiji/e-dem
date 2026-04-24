@@ -207,6 +207,17 @@ def _migrate(engine) -> None:
         "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS closed_by INTEGER",
         "ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS category VARCHAR(100)",
         "ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS related_party VARCHAR(150)",
+        # Employee → User bağlantısı
+        "ALTER TABLE employees ADD COLUMN IF NOT EXISTS user_id INTEGER",
+        # EmployeeAdvance onay akışı
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20) DEFAULT 'onaylandi'",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS requested_by INTEGER",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS approved_by_id INTEGER",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP",
+        "ALTER TABLE employee_advances ADD COLUMN IF NOT EXISTS approval_note VARCHAR(300)",
+        # payment_method nullable yap (talep aşamasında henüz bilinmez)
+        "ALTER TABLE employee_advances ALTER COLUMN payment_method DROP NOT NULL",
+        "ALTER TABLE employee_advances ALTER COLUMN advance_date DROP NOT NULL",
     ]
     with engine.begin() as conn:
         for sql in migrations:
