@@ -193,10 +193,12 @@
       <div class="modal-body">
         <div id="vmErr" class="alert alert-danger" style="display:none"></div>
         <div class="row g-3">
+          <!-- Ad -->
           <div class="col-12">
             <label class="form-label fw-semibold">Tedarikçi Adı <span class="text-danger">*</span></label>
             <input type="text" id="vm_name" class="form-control" placeholder="Firma resmi adı">
           </div>
+          <!-- Vergi -->
           <div class="col-md-6">
             <label class="form-label fw-semibold">Vergi Numarası</label>
             <input type="text" id="vm_tax_no" class="form-control">
@@ -205,6 +207,7 @@
             <label class="form-label fw-semibold">Vergi Dairesi</label>
             <input type="text" id="vm_tax_office" class="form-control">
           </div>
+          <!-- İletişim -->
           <div class="col-md-6">
             <label class="form-label fw-semibold">Telefon</label>
             <input type="text" id="vm_phone" class="form-control">
@@ -213,6 +216,17 @@
             <label class="form-label fw-semibold">E-posta</label>
             <input type="email" id="vm_email" class="form-control">
           </div>
+          <!-- İletişim kişisi -->
+          <div class="col-12">
+            <label class="form-label fw-semibold">İletişim Kişisi</label>
+            <input type="text" id="vm_contact" class="form-control" placeholder="Yetkili adı soyadı">
+          </div>
+          <!-- Adres -->
+          <div class="col-12">
+            <label class="form-label fw-semibold">Adres</label>
+            <textarea id="vm_address" class="form-control" rows="2" placeholder="Açık adres"></textarea>
+          </div>
+          <!-- Vade & Sektör -->
           <div class="col-md-4">
             <label class="form-label fw-semibold">Ödeme Vadesi (gün)</label>
             <input type="number" id="vm_payment_term" class="form-control" value="30" min="0">
@@ -229,6 +243,17 @@
               <option value="tasarim">Tasarım &amp; Baskı</option>
               <option value="diger">Diğer</option>
             </select>
+          </div>
+          <!-- IBAN -->
+          <div class="col-12">
+            <label class="form-label fw-semibold">IBAN</label>
+            <input type="text" id="vm_iban" class="form-control font-monospace"
+                   placeholder="TR + 24 rakam">
+          </div>
+          <!-- Notlar -->
+          <div class="col-12">
+            <label class="form-label fw-semibold">Notlar</label>
+            <textarea id="vm_notes" class="form-control" rows="2" placeholder="İsteğe bağlı notlar"></textarea>
           </div>
         </div>
       </div>
@@ -476,8 +501,12 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
     document.getElementById('vm_tax_office').value   = '';
     document.getElementById('vm_phone').value        = '';
     document.getElementById('vm_email').value        = '';
+    document.getElementById('vm_contact').value      = '';
+    document.getElementById('vm_address').value      = '';
     document.getElementById('vm_payment_term').value = '30';
     document.getElementById('vm_vendor_type').value  = 'genel';
+    document.getElementById('vm_iban').value         = '';
+    document.getElementById('vm_notes').value        = '';
     var errEl = document.getElementById('vmErr');
     errEl.style.display = 'none'; errEl.textContent = '';
     vendorDd.className = 'ac-dd';
@@ -509,8 +538,12 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
     fd.append('tax_office',   document.getElementById('vm_tax_office').value.trim());
     fd.append('phone',        document.getElementById('vm_phone').value.trim());
     fd.append('email',        document.getElementById('vm_email').value.trim());
+    fd.append('contact',      document.getElementById('vm_contact').value.trim());
+    fd.append('address',      document.getElementById('vm_address').value.trim());
     fd.append('payment_term', document.getElementById('vm_payment_term').value);
     fd.append('vendor_type',  document.getElementById('vm_vendor_type').value);
+    fd.append('iban',         document.getElementById('vm_iban').value.trim());
+    fd.append('notes',        document.getElementById('vm_notes').value.trim());
     fetch('/vendors/quick-add', {method: 'POST', body: fd})
       .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, status: r.status, data: d}; }); })
       .then(function (res) {

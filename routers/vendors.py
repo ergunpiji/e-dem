@@ -83,8 +83,12 @@ async def vendor_quick_add(
     tax_office: str = Form(""),
     phone: str = Form(""),
     email: str = Form(""),
+    contact: str = Form(""),
+    address: str = Form(""),
     payment_term: int = Form(30),
     vendor_type: str = Form("genel"),
+    iban: str = Form(""),
+    notes: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -92,7 +96,6 @@ async def vendor_quick_add(
     name = name.strip()
     if not name:
         return JSONResponse({"error": "Ad zorunludur."}, status_code=422)
-    # İsim çakışması kontrolü
     existing = db.query(FinancialVendor).filter(
         FinancialVendor.name.ilike(name)
     ).first()
@@ -107,6 +110,9 @@ async def vendor_quick_add(
         name=name, vendor_type=vendor_type,
         tax_no=tax_no.strip(), tax_office=tax_office.strip(),
         phone=phone.strip(), email=email.strip(),
+        contact=contact.strip(), address=address.strip(),
+        iban=iban.strip() or None,
+        notes=notes.strip() or None,
         payment_term=payment_term, active=True,
     )
     db.add(v)
