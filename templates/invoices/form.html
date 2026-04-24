@@ -39,6 +39,22 @@
   .ac-row.ac-new { color:#2563eb; font-weight:600; border-top:1px solid #e2e8f0; }
   .ac-row.ac-new:hover { background:#eff6ff; }
   .ac-empty { padding:10px 12px; font-size:13px; color:#94a3b8; }
+
+  /* Vendor modal sections */
+  .vm-section { border:1px solid #e2e8f0; border-radius:10px; padding:18px 20px; margin-bottom:14px; }
+  .vm-section-title { font-size:13px; font-weight:700; color:#1e293b; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .vm-tag-wrap { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 10px;
+    border:1px solid #e2e8f0; border-radius:6px; min-height:40px; cursor:text; background:#fff; }
+  .vm-tag { display:inline-flex; align-items:center; gap:4px; background:#eff6ff; color:#1d4ed8;
+    border-radius:4px; padding:2px 8px; font-size:12px; font-weight:600; }
+  .vm-tag .rm { cursor:pointer; color:#93c5fd; font-size:14px; line-height:1; }
+  .vm-tag .rm:hover { color:#dc2626; }
+  .vm-city-ac { position:relative; background:#fff; border:1px solid #e2e8f0; border-radius:6px;
+    box-shadow:0 4px 12px rgba(0,0,0,.08); max-height:180px; overflow-y:auto; display:none; margin-top:2px; }
+  .vm-city-ac.show { display:block; }
+  .vm-city-item { padding:7px 12px; font-size:13px; cursor:pointer; }
+  .vm-city-item:hover { background:#f0f7ff; }
+  .vm-ba-card { border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:10px; }
 </style>
 {% endblock %}
 
@@ -184,7 +200,7 @@
 
 <!-- Yeni Tedarikçi Modal -->
 <div class="modal fade" id="newVendorModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header border-0 pb-0">
         <h5 class="modal-title fw-bold"><i class="bi bi-building-add me-2 text-primary"></i>Yeni Tedarikçi Ekle</h5>
@@ -192,69 +208,105 @@
       </div>
       <div class="modal-body">
         <div id="vmErr" class="alert alert-danger" style="display:none"></div>
-        <div class="row g-3">
-          <!-- Ad -->
-          <div class="col-12">
-            <label class="form-label fw-semibold">Tedarikçi Adı <span class="text-danger">*</span></label>
-            <input type="text" id="vm_name" class="form-control" placeholder="Firma resmi adı">
+
+        <!-- 1. Tedarikçi Bilgileri -->
+        <div class="vm-section">
+          <div class="vm-section-title"><i class="bi bi-building text-primary"></i> Tedarikçi Bilgileri</div>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label fw-semibold">Tedarikçi Adı <span class="text-danger">*</span></label>
+              <input type="text" id="vm_name" class="form-control" placeholder="Firma resmi adı">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Vergi Numarası</label>
+              <input type="text" id="vm_tax_no" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Vergi Dairesi</label>
+              <input type="text" id="vm_tax_office" class="form-control">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Adres</label>
+              <textarea id="vm_address" class="form-control" rows="2" placeholder="Açık adres"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">E-posta</label>
+              <input type="email" id="vm_email" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Telefon</label>
+              <input type="text" id="vm_phone" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Ödeme Vadesi (gün)</label>
+              <input type="number" id="vm_payment_term" class="form-control" value="30" min="0">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Sektör</label>
+              <select id="vm_vendor_type" class="form-select">
+                <option value="genel">Genel Tedarikçi</option>
+                <option value="otel">Otel</option>
+                <option value="etkinlik">Etkinlik Mekanı</option>
+                <option value="teknik">Teknik Ekipman</option>
+                <option value="transfer">Transfer</option>
+                <option value="catering">Catering</option>
+                <option value="tasarim">Tasarım &amp; Baskı</option>
+                <option value="diger">Diğer</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">İletişim Kişisi</label>
+              <input type="text" id="vm_contact" class="form-control" placeholder="Yetkili adı">
+            </div>
           </div>
-          <!-- Vergi -->
-          <div class="col-md-6">
-            <label class="form-label fw-semibold">Vergi Numarası</label>
-            <input type="text" id="vm_tax_no" class="form-control">
+        </div>
+
+        <!-- 2. Konum & Şehirler -->
+        <div class="vm-section">
+          <div class="vm-section-title"><i class="bi bi-geo-alt text-primary"></i> Konum &amp; Hizmet Bölgesi</div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold d-block">Tedarikçi Konumu</label>
+            <div class="d-flex gap-4">
+              <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:13px;font-weight:600;">
+                <input type="radio" name="vm_location_type" value="turkiye" checked
+                       onchange="vmToggleCities(this.value)">
+                <img src="https://flagcdn.com/16x12/tr.png" alt="TR"> Türkiye
+              </label>
+              <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:13px;font-weight:600;">
+                <input type="radio" name="vm_location_type" value="yurtdisi"
+                       onchange="vmToggleCities(this.value)">
+                <img src="https://flagcdn.com/16x12/un.png" alt="INT"> Yurt Dışı
+              </label>
+            </div>
           </div>
-          <div class="col-md-6">
-            <label class="form-label fw-semibold">Vergi Dairesi</label>
-            <input type="text" id="vm_tax_office" class="form-control">
+          <div id="vm_citiesSection">
+            <label class="form-label fw-semibold">Hizmet Verilen Şehirler</label>
+            <div class="vm-tag-wrap" id="vm_tagWrap" onclick="document.getElementById('vm_cityInput').focus()"></div>
+            <input type="text" id="vm_cityInput" class="form-control mt-1" placeholder="Şehir ara..."
+                   autocomplete="off" oninput="vmFilterCities(this.value)" onkeydown="vmTagKeydown(event)">
+            <div id="vm_cityAc" class="vm-city-ac"></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Birden fazla şehir ekleyebilirsiniz.</div>
           </div>
-          <!-- İletişim -->
-          <div class="col-md-6">
-            <label class="form-label fw-semibold">Telefon</label>
-            <input type="text" id="vm_phone" class="form-control">
+        </div>
+
+        <!-- 3. Banka Hesapları -->
+        <div class="vm-section">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="vm-section-title mb-0"><i class="bi bi-bank text-primary"></i> Banka Hesapları / IBAN</div>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="vmAddBankAccount()">
+              <i class="bi bi-plus-lg me-1"></i>Hesap Ekle
+            </button>
           </div>
-          <div class="col-md-6">
-            <label class="form-label fw-semibold">E-posta</label>
-            <input type="email" id="vm_email" class="form-control">
+          <div id="vm_bankList"></div>
+          <div id="vm_bankEmpty" class="text-muted" style="font-size:13px;">
+            <i class="bi bi-info-circle me-1"></i>Henüz banka hesabı eklenmedi.
           </div>
-          <!-- İletişim kişisi -->
-          <div class="col-12">
-            <label class="form-label fw-semibold">İletişim Kişisi</label>
-            <input type="text" id="vm_contact" class="form-control" placeholder="Yetkili adı soyadı">
-          </div>
-          <!-- Adres -->
-          <div class="col-12">
-            <label class="form-label fw-semibold">Adres</label>
-            <textarea id="vm_address" class="form-control" rows="2" placeholder="Açık adres"></textarea>
-          </div>
-          <!-- Vade & Sektör -->
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Ödeme Vadesi (gün)</label>
-            <input type="number" id="vm_payment_term" class="form-control" value="30" min="0">
-          </div>
-          <div class="col-md-8">
-            <label class="form-label fw-semibold">Sektör</label>
-            <select id="vm_vendor_type" class="form-select">
-              <option value="genel">Genel Tedarikçi</option>
-              <option value="otel">Otel</option>
-              <option value="etkinlik">Etkinlik Mekanı</option>
-              <option value="teknik">Teknik Ekipman</option>
-              <option value="transfer">Transfer</option>
-              <option value="catering">Catering</option>
-              <option value="tasarim">Tasarım &amp; Baskı</option>
-              <option value="diger">Diğer</option>
-            </select>
-          </div>
-          <!-- IBAN -->
-          <div class="col-12">
-            <label class="form-label fw-semibold">IBAN</label>
-            <input type="text" id="vm_iban" class="form-control font-monospace"
-                   placeholder="TR + 24 rakam">
-          </div>
-          <!-- Notlar -->
-          <div class="col-12">
-            <label class="form-label fw-semibold">Notlar</label>
-            <textarea id="vm_notes" class="form-control" rows="2" placeholder="İsteğe bağlı notlar"></textarea>
-          </div>
+        </div>
+
+        <!-- 4. Notlar -->
+        <div class="vm-section">
+          <div class="vm-section-title"><i class="bi bi-sticky text-primary"></i> Notlar</div>
+          <textarea id="vm_notes" class="form-control" rows="2" placeholder="İsteğe bağlı notlar"></textarea>
         </div>
       </div>
       <div class="modal-footer border-0">
@@ -492,7 +544,7 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
     document.getElementById('dueDate').value = base.toISOString().slice(0, 10);
   };
 
-  /* Vendor modal */
+  /* ── Vendor modal ──────────────────────────────────────────────────────── */
   var _modal = null;
   window.openVendorModal = function (e, prefill) {
     if (e) e.preventDefault();
@@ -505,8 +557,11 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
     document.getElementById('vm_address').value      = '';
     document.getElementById('vm_payment_term').value = '30';
     document.getElementById('vm_vendor_type').value  = 'genel';
-    document.getElementById('vm_iban').value         = '';
     document.getElementById('vm_notes').value        = '';
+    document.querySelector('input[name="vm_location_type"][value="turkiye"]').checked = true;
+    document.getElementById('vm_citiesSection').style.display = '';
+    vmTags = []; vmRenderTags();
+    vmBankAccounts = []; vmBankCount = 0; vmRenderBankAccounts();
     var errEl = document.getElementById('vmErr');
     errEl.style.display = 'none'; errEl.textContent = '';
     vendorDd.className = 'ac-dd';
@@ -517,9 +572,6 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
 
   document.getElementById('openVendorModalLink').onclick = function (e) { e.preventDefault(); openVendorModal(null, ''); };
   document.getElementById('vmSaveBtn').onclick = saveVendor;
-  document.getElementById('newVendorModal').onkeydown = function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveVendor(); }
-  };
 
   function saveVendor() {
     var btn   = document.getElementById('vmSaveBtn');
@@ -532,18 +584,21 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
     }
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Kaydediliyor...';
+    var locType = document.querySelector('input[name="vm_location_type"]:checked').value;
     var fd = new FormData();
-    fd.append('name',         name);
-    fd.append('tax_no',       document.getElementById('vm_tax_no').value.trim());
-    fd.append('tax_office',   document.getElementById('vm_tax_office').value.trim());
-    fd.append('phone',        document.getElementById('vm_phone').value.trim());
-    fd.append('email',        document.getElementById('vm_email').value.trim());
-    fd.append('contact',      document.getElementById('vm_contact').value.trim());
-    fd.append('address',      document.getElementById('vm_address').value.trim());
-    fd.append('payment_term', document.getElementById('vm_payment_term').value);
-    fd.append('vendor_type',  document.getElementById('vm_vendor_type').value);
-    fd.append('iban',         document.getElementById('vm_iban').value.trim());
-    fd.append('notes',        document.getElementById('vm_notes').value.trim());
+    fd.append('name',              name);
+    fd.append('tax_no',            document.getElementById('vm_tax_no').value.trim());
+    fd.append('tax_office',        document.getElementById('vm_tax_office').value.trim());
+    fd.append('phone',             document.getElementById('vm_phone').value.trim());
+    fd.append('email',             document.getElementById('vm_email').value.trim());
+    fd.append('contact',           document.getElementById('vm_contact').value.trim());
+    fd.append('address',           document.getElementById('vm_address').value.trim());
+    fd.append('payment_term',      document.getElementById('vm_payment_term').value);
+    fd.append('vendor_type',       document.getElementById('vm_vendor_type').value);
+    fd.append('notes',             document.getElementById('vm_notes').value.trim());
+    fd.append('location_type',     locType);
+    fd.append('cities',            vmTags.join(','));
+    fd.append('bank_accounts_json', JSON.stringify(vmBankAccounts));
     fetch('/vendors/quick-add', {method: 'POST', body: fd})
       .then(function (r) { return r.json().then(function (d) { return {ok: r.ok, status: r.status, data: d}; }); })
       .then(function (res) {
@@ -574,5 +629,141 @@ var INV_RID     = {% if invoice and invoice.ref_id %}{{ invoice.ref_id }}{% elif
   }
 
 }());
+</script>
+
+<script>
+/* ── Vendor Modal — Şehir Etiketleri ───────────────────────────────────── */
+var VM_CITIES = ["Adana","Adıyaman","Afyonkarahisar","Ağrı","Amasya","Ankara","Antalya",
+  "Artvin","Aydın","Balıkesir","Bilecik","Bingöl","Bitlis","Bolu","Burdur","Bursa",
+  "Çanakkale","Çankırı","Çorum","Denizli","Diyarbakır","Edirne","Elazığ","Erzincan",
+  "Erzurum","Eskişehir","Gaziantep","Giresun","Gümüşhane","Hakkari","Hatay","Isparta",
+  "Mersin","İstanbul","İzmir","Kars","Kastamonu","Kayseri","Kırklareli","Kırşehir",
+  "Kocaeli","Konya","Kütahya","Malatya","Manisa","Kahramanmaraş","Mardin","Muğla",
+  "Muş","Nevşehir","Niğde","Ordu","Rize","Sakarya","Samsun","Siirt","Sinop","Sivas",
+  "Tekirdağ","Tokat","Trabzon","Tunceli","Şanlıurfa","Uşak","Van","Yozgat","Zonguldak",
+  "Aksaray","Bayburt","Karaman","Kırıkkale","Batman","Şırnak","Bartın","Ardahan",
+  "Iğdır","Yalova","Karabük","Kilis","Osmaniye","Düzce"];
+
+var vmTags = [];
+
+function vmRenderTags() {
+  var wrap = document.getElementById('vm_tagWrap');
+  wrap.innerHTML = '';
+  vmTags.forEach(function(city, i) {
+    var span = document.createElement('span');
+    span.className = 'vm-tag';
+    span.innerHTML = city + '<span class="rm" onclick="vmRemoveTag(' + i + ')">×</span>';
+    wrap.appendChild(span);
+  });
+}
+
+function vmAddTag(city) {
+  city = city.trim();
+  if (!city || vmTags.indexOf(city) !== -1) return;
+  vmTags.push(city);
+  vmRenderTags();
+  document.getElementById('vm_cityInput').value = '';
+  document.getElementById('vm_cityAc').classList.remove('show');
+}
+
+window.vmRemoveTag = function(i) { vmTags.splice(i, 1); vmRenderTags(); };
+
+function vmFilterCities(q) {
+  var ac = document.getElementById('vm_cityAc');
+  ac.innerHTML = '';
+  if (!q) { ac.classList.remove('show'); return; }
+  var matches = VM_CITIES.filter(function(c) { return c.toLowerCase().startsWith(q.toLowerCase()); }).slice(0, 8);
+  if (!matches.length) { ac.classList.remove('show'); return; }
+  matches.forEach(function(c) {
+    var div = document.createElement('div');
+    div.className = 'vm-city-item';
+    div.textContent = c;
+    div.onclick = function() { vmAddTag(c); };
+    ac.appendChild(div);
+  });
+  ac.classList.add('show');
+}
+
+function vmTagKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    var v = document.getElementById('vm_cityInput').value.trim();
+    if (v) vmAddTag(v);
+  } else if (e.key === 'Backspace' && !document.getElementById('vm_cityInput').value && vmTags.length) {
+    vmRemoveTag(vmTags.length - 1);
+  }
+}
+
+window.vmToggleCities = function(val) {
+  document.getElementById('vm_citiesSection').style.display = val === 'turkiye' ? '' : 'none';
+};
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#vm_citiesSection')) {
+    var ac = document.getElementById('vm_cityAc');
+    if (ac) ac.classList.remove('show');
+  }
+});
+
+/* ── Vendor Modal — Banka Hesapları ────────────────────────────────────── */
+var vmBankAccounts = [];
+var vmBankCount = 0;
+var VM_CURRENCIES = ['TRY','USD','EUR','GBP','CHF','AED'];
+
+window.vmAddBankAccount = function() {
+  vmBankAccounts.push({ currency:'TRY', iban:'', bank_name:'', swift:'', account_holder:'', is_primary: vmBankAccounts.length === 0 });
+  vmRenderBankAccounts();
+};
+
+window.vmRemoveBankAccount = function(i) {
+  vmBankAccounts.splice(i, 1);
+  if (vmBankAccounts.length && !vmBankAccounts.some(function(a){ return a.is_primary; })) vmBankAccounts[0].is_primary = true;
+  vmRenderBankAccounts();
+};
+
+window.vmSetPrimary = function(i) {
+  vmBankAccounts.forEach(function(a, j){ a.is_primary = (j === i); });
+  vmRenderBankAccounts();
+};
+
+window.vmBaChange = function(i, field, val) {
+  vmBankAccounts[i][field] = val;
+  if (field === 'currency') vmRenderBankAccounts();
+};
+
+function vmRenderBankAccounts() {
+  var list  = document.getElementById('vm_bankList');
+  var empty = document.getElementById('vm_bankEmpty');
+  list.innerHTML = '';
+  if (!vmBankAccounts.length) { empty.style.display = ''; return; }
+  empty.style.display = 'none';
+  vmBankAccounts.forEach(function(acct, i) {
+    var curOpts = VM_CURRENCIES.map(function(c){ return '<option value="' + c + '"' + (acct.currency === c ? ' selected' : '') + '>' + c + '</option>'; }).join('');
+    var swiftReq = acct.currency !== 'TRY';
+    var div = document.createElement('div');
+    div.className = 'vm-ba-card';
+    div.innerHTML =
+      '<div class="d-flex align-items-center mb-2">' +
+        '<span class="fw-semibold" style="font-size:13px;">' + (i+1) + '. Hesap</span>' +
+        (acct.is_primary
+          ? '<span class="badge bg-success ms-2" style="font-size:11px;">Birincil</span>'
+          : '<button type="button" class="btn btn-link btn-sm p-0 ms-2" style="font-size:11px;" onclick="vmSetPrimary(' + i + ')">Birincil Yap</button>') +
+        '<button type="button" class="btn btn-link btn-sm text-danger p-0 ms-auto" onclick="vmRemoveBankAccount(' + i + ')"><i class="bi bi-x-lg"></i></button>' +
+      '</div>' +
+      '<div class="row g-2">' +
+        '<div class="col-md-2"><label class="form-label" style="font-size:12px;">Para Birimi</label>' +
+          '<select class="form-select form-select-sm" onchange="vmBaChange(' + i + ',\'currency\',this.value)">' + curOpts + '</select></div>' +
+        '<div class="col-md-4"><label class="form-label" style="font-size:12px;">IBAN</label>' +
+          '<input type="text" class="form-control form-control-sm font-monospace" placeholder="TR + 24 rakam" value="' + (acct.iban||'') + '" oninput="vmBaChange(' + i + ',\'iban\',this.value)"></div>' +
+        '<div class="col-md-3"><label class="form-label" style="font-size:12px;">Banka Adı</label>' +
+          '<input type="text" class="form-control form-control-sm" placeholder="Garanti BBVA" value="' + (acct.bank_name||'') + '" oninput="vmBaChange(' + i + ',\'bank_name\',this.value)"></div>' +
+        '<div class="col-md-3"><label class="form-label" style="font-size:12px;">Hesap Sahibi</label>' +
+          '<input type="text" class="form-control form-control-sm" value="' + (acct.account_holder||'') + '" oninput="vmBaChange(' + i + ',\'account_holder\',this.value)"></div>' +
+      '</div>';
+    list.appendChild(div);
+  });
+}
+
+vmRenderBankAccounts();
 </script>
 {% endblock %}

@@ -89,6 +89,9 @@ async def vendor_quick_add(
     vendor_type: str = Form("genel"),
     iban: str = Form(""),
     notes: str = Form(""),
+    location_type: str = Form("turkiye"),
+    cities: str = Form(""),
+    bank_accounts_json: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -106,13 +109,16 @@ async def vendor_quick_add(
                           "payment_term": existing.payment_term or 30}},
             status_code=409,
         )
+    primary_iban = _primary_iban(bank_accounts_json) or iban.strip() or None
     v = FinancialVendor(
         name=name, vendor_type=vendor_type,
         tax_no=tax_no.strip(), tax_office=tax_office.strip(),
         phone=phone.strip(), email=email.strip(),
         contact=contact.strip(), address=address.strip(),
-        iban=iban.strip() or None,
+        iban=primary_iban,
         notes=notes.strip() or None,
+        location_type=location_type, cities=cities.strip() or None,
+        bank_accounts_json=bank_accounts_json if bank_accounts_json != "[]" else None,
         payment_term=payment_term, active=True,
     )
     db.add(v)
