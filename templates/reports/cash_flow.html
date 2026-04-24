@@ -2,7 +2,6 @@
 {% block page_title %}{{ page_title }}{% endblock %}
 
 {% block extra_css %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <style>
   .cf-chart-wrap {
     background:#fff; border-radius:12px; border:1px solid #e2e8f0;
@@ -238,7 +237,10 @@
   {% endif %}
 
 </div>
+{% endblock %}
 
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script>
 function toggleWeek(idx) {
   const detail = document.getElementById('detail-' + idx);

@@ -121,6 +121,35 @@ async def general_expense_new_post(
     return RedirectResponse(url="/general-expenses", status_code=status.HTTP_302_FOUND)
 
 
+@router.get("/summary", response_class=HTMLResponse, name="general_expenses_summary")
+async def general_expenses_summary(
+    request: Request,
+    year: int = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not year:
+        year = date.today().year
+    from sqlalchemy import extract
+    expenses = db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year
+    ).all()
+    categories = _categories_tree(db)
+    cat_totals = {}
+    for e in expenses:
+        cat_totals[e.category_id] = cat_totals.get(e.category_id, 0) + e.amount
+    return templates.TemplateResponse(
+        "general_expenses/summary.html",
+        {
+            "request": request, "current_user": current_user,
+            "expenses": expenses, "categories": categories,
+            "cat_totals": cat_totals, "year": year,
+            "total": sum(e.amount for e in expenses),
+            "page_title": f"Gider Özeti — {year}",
+        },
+    )
+
+
 @router.get("/{expense_id}/edit", response_class=HTMLResponse, name="general_expense_edit_get")
 async def general_expense_edit_get(
     expense_id: int,
@@ -187,33 +216,3 @@ async def general_expense_delete(
         db.delete(e)
         db.commit()
     return RedirectResponse(url="/general-expenses", status_code=status.HTTP_302_FOUND)
-
-
-@router.get("/summary", response_class=HTMLResponse, name="general_expenses_summary")
-async def general_expenses_summary(
-    request: Request,
-    year: int = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if not year:
-        year = date.today().year
-    from sqlalchemy import extract
-    expenses = db.query(GeneralExpense).filter(
-        extract("year", GeneralExpense.expense_date) == year
-    ).all()
-    categories = _categories_tree(db)
-    # Build category totals
-    cat_totals = {}
-    for e in expenses:
-        cat_totals[e.category_id] = cat_totals.get(e.category_id, 0) + e.amount
-    return templates.TemplateResponse(
-        "general_expenses/summary.html",
-        {
-            "request": request, "current_user": current_user,
-            "expenses": expenses, "categories": categories,
-            "cat_totals": cat_totals, "year": year,
-            "total": sum(e.amount for e in expenses),
-            "page_title": f"Gider Özeti — {year}",
-        },
-    )

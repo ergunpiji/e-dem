@@ -124,6 +124,7 @@ async def employee_detail(
             "benefits": sorted(emp.benefits, key=lambda x: x.period, reverse=True),
             "advances": sorted(emp.advances, key=lambda x: x.advance_date, reverse=True),
             "bank_accounts": bank_accounts, "cash_books": cash_books,
+            "today": date.today().isoformat(),
             "page_title": emp.name,
         },
     )
