@@ -59,19 +59,21 @@ async def vendors_list(
     today = date.today()
     vendor_ids = [v.id for v in vendors]
 
-    # Batch: approved invoices per vendor
-    approved_invoices = (
-        db.query(Invoice.vendor_id, Invoice.amount, Invoice.due_date)
-        .filter(Invoice.vendor_id.in_(vendor_ids), Invoice.status == "approved")
+    # Batch: approved/partial invoices per vendor — KDV dahil tutarlar
+    from models import InvoicePayment
+    open_invoices = (
+        db.query(Invoice)
+        .filter(Invoice.vendor_id.in_(vendor_ids), Invoice.status.in_(["approved", "partial"]))
         .all()
     )
 
     unpaid_map: dict = {}
     overdue_map: dict = {}
-    for inv in approved_invoices:
-        unpaid_map[inv.vendor_id] = unpaid_map.get(inv.vendor_id, 0) + (inv.amount or 0)
+    for inv in open_invoices:
+        remaining = inv.remaining
+        unpaid_map[inv.vendor_id] = unpaid_map.get(inv.vendor_id, 0) + remaining
         if inv.due_date and inv.due_date < today:
-            overdue_map[inv.vendor_id] = overdue_map.get(inv.vendor_id, 0) + (inv.amount or 0)
+            overdue_map[inv.vendor_id] = overdue_map.get(inv.vendor_id, 0) + remaining
 
     return templates.TemplateResponse(
         "vendors/list.html",
