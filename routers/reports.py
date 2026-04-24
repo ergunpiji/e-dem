@@ -134,8 +134,9 @@ async def report_cash_flow(
             if week_start <= due <= weeks_end:
                 cc_txns_due.append((txn, due))
 
-    # --- Maaş + Sabit Gider projeksiyonlarını önceden hesapla ---
+    # --- Sabit Gider projeksiyonlarını önceden hesapla ---
     import calendar as _cal
+    from collections import defaultdict as _dd
 
     # 8 haftanın kapsadığı ay-yıl kombinasyonları
     covered_months: set = set()
@@ -144,17 +145,6 @@ async def report_cash_flow(
         covered_months.add((d.year, d.month))
         covered_months.add(((d + timedelta(days=6)).year, (d + timedelta(days=6)).month))
 
-    # Aktif çalışanlar
-    active_employees = db.query(Employee).filter(
-        Employee.active == True, Employee.gross_salary > 0  # noqa: E712
-    ).all()
-
-    # Ödenmiş maaş dönemleri (çalışan bazlı)
-    from collections import defaultdict as _dd
-    paid_salary_periods: dict = _dd(set)
-    for sp in db.query(SalaryPayment).all():
-        paid_salary_periods[sp.employee_id].add(sp.period)
-
     # Aktif sabit giderler
     active_fixed = db.query(FixedExpense).filter(FixedExpense.active == True).all()  # noqa: E712
 
@@ -162,22 +152,6 @@ async def report_cash_flow(
     proj_outflows: dict = _dd(list)
 
     for yr, mo in covered_months:
-        period_key = f"{yr:04d}-{mo:02d}"
-        # Maaş projeksiyonu (ayın 25'i)
-        try:
-            pay_date = date(yr, mo, 25)
-        except ValueError:
-            pay_date = date(yr, mo, _cal.monthrange(yr, mo)[1])
-        for emp in active_employees:
-            if period_key not in paid_salary_periods[emp.id]:
-                proj_outflows[pay_date].append({
-                    "type": "salary",
-                    "label": f"Maaş — {emp.name}",
-                    "sub": "Brüt Projeksiyon",
-                    "date": pay_date,
-                    "amount": emp.gross_salary,
-                })
-
         # Sabit gider projeksiyonu
         for fe in active_fixed:
             if mo not in _fixed_expense_months(fe, yr):
