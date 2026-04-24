@@ -58,21 +58,24 @@ async def dashboard(
         Reference.status == "tamamlandi"
     ).scalar() or 0
 
-    # Fatura istatistikleri (yıl içi)
-    kesilen_yil = db.query(func.sum(Invoice.amount)).filter(
-        Invoice.invoice_type == "kesilen",
-        Invoice.status.in_(["approved", "paid"]),
+    # Fatura istatistikleri (yıl içi) — KDV dahil, partial dahil
+    _kesilen_invs = db.query(Invoice).filter(
+        Invoice.invoice_type.in_(["kesilen", "komisyon"]),
+        Invoice.status.in_(["approved", "partial", "paid"]),
         Invoice.invoice_date >= year_start,
-    ).scalar() or 0
-    gelen_yil = db.query(func.sum(Invoice.amount)).filter(
-        Invoice.invoice_type == "gelen",
-        Invoice.status.in_(["approved", "paid"]),
-        Invoice.invoice_date >= year_start,
-    ).scalar() or 0
+    ).all()
+    kesilen_yil = sum(i.total_with_vat for i in _kesilen_invs)
 
-    # Ödenmemiş fatura sayısı
+    _gelen_invs = db.query(Invoice).filter(
+        Invoice.invoice_type == "gelen",
+        Invoice.status.in_(["approved", "partial", "paid"]),
+        Invoice.invoice_date >= year_start,
+    ).all()
+    gelen_yil = sum(i.total_with_vat for i in _gelen_invs)
+
+    # Ödenmemiş fatura sayısı (approved + partial)
     odenmemis = db.query(func.count(Invoice.id)).filter(
-        Invoice.status == "approved"
+        Invoice.status.in_(["approved", "partial"])
     ).scalar() or 0
 
     # Kasa bakiyeleri
