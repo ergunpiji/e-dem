@@ -302,7 +302,7 @@ class Invoice(Base):
 
     reference = relationship("Reference", back_populates="invoices")
     vendor = relationship("FinancialVendor", back_populates="invoices")
-    creator = relationship("User")
+    creator = relationship("User", foreign_keys=[created_by])
     bank_account = relationship("BankAccount")
     credit_card = relationship("CreditCard")
     cash_book = relationship("CashBook")
