@@ -1061,7 +1061,9 @@ async def weekly_payment_submit(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Listeyi GM onayına gönder (draft → submitted)."""
+    """Listeyi GM onayına gönder (draft → submitted). GM kendisi gönderemez."""
+    if current_user.is_approver and not current_user.is_admin:
+        raise HTTPException(403, "Listeyi GM kendisine gönderemez; operatör hazırlar.")
     if _get_cycle_status(db) != "draft":
         raise HTTPException(409, "Liste zaten GM onayında")
     _set_cycle_status(db, "submitted")

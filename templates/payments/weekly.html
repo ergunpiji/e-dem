@@ -86,12 +86,12 @@
       </span>
     </div>
     <div class="ms-auto d-flex align-items-center gap-2">
-      {% if cycle_status == 'draft' %}
+      {% if cycle_status == 'draft' and not current_user.is_approver %}
         <form method="post" action="/payments/weekly/submit" class="d-inline"
               onsubmit="return confirm('Liste GM onayına gönderilecek. Devam edilsin mi?');">
           <button class="btn btn-sm btn-primary"><i class="bi bi-send"></i> GM'ye Gönder</button>
         </form>
-      {% elif current_user.is_admin or current_user.is_approver %}
+      {% elif cycle_status == 'submitted' and (current_user.is_admin or current_user.is_approver) %}
         <form method="post" action="/payments/weekly/unsubmit" class="d-inline">
           <button class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-counterclockwise"></i> Hazırlığa Geri Al</button>
         </form>
@@ -110,6 +110,22 @@
     </div>
   </div>
 </div>
+
+{% set gm_locked = current_user.is_approver and cycle_status == 'draft' %}
+
+{% if gm_locked %}
+<!-- GM hazırlık aşamasında listeyi göremez -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body text-center py-5">
+    <i class="bi bi-hourglass-split" style="font-size: 48px; color: #94a3b8;"></i>
+    <h5 class="mt-3 mb-2">Liste Hazırlık Aşamasında</h5>
+    <p class="text-muted mb-0">
+      Operatör listeyi hazırlıyor. <strong>"GM'ye Gönder"</strong> denildiğinde
+      ödemeler burada onayınıza sunulacak.
+    </p>
+  </div>
+</div>
+{% else %}
 
 {% if cycle_status == 'draft' %}
 <!-- Manuel kalem ekleme (sadece hazırlık aşamasında) -->
@@ -634,4 +650,6 @@
   });
   {% endif %}
 </script>
+
+{% endif %}{# gm_locked else #}
 {% endblock %}
