@@ -1061,13 +1061,142 @@ async def weekly_payment_submit(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Listeyi GM onayına gönder (draft → submitted). GM kendisi gönderemez."""
+    """Listeyi GM onayına gönder (draft → submitted). GM kendisi gönderemez.
+    Tüm aktif Genel Müdür'lere bilgilendirme e-postası gönderilir."""
+    import os
+    from email_helper import send_email
+
     if current_user.is_approver and not current_user.is_admin:
         raise HTTPException(403, "Listeyi GM kendisine gönderemez; operatör hazırlar.")
     if _get_cycle_status(db) != "draft":
         raise HTTPException(409, "Liste zaten GM onayında")
     _set_cycle_status(db, "submitted")
     db.commit()
+
+    # GM(ler)e e-posta gönder — özet bilgilerle
+    try:
+        gms = db.query(User).filter(
+            User.is_approver == True,  # noqa: E712
+            User.active == True,  # noqa: E712
+        ).all()
+        gm_emails = [u.email for u in gms if u.email]
+        if gm_emails:
+            weekday = _get_payment_weekday(db)
+            next_date = _next_payment_date(weekday)
+            today = date.today()
+            period = today.strftime("%Y-%m")
+
+            # Özet hesapla — view ile aynı filtreleri kullan
+            inv_q = db.query(Invoice).filter(
+                Invoice.invoice_type == "gelen",
+                Invoice.status.in_(["approved", "partial"]),
+                Invoice.due_date.is_not(None),
+                Invoice.due_date <= next_date,
+            ).all()
+            invoices = [i for i in inv_q if i.remaining > 0 and _show_in_list(i, next_date)]
+            chq_q = db.query(Cheque).filter(
+                Cheque.cheque_type == "verilen",
+                Cheque.status == "beklemede",
+                Cheque.due_date <= next_date,
+            ).all()
+            cheques = [c for c in chq_q if _show_in_list(c, next_date)]
+            cc_q = db.query(CreditCardStatement).filter(
+                CreditCardStatement.status == "unpaid",
+                CreditCardStatement.due_date <= next_date,
+            ).all()
+            cc_stmts = [s for s in cc_q if _show_in_list(s, next_date)]
+            payroll_info = _payroll_due(db, period)
+            pd = db.query(PayrollDecision).filter(PayrollDecision.period == period).first()
+            payroll_show = payroll_info["total"] > 0 and (pd is None or _show_in_list(pd, next_date))
+            manuals = [m for m in db.query(ManualPaymentLine).filter(
+                ManualPaymentLine.status == "open"
+            ).all() if _show_in_list(m, next_date)]
+
+            inv_t = sum(i.remaining for i in invoices)
+            chq_t = sum(c.amount for c in cheques)
+            cc_t = sum(s.total_amount for s in cc_stmts)
+            mn_t = sum(m.amount for m in manuals)
+            pr_t = payroll_info["total"] if payroll_show else 0
+            grand = inv_t + chq_t + cc_t + mn_t + pr_t
+
+            def _fmt(n):
+                return f"₺{n:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+            app_url = (os.environ.get("APP_URL") or "").rstrip("/")
+            link = f"{app_url}/payments/weekly" if app_url else "/payments/weekly"
+
+            subject = f"Prizma Finans — Haftalık Ödeme Listesi onayınız bekliyor ({next_date.strftime('%d.%m.%Y')})"
+            html = f"""
+<div style="font-family:'Segoe UI',Tahoma,Arial,sans-serif;max-width:640px;margin:auto;background:#f1f5f9;padding:24px;">
+  <div style="background:#1A3A5C;color:#fff;padding:18px 22px;border-radius:6px 6px 0 0;">
+    <div style="font-size:18px;font-weight:bold;">PRİZMATİK — Finans Yönetim Programı</div>
+  </div>
+  <div style="background:#1E5F8C;color:#fff;padding:14px 22px;">
+    <div style="font-size:15px;font-weight:bold;">Haftalık Ödeme Listesi Onayınız Bekliyor</div>
+    <div style="font-size:13px;opacity:.9;margin-top:4px;">Sonraki ödeme günü: {next_date.strftime('%d.%m.%Y')}</div>
+  </div>
+  <div style="background:#fff;padding:22px;">
+    <p style="margin:0 0 14px;color:#1e293b;">Sayın Genel Müdür,</p>
+    <p style="margin:0 0 14px;color:#334155;">
+      Operatör ({current_user.name}) bu haftaki ödeme listesini hazırladı ve onayınıza gönderdi.
+    </p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+      <thead>
+        <tr style="background:#f0f4f8;">
+          <th style="text-align:left;padding:8px 12px;font-size:12px;color:#64748b;">Kalem Türü</th>
+          <th style="text-align:right;padding:8px 12px;font-size:12px;color:#64748b;">Adet</th>
+          <th style="text-align:right;padding:8px 12px;font-size:12px;color:#64748b;">Tutar</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td style="padding:8px 12px;border-top:1px solid #e2e8f0;">Faturalar</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{len(invoices)}</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{_fmt(inv_t)}</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #e2e8f0;">Çekler</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{len(cheques)}</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{_fmt(chq_t)}</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #e2e8f0;">KK Ekstreleri</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{len(cc_stmts)}</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{_fmt(cc_t)}</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #e2e8f0;">Manuel</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{len(manuals)}</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{_fmt(mn_t)}</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #e2e8f0;">Personel Maaşı</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{'1' if payroll_show else '0'}</td>
+            <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{_fmt(pr_t)}</td></tr>
+        <tr style="background:#1A3A5C;color:#fff;font-weight:bold;">
+          <td style="padding:10px 12px;">GENEL TOPLAM</td>
+          <td></td>
+          <td style="padding:10px 12px;text-align:right;">{_fmt(grand)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="text-align:center;margin:22px 0 8px;">
+      <a href="{link}" style="display:inline-block;background:#16a34a;color:#fff;padding:12px 26px;border-radius:6px;text-decoration:none;font-weight:bold;">
+        Listeyi Aç ve Onayla
+      </a>
+    </div>
+    <p style="margin:14px 0 0;color:#64748b;font-size:12px;">
+      Bu otomatik bir bildirimdir. Liste, sistemde "GM Onayında" durumuna geçirildi;
+      onay/red kararlarınızı verebilirsiniz.
+    </p>
+  </div>
+</div>
+"""
+            text_body = (
+                f"Sayın Genel Müdür,\n\n"
+                f"Operatör ({current_user.name}) {next_date.strftime('%d.%m.%Y')} ödeme günü için "
+                f"hazırlanan listeyi onayınıza gönderdi.\n\n"
+                f"Toplam: {_fmt(grand)} ({len(invoices)} fatura, {len(cheques)} çek, "
+                f"{len(cc_stmts)} KK ekstresi, {len(manuals)} manuel"
+                f"{', maaş ödemesi' if payroll_show else ''})\n\n"
+                f"Listeyi açmak için: {link}\n"
+            )
+            send_email(gm_emails, subject, html, text_body)
+    except Exception as exc:  # noqa: BLE001
+        # Email hatası submit'i bozmasın
+        print(f"[submit-email] hata: {exc}", flush=True)
+
     return RedirectResponse(url="/payments/weekly", status_code=303)
 
 
