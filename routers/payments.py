@@ -21,7 +21,7 @@ from database import get_db
 from models import (
     User, Invoice, Cheque, CreditCardStatement, CreditCard, CreditCardTxn,
     Employee, SalaryPayment, PayrollDecision, SystemSetting,
-    BankAccount, BankMovement, CashEntry, ManualPaymentLine,
+    BankAccount, BankMovement, CashEntry, ManualPaymentLine, Reference,
     PAYMENT_METHODS,
 )
 from templates_config import templates
@@ -442,6 +442,9 @@ async def weekly_payments_view(
             "cc_total_available": cc_total_available,
             "payment_methods": PAYMENT_METHODS,
             "cycle_status": _get_cycle_status(db),
+            "active_references": db.query(Reference).filter(
+                Reference.status == "aktif"
+            ).order_by(Reference.created_at.desc()).all(),
         },
     )
 
@@ -460,13 +463,19 @@ async def weekly_payment_decide(
 ):
     if action not in ("approve", "reject", "postpone", "method"):
         raise HTTPException(400, "Geçersiz aksiyon")
-    # Onay/Red sadece Genel Müdür yetkisinde; ertele/yöntem değişikliği herkese açık
+    cs = _get_cycle_status(db)
+    # Onay/Red sadece Genel Müdür yetkisinde
     if action in ("approve", "reject") and not current_user.is_approver:
         raise HTTPException(403, "Onay/Red için Genel Müdür yetkisi gereklidir.")
     # Onay/Red yalnızca liste GM onayına gönderildiğinde mümkün
-    if action in ("approve", "reject") and _get_cycle_status(db) != "submitted":
+    if action in ("approve", "reject") and cs != "submitted":
         raise HTTPException(
             409, "Önce listeyi GM onayına gönderin. (Liste şu an hazırlık aşamasında)"
+        )
+    # Submitted modunda ertele/yöntem değişikliği yalnızca GM yapabilir
+    if action in ("postpone", "method") and cs == "submitted" and not current_user.is_approver:
+        raise HTTPException(
+            403, "Liste GM onayında; değişiklik için GM onayı veya 'Hazırlığa Geri Al' gerekir."
         )
 
     if kalem_type == "invoice":
@@ -966,7 +975,12 @@ async def weekly_payment_preparer_note(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Listeyi hazırlayan kişinin GM'e yönelik notu — herkes kaydedebilir."""
+    """Listeyi hazırlayan kişinin GM'e yönelik notu — herkes kaydedebilir.
+    GM onayına gönderildikten sonra yalnızca GM düzenleyebilir."""
+    if _get_cycle_status(db) == "submitted" and not current_user.is_approver:
+        raise HTTPException(
+            403, "Liste GM onayında; not değişikliği için GM yetkisi veya 'Hazırlığa Geri Al' gerekir."
+        )
     note_clean = (note or "").strip() or None
     if kalem_type == "invoice":
         item = db.query(Invoice).get(int(kalem_id))
@@ -1002,13 +1016,19 @@ async def weekly_manual_new(
     payment_method: str = Form("banka"),
     party: str = Form(""),
     due_date: str = Form(""),
+    ref_id: str = Form(""),
     notes: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Liste hazırlık aşamasındayken kullanıcı manuel ödeme kalemi ekler."""
-    if _get_cycle_status(db) != "draft":
-        raise HTTPException(409, "Manuel kalem yalnızca hazırlık aşamasında eklenir")
+    """Liste hazırlık aşamasındayken kullanıcı manuel ödeme kalemi ekler.
+    Referans seçilirse o referansa atanır; seçilmezse ödeme yapıldığında
+    genel giderlere düşer (apply_manual_payment içinde GeneralExpense yaratılır)."""
+    cs = _get_cycle_status(db)
+    if cs == "submitted" and not current_user.is_approver:
+        raise HTTPException(
+            409, "Liste GM onayında; manuel kalem eklemek için GM yetkisi gerekir."
+        )
     if not description.strip():
         raise HTTPException(400, "Açıklama zorunlu")
     if amount <= 0:
@@ -1022,12 +1042,21 @@ async def weekly_manual_new(
             dd = date.fromisoformat(due_date.strip())
         except ValueError:
             raise HTTPException(400, "Geçersiz vade tarihi")
+    rid = None
+    if (ref_id or "").strip():
+        try:
+            rid = int(ref_id)
+            if not db.query(Reference).get(rid):
+                rid = None
+        except (ValueError, TypeError):
+            rid = None
     line = ManualPaymentLine(
         description=description.strip(),
         party=party.strip() or None,
         amount=round(amount, 2),
         payment_method=payment_method,
         due_date=dd,
+        ref_id=rid,
         notes=notes.strip() or None,
         status="open",
         created_by=current_user.id,
@@ -1043,9 +1072,10 @@ async def weekly_manual_delete(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Manuel kalemi sil — sadece henüz GM kararı yokken (open) ve liste draft'ken."""
-    if _get_cycle_status(db) != "draft":
-        raise HTTPException(409, "Yalnızca hazırlık aşamasında silinebilir")
+    """Manuel kalemi sil — operatör hazırlık'ta, GM submitted'ta da silebilir."""
+    cs = _get_cycle_status(db)
+    if cs == "submitted" and not current_user.is_approver:
+        raise HTTPException(409, "Liste GM onayında; silme için GM yetkisi gerekir")
     line = db.query(ManualPaymentLine).get(line_id)
     if not line:
         raise HTTPException(404, "Manuel kalem bulunamadı")

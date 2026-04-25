@@ -26,6 +26,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(120), nullable=False)
+    surname = Column(String(120), nullable=True)
+    title = Column(String(150), nullable=True)
+    phone = Column(String(40), nullable=True)
     email = Column(String(200), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
@@ -792,6 +795,7 @@ class ManualPaymentLine(Base):
     amount = Column(Float, nullable=False)
     payment_method = Column(String(20), default="banka", nullable=False)
     due_date = Column(Date, nullable=True)
+    ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     notes = Column(Text)
     status = Column(String(20), default="open", nullable=False)  # open | paid | cancelled
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)

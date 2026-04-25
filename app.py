@@ -149,6 +149,7 @@ from routers import hbf as hbf_router
 from routers import advances as advances_router
 from routers import payments as payments_router
 from routers import payment_instructions as payment_instructions_router
+from routers import profile as profile_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -168,3 +169,4 @@ app.include_router(hbf_router.router)
 app.include_router(advances_router.router)
 app.include_router(payments_router.router)
 app.include_router(payment_instructions_router.router)
+app.include_router(profile_router.router)

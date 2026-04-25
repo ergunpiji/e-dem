@@ -48,20 +48,20 @@
     <table class="table table-sm mb-0 no-sort">
       <thead class="table-light">
         <tr>
-          <th>Kart</th>
-          <th class="text-end">Limit</th>
-          <th class="text-end">Kullanılan</th>
-          <th class="text-end">Kalan</th>
+          <th class="text-center">Kart</th>
+          <th class="text-center">Limit</th>
+          <th class="text-center">Kullanılan</th>
+          <th class="text-center">Kalan</th>
           <th class="vade-cell text-center">Son Ödeme Tarihi</th>
         </tr>
       </thead>
       <tbody>
         {% for c in card_summary %}
         <tr>
-          <td><a href="/credit-cards/{{ c.id }}" class="text-decoration-none">{{ c.name }}</a></td>
-          <td class="text-end">{{ c.limit | money }}</td>
-          <td class="text-end text-danger">{{ c.used | money }}</td>
-          <td class="text-end fw-semibold" style="color:{% if c.available > 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ c.available | money }}</td>
+          <td class="text-center"><a href="/credit-cards/{{ c.id }}" class="text-decoration-none">{{ c.name }}</a></td>
+          <td class="text-center">{{ c.limit | money }}</td>
+          <td class="text-center text-danger">{{ c.used | money }}</td>
+          <td class="text-center fw-semibold" style="color:{% if c.available > 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ c.available | money }}</td>
           <td class="vade-cell text-center">{% if c.next_due %}{{ c.next_due | date_tr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
@@ -127,8 +127,8 @@
 </div>
 {% else %}
 
-{% if cycle_status == 'draft' %}
-<!-- Manuel kalem ekleme (sadece hazırlık aşamasında) -->
+{% if cycle_status == 'draft' or current_user.is_approver %}
+<!-- Manuel kalem ekleme — hazırlıkta operatör; submitted'ta GM ekleyebilir -->
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-transparent">
     <button class="btn btn-sm btn-outline-secondary" type="button"
@@ -166,12 +166,25 @@
           <label class="form-label small">Vade</label>
           <input type="date" name="due_date" class="form-control form-control-sm">
         </div>
-        <div class="col-md-9">
+        <div class="col-md-4">
+          <label class="form-label small">Referans <span class="text-muted">(opsiyonel)</span></label>
+          <select name="ref_id" class="form-select form-select-sm">
+            <option value="">— Yok (Genel Giderlere düşsün) —</option>
+            {% for r in active_references %}
+            <option value="{{ r.id }}">{{ r.ref_no }} · {{ r.title[:40] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-5">
           <label class="form-label small">Notlar</label>
           <input type="text" name="notes" class="form-control form-control-sm">
         </div>
         <div class="col-md-3 d-flex align-items-end">
           <button class="btn btn-primary btn-sm w-100"><i class="bi bi-plus"></i> Listeye Ekle</button>
+        </div>
+        <div class="col-12 small text-muted mt-1">
+          <i class="bi bi-info-circle"></i> Referans seçilirse harcama o referansa atanır.
+          Seçilmezse ödeme yapıldığında <strong>Genel Giderler</strong>'e otomatik kaydedilir.
         </div>
       </form>
     </div>
@@ -267,6 +280,8 @@
           </td>
           <td class="text-end">
             <div class="d-flex gap-1 justify-content-end action-btn-group">
+              {% set _can_edit = (cycle_status == 'draft') or current_user.is_approver %}
+              {% if _can_edit %}
               <button type="button" class="btn btn-sm {% if it.preparer_note %}btn-warning{% else %}btn-outline-secondary{% endif %}"
                       data-bs-toggle="modal" data-bs-target="#preparerNoteModal"
                       data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
@@ -275,6 +290,11 @@
                       title="{% if it.preparer_note %}Not (mevcut): {{ it.preparer_note }}{% else %}GM için not düş{% endif %}">
                 <i class="bi bi-{% if it.preparer_note %}chat-text-fill{% else %}chat-text{% endif %}"></i>
               </button>
+              {% elif it.preparer_note %}
+              <span class="text-muted small" title="Hazırlayan notu (salt görüntü): {{ it.preparer_note }}">
+                <i class="bi bi-chat-text-fill text-warning"></i>
+              </span>
+              {% endif %}
               {% if it.actionable and current_user.is_approver and cycle_status == 'submitted' %}
               <button type="button" class="btn btn-sm btn-success"
                       data-bs-toggle="modal" data-bs-target="#approveModal"
@@ -293,6 +313,7 @@
               {% elif cycle_status == 'draft' and current_user.is_approver %}
               <span class="text-muted small fst-italic">Liste hazırlık aşamasında</span>
               {% endif %}
+              {% if _can_edit %}
               <button type="button" class="btn btn-sm btn-outline-secondary"
                       data-bs-toggle="modal" data-bs-target="#postponeModal"
                       data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
@@ -303,7 +324,8 @@
                       data-current-method="{{ it.method_code or '' }}"
                       data-amount-raw="{{ it.amount }}"
                       title="Yöntem"><i class="bi bi-credit-card"></i></button>
-              {% if it.kalem_type == 'manual' and it.manual_can_delete and cycle_status == 'draft' %}
+              {% endif %}
+              {% if it.kalem_type == 'manual' and it.manual_can_delete and _can_edit %}
               <form method="post" action="/payments/weekly/manual/{{ it.kalem_id }}/delete" class="d-inline"
                     onsubmit="return confirm('Bu manuel kalemi silmek istiyor musun?');">
                 <button class="btn btn-sm btn-outline-danger" title="Manuel kalemi sil"><i class="bi bi-trash"></i></button>

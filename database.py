@@ -254,6 +254,12 @@ def _migrate(engine) -> None:
         "ALTER TABLE credit_card_txns ADD COLUMN IF NOT EXISTS instruction_id INTEGER",
         "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS created_by_instruction_id INTEGER",
         "ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS instruction_id INTEGER",
+        # User profil bilgileri
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS surname VARCHAR(120)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS title VARCHAR(150)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(40)",
+        # ManualPaymentLine referans bağlantısı
+        "ALTER TABLE manual_payment_lines ADD COLUMN IF NOT EXISTS ref_id INTEGER",
     ]
     with engine.begin() as conn:
         for sql in migrations:

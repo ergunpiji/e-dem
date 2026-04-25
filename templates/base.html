@@ -56,8 +56,45 @@
 
     .sidebar-divider { border-top: 1px solid rgba(255,255,255,.08); margin: 8px 0; }
     .sidebar-bottom { margin-top: auto; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.10); background: rgba(0,0,0,.12); }
-    .sidebar-user { font-size: 12.5px; color: rgba(255,255,255,.6); }
-    .sidebar-user strong { display: block; color: rgba(255,255,255,.9); font-size: 13px; }
+    .sidebar-user-btn {
+      width: 100%; background: transparent; border: 0; padding: 6px 4px;
+      display: flex; align-items: center; gap: 10px;
+      color: rgba(255,255,255,.85); text-align: left; cursor: pointer;
+      border-radius: 6px; transition: background .12s;
+    }
+    .sidebar-user-btn:hover { background: rgba(255,255,255,.08); }
+    .sidebar-user-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #6366f1; color: #fff; font-weight: 700; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .sidebar-user-info { flex: 1; min-width: 0; line-height: 1.2; }
+    .sidebar-user-info strong { display: block; color: #fff; font-size: 13px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sidebar-user-info span { font-size: 11px; color: rgba(255,255,255,.55); }
+    .sidebar-user-btn .bi { color: rgba(255,255,255,.5); font-size: 12px; }
+    /* Profil modal */
+    .profile-modal .modal-content { border-radius: 14px; overflow: hidden; border: 0; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+    .profile-header {
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      color: #fff; padding: 32px 22px 24px; text-align: center; position: relative;
+    }
+    .profile-header .btn-close { position: absolute; top: 14px; right: 14px; }
+    .profile-avatar-big {
+      width: 92px; height: 92px; border-radius: 50%;
+      background: #6366f1; box-shadow: 0 0 0 6px rgba(99,102,241,.18);
+      color: #fff; font-weight: 700; font-size: 32px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .profile-name { font-size: 18px; font-weight: 700; margin-top: 14px; }
+    .profile-role { font-size: 13px; color: rgba(255,255,255,.55); margin-top: 2px; }
+    .profile-form-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .04em; color: #64748b; margin-bottom: 4px; }
+    .profile-logout {
+      display: block; text-align: center; padding: 14px;
+      color: #dc2626; font-weight: 600; text-decoration: none;
+    }
+    .profile-logout:hover { color: #b91c1c; background: #fef2f2; }
 
     .main-content { margin-left: var(--sidebar-width); min-height: 100vh; }
     .topbar {
@@ -217,13 +254,19 @@
 
   <div class="sidebar-bottom">
     {% if current_user %}
-    <div class="sidebar-user">
-      <strong>{{ current_user.name }}</strong>
-      {{ "Admin" if current_user.is_admin else "Kullanıcı" }}
-    </div>
-    <a href="/logout" class="btn btn-sm btn-outline-secondary mt-2 w-100" style="font-size:12px;">
-      <i class="bi bi-box-arrow-right"></i> Çıkış Yap
-    </a>
+    {% set _full_name = (current_user.name or '') ~ (' ' ~ current_user.surname if current_user.surname else '') %}
+    {% set _first = (current_user.name or 'U')[0] %}
+    {% set _second = ((current_user.surname or '')[0] if current_user.surname else ((current_user.name or '')[1] if (current_user.name or '')|length > 1 else '')) %}
+    {% set _initials = (_first ~ _second) | upper %}
+    {% set _role_label = "Sistem Yöneticisi" if current_user.is_admin else ("Genel Müdür" if current_user.is_approver else "Kullanıcı") %}
+    <button type="button" class="sidebar-user-btn" data-bs-toggle="modal" data-bs-target="#profileModal">
+      <div class="sidebar-user-avatar">{{ _initials }}</div>
+      <div class="sidebar-user-info">
+        <strong>{{ _full_name }}</strong>
+        <span>{{ _role_label }}</span>
+      </div>
+      <i class="bi bi-chevron-right"></i>
+    </button>
     {% endif %}
   </div>
 </nav>
@@ -252,6 +295,47 @@
     {% block content %}{% endblock %}
   </div>
 </div>
+
+<!-- Profil modal -->
+{% if current_user %}
+<div class="modal fade profile-modal" id="profileModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+    <div class="modal-content">
+      <div class="profile-header">
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <div class="profile-avatar-big">{{ _initials }}</div>
+        <div class="profile-name">{{ _full_name }}</div>
+        <div class="profile-role">{{ _role_label }}</div>
+      </div>
+      <form method="post" action="/profile" class="p-3">
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="profile-form-label">Ad</label>
+            <input type="text" name="name" class="form-control" value="{{ current_user.name or '' }}" required>
+          </div>
+          <div class="col-6">
+            <label class="profile-form-label">Soyad</label>
+            <input type="text" name="surname" class="form-control" value="{{ current_user.surname or '' }}">
+          </div>
+          <div class="col-12">
+            <label class="profile-form-label">Ünvan</label>
+            <input type="text" name="title" class="form-control" value="{{ current_user.title or '' }}">
+          </div>
+          <div class="col-12">
+            <label class="profile-form-label">Telefon</label>
+            <input type="tel" name="phone" class="form-control" value="{{ current_user.phone or '' }}" placeholder="+90 5XX XXX XX XX">
+          </div>
+          <div class="col-12 mt-3">
+            <button class="btn btn-primary w-100"><i class="bi bi-check-lg"></i> Kaydet</button>
+          </div>
+        </div>
+      </form>
+      <hr class="m-0">
+      <a href="/logout" class="profile-logout"><i class="bi bi-box-arrow-right"></i> Çıkış Yap</a>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/static/js/table-sort.js"></script>
