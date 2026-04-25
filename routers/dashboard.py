@@ -2,17 +2,18 @@
 Dashboard — GET /dashboard
 """
 
-from datetime import date, datetime
+from datetime import date
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, extract
 
 from auth import get_current_user
 from database import get_db
 from models import (
     User, Reference, Invoice, CashBook, CashEntry,
-    BankAccount, BankMovement, Employee
+    BankAccount, BankMovement, GeneralExpense,
+    CreditCard, CreditCardStatement, CreditCardTxn,
 )
 from templates_config import templates
 
@@ -41,6 +42,20 @@ def _bank_balance(db, account_id):
     return opening + ins - outs
 
 
+def _cc_outstanding(db, card_id):
+    """Ödenmemiş ekstreler + ekstreye atanmamış (refund hariç) işlemler."""
+    unpaid = db.query(func.sum(CreditCardStatement.total_amount)).filter(
+        CreditCardStatement.card_id == card_id,
+        CreditCardStatement.status == "unpaid",
+    ).scalar() or 0
+    unassigned = db.query(func.sum(CreditCardTxn.amount)).filter(
+        CreditCardTxn.card_id == card_id,
+        CreditCardTxn.statement_id == None,  # noqa: E711
+        CreditCardTxn.is_refund == False,  # noqa: E712
+    ).scalar() or 0
+    return unpaid + unassigned
+
+
 @router.get("/dashboard", response_class=HTMLResponse, name="dashboard")
 async def dashboard(
     request: Request,
@@ -48,63 +63,61 @@ async def dashboard(
     db: Session = Depends(get_db),
 ):
     today = date.today()
-    year_start = date(today.year, 1, 1)
+    year = today.year
 
-    # Referans istatistikleri
-    ref_aktif = db.query(func.count(Reference.id)).filter(
-        Reference.status == "aktif"
-    ).scalar() or 0
-    ref_tamamlandi = db.query(func.count(Reference.id)).filter(
-        Reference.status == "tamamlandi"
-    ).scalar() or 0
+    # YTD Kâr — reports.py P&L mantığıyla aynı
+    ytd_invoices = db.query(Invoice).filter(
+        Invoice.status.in_(["approved", "partial", "paid"]),
+        extract("year", Invoice.invoice_date) == year,
+    ).all()
+    kesilen = sum(i.total_with_vat for i in ytd_invoices if i.invoice_type in ("kesilen", "komisyon"))
+    iade_kesilen = sum(i.total_with_vat for i in ytd_invoices if i.invoice_type == "iade_kesilen")
+    gelen = sum(i.total_with_vat for i in ytd_invoices if i.invoice_type == "gelen")
+    iade_gelen = sum(i.total_with_vat for i in ytd_invoices if i.invoice_type == "iade_gelen")
+    net_gelir = kesilen - iade_kesilen
+    net_maliyet = gelen - iade_gelen
 
-    # Fatura istatistikleri (yıl içi) — KDV dahil, partial dahil
-    _kesilen_invs = db.query(Invoice).filter(
+    ytd_expenses = db.query(GeneralExpense).filter(
+        extract("year", GeneralExpense.expense_date) == year
+    ).all()
+    toplam_gider = sum(e.amount for e in ytd_expenses)
+    ytd_kar = net_gelir - net_maliyet - toplam_gider
+
+    # Tahsilat beklenen — kesilen/komisyon faturalarının kalan tutarı
+    receivable_invs = db.query(Invoice).filter(
         Invoice.invoice_type.in_(["kesilen", "komisyon"]),
-        Invoice.status.in_(["approved", "partial", "paid"]),
-        Invoice.invoice_date >= year_start,
+        Invoice.status.in_(["approved", "partial"]),
     ).all()
-    kesilen_yil = sum(i.total_with_vat for i in _kesilen_invs)
+    tahsilat_beklenen = sum(i.remaining for i in receivable_invs)
 
-    _gelen_invs = db.query(Invoice).filter(
+    # Ödenecek tutar — gelen faturaların kalan tutarı + tüm KK bakiyeleri
+    payable_invs = db.query(Invoice).filter(
         Invoice.invoice_type == "gelen",
-        Invoice.status.in_(["approved", "partial", "paid"]),
-        Invoice.invoice_date >= year_start,
+        Invoice.status.in_(["approved", "partial"]),
     ).all()
-    gelen_yil = sum(i.total_with_vat for i in _gelen_invs)
+    fatura_odeme = sum(i.remaining for i in payable_invs)
 
-    # Ödenmemiş fatura sayısı (approved + partial)
-    odenmemis = db.query(func.count(Invoice.id)).filter(
-        Invoice.status.in_(["approved", "partial"])
-    ).scalar() or 0
+    cards = db.query(CreditCard).all()
+    kk_bakiye = sum(_cc_outstanding(db, c.id) for c in cards)
 
-    # Kasa bakiyeleri
+    odeme_yapilacak = fatura_odeme + kk_bakiye
+
+    # Yıl içi kesilen/gelen toplamları (bilgi amaçlı, alt satır)
+    kesilen_yil = net_gelir
+    gelen_yil = net_maliyet
+
+    # Kasa & banka bakiyeleri
     cash_books = db.query(CashBook).all()
     cash_total = sum(_cash_balance(db, b.id) for b in cash_books)
-
-    # Banka bakiyeleri
     bank_accounts = db.query(BankAccount).all()
     bank_total = sum(_bank_balance(db, a.id) for a in bank_accounts)
 
-    # Aktif çalışan
-    aktif_calisan = db.query(func.count(Employee.id)).filter(
-        Employee.active == True  # noqa: E712
-    ).scalar() or 0
-
-    # Son referanslar
+    # Son referanslar & faturalar
     son_referanslar = (
-        db.query(Reference)
-        .order_by(Reference.created_at.desc())
-        .limit(5)
-        .all()
+        db.query(Reference).order_by(Reference.created_at.desc()).limit(5).all()
     )
-
-    # Son faturalar
     son_faturalar = (
-        db.query(Invoice)
-        .order_by(Invoice.created_at.desc())
-        .limit(5)
-        .all()
+        db.query(Invoice).order_by(Invoice.created_at.desc()).limit(5).all()
     )
 
     return templates.TemplateResponse(
@@ -113,16 +126,16 @@ async def dashboard(
             "request": request,
             "current_user": current_user,
             "page_title": "Dashboard",
-            "ref_aktif": ref_aktif,
-            "ref_tamamlandi": ref_tamamlandi,
+            "ytd_kar": ytd_kar,
+            "tahsilat_beklenen": tahsilat_beklenen,
+            "odeme_yapilacak": odeme_yapilacak,
+            "kk_bakiye": kk_bakiye,
             "kesilen_yil": kesilen_yil,
             "gelen_yil": gelen_yil,
-            "odenmemis": odenmemis,
             "cash_total": cash_total,
             "bank_total": bank_total,
-            "aktif_calisan": aktif_calisan,
             "son_referanslar": son_referanslar,
             "son_faturalar": son_faturalar,
-            "year": today.year,
+            "year": year,
         },
     )
