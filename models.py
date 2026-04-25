@@ -170,6 +170,7 @@ class CreditCardStatement(Base):
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)
     gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
 
     card = relationship("CreditCard", back_populates="statements")
     txns = relationship("CreditCardTxn", back_populates="statement")
@@ -223,6 +224,7 @@ class Cheque(Base):
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)
     gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
 
     vendor = relationship("FinancialVendor", back_populates="cheques")
     customer = relationship("Customer", back_populates="cheques")
@@ -302,6 +304,7 @@ class Invoice(Base):
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)  # nakit|banka|kredi_karti|cek|acik_hesap
     gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)  # kısmi onay için: bu kadar onaylandı, kalan ertelendi
 
     reference = relationship("Reference", back_populates="invoices")
     vendor = relationship("FinancialVendor", back_populates="invoices")
@@ -750,6 +753,7 @@ class PayrollDecision(Base):
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)
     gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
 
 
 # ---------------------------------------------------------------------------

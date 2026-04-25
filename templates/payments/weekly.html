@@ -98,19 +98,22 @@
       <i class="bi bi-info-circle"></i> Onayı Genel Müdür verir
     </span>
     {% endif %}
+    <a href="/payments/weekly/export" class="btn btn-sm btn-outline-success ms-auto" title="Excel olarak indir">
+      <i class="bi bi-file-earmark-excel"></i> Excel
+    </a>
     {% if current_user.is_approver %}
-    <button type="button" id="bulk-approve-btn" class="btn btn-sm btn-success ms-auto">
+    <button type="button" id="bulk-approve-btn" class="btn btn-sm btn-success">
       <i class="bi bi-check-all"></i> Seçilenleri Onayla (<span id="selected-count">0</span>)
     </button>
     {% endif %}
-    <span class="fs-5 fw-bold text-danger ms-{% if current_user.is_approver %}2{% else %}auto{% endif %}">Toplam: {{ grand_total | money }}</span>
+    <span class="fs-5 fw-bold text-danger ms-2">Toplam: {{ grand_total | money }}</span>
   </div>
 
   <div class="card-body p-0">
-    <table class="table table-hover mb-0 no-sort">
+    <table class="table table-hover mb-0">
       <thead class="table-light">
         <tr>
-          <th style="width:36px;">{% if current_user.is_approver %}<input type="checkbox" id="check-all" class="form-check-input">{% endif %}</th>
+          <th class="no-sort" style="width:36px;">{% if current_user.is_approver %}<input type="checkbox" id="check-all" class="form-check-input">{% endif %}</th>
           <th>Tip</th>
           <th>Tedarikçi / İlgili</th>
           <th>Referans</th>
@@ -118,7 +121,7 @@
           <th class="text-end">Tutar</th>
           <th>Yöntem</th>
           <th>Durum</th>
-          <th class="text-end" style="min-width:230px;">Aksiyonlar</th>
+          <th class="text-end no-sort" style="min-width:230px;">Aksiyonlar</th>
         </tr>
       </thead>
       <tbody>
@@ -146,6 +149,8 @@
             {% set badge_title = it.gm_decision_note or "" %}
             {% if it.gm_decision == 'postponed' %}
               <span class="badge bg-secondary gm-badge-decided" {% if badge_title %}title="{{ badge_title }}"{% endif %}>Ertelendi → {{ it.gm_postpone_until | date_tr }}</span>
+            {% elif it.gm_decision == 'approved' and it.gm_approved_amount %}
+              <span class="badge bg-info text-dark gm-badge-decided" title="{% if badge_title %}{{ badge_title }} | {% endif %}Kalan ödeme {{ it.gm_postpone_until | date_tr }} tarihine ertelendi"><i class="bi bi-check-lg"></i> Kısmi: {{ it.gm_approved_amount | money }} → kalan {{ it.gm_postpone_until | date_tr }}</span>
             {% elif it.gm_decision == 'approved' %}
               <span class="badge bg-success gm-badge-decided" {% if badge_title %}title="Not: {{ badge_title }}"{% endif %}><i class="bi bi-check-lg"></i> Onaylandı{% if badge_title %} <i class="bi bi-chat-text"></i>{% endif %}</span>
             {% elif it.gm_decision == 'rejected' %}
@@ -161,6 +166,7 @@
                       data-bs-toggle="modal" data-bs-target="#approveModal"
                       data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
                       data-party="{{ it.party }}" data-amount="{{ it.amount | money }}"
+                      data-amount-raw="{{ it.amount }}"
                       title="Onayla"><i class="bi bi-check-lg"></i></button>
               <form method="post" action="/payments/weekly/decide" class="d-inline"
                     onsubmit="return confirm('Bu kalemi reddetmek istediğinizden emin misiniz?');">
@@ -218,10 +224,22 @@
           <div class="fw-semibold" id="approve-party">—</div>
         </div>
         <div class="mb-3">
-          <div class="text-muted small">Tutar</div>
+          <div class="text-muted small">Toplam Tutar</div>
           <div class="fw-bold fs-5" id="approve-amount">—</div>
         </div>
-        <label class="form-label">Not (opsiyonel)</label>
+        <label class="form-label">Onaylanacak Tutar</label>
+        <input type="number" step="0.01" min="0.01" name="approved_amount" id="approve-amount-input" class="form-control" required>
+        <div class="form-text">Tam tutarı bırakın → tam onay. Daha az girilirse kalanı erteleme tarihi sorulur.</div>
+
+        <div id="partial-postpone-section" class="mt-3" style="display:none;">
+          <div class="alert alert-warning py-2 mb-2">
+            <strong>Kısmi onay</strong> — kalan <strong id="partial-remaining">—</strong> seçilen tarihte yeniden listeye gelecek.
+          </div>
+          <label class="form-label">Kalanın Erteleme Tarihi</label>
+          <input type="date" name="postpone_date" id="approve-postpone-date" class="form-control" value="{{ next_payment_after_iso }}">
+        </div>
+
+        <label class="form-label mt-3">Not (opsiyonel)</label>
         <textarea name="note" class="form-control" rows="3" placeholder="Onaya dair açıklama..."></textarea>
       </div>
       <div class="modal-footer">
@@ -359,16 +377,38 @@
   document.getElementById('method-select').addEventListener('change', ccCheckLimit);
 
   {% if current_user.is_approver %}
-  // ---- Onay Modal ----
+  // ---- Onay Modal (kısmi onay desteği) ----
+  function fmtTL(n) {
+    return '₺' + Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  var approveFullAmount = 0;
   document.getElementById('approveModal').addEventListener('show.bs.modal', function (e) {
     var btn = e.relatedTarget;
     document.getElementById('approve-kalem-type').value = btn.dataset.kalemType;
     document.getElementById('approve-kalem-id').value = btn.dataset.kalemId;
     document.getElementById('approve-party').textContent = btn.dataset.party || '—';
     document.getElementById('approve-amount').textContent = btn.dataset.amount || '—';
-    // Notu sıfırla
+    approveFullAmount = parseFloat(btn.dataset.amountRaw || '0');
+    var inp = document.getElementById('approve-amount-input');
+    inp.value = approveFullAmount.toFixed(2);
+    inp.max = approveFullAmount.toFixed(2);
+    document.getElementById('partial-postpone-section').style.display = 'none';
+    document.getElementById('approve-postpone-date').value = "{{ next_payment_after_iso }}";
     var ta = document.querySelector('#approveModal textarea[name="note"]');
     if (ta) ta.value = '';
+  });
+  document.getElementById('approve-amount-input').addEventListener('input', function () {
+    var v = parseFloat(this.value || '0');
+    var section = document.getElementById('partial-postpone-section');
+    var dateInp = document.getElementById('approve-postpone-date');
+    if (v > 0 && v < approveFullAmount - 0.005) {
+      section.style.display = 'block';
+      document.getElementById('partial-remaining').textContent = fmtTL(approveFullAmount - v);
+      dateInp.required = true;
+    } else {
+      section.style.display = 'none';
+      dateInp.required = false;
+    }
   });
 
   // ---- Toplu Onay (modal) ----

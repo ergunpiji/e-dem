@@ -76,9 +76,28 @@ def _show_in_list(item, ref_date: date) -> bool:
     return True
 
 
-def _is_actionable(item) -> bool:
-    """Henüz karar verilmemiş veya ertelenmiş — checkbox/onay butonu görünür."""
-    return item.gm_decision in (None, "postponed")
+def _is_actionable(item, ref_date: date) -> bool:
+    """Yeni karar verilebilir mi? (Onayla/Reddet butonu + checkbox görünür)
+    - Karar verilmemiş kalemler: actionable
+    - Ertelenmiş + vade geldi: actionable (yeniden karar)
+    - Kısmi onay + vade geldi: actionable (kalan için karar)
+    - Tam onay veya henüz vadeye gelmemiş erteleme: not actionable
+    """
+    d = item.gm_decision
+    if d is None:
+        return True
+    if d == "rejected":
+        return False
+    pp = getattr(item, "gm_postpone_until", None)
+    if d == "postponed":
+        return bool(pp and pp <= ref_date)
+    if d == "approved":
+        # Kısmi onaylı (gm_approved_amount set) ve vade geldi → tekrar karar zamanı
+        approved_amt = getattr(item, "gm_approved_amount", None)
+        if approved_amt and pp and pp <= ref_date:
+            return True
+        return False
+    return False
 
 
 def _cash_total(db) -> float:
@@ -198,8 +217,9 @@ async def weekly_payments_view(
             "method_override": inv.gm_method_override,
             "gm_decision": inv.gm_decision,
             "gm_postpone_until": inv.gm_postpone_until,
-            "actionable": _is_actionable(inv),
+            "actionable": _is_actionable(inv, next_date),
             "gm_decision_note": inv.gm_decision_note,
+            "gm_approved_amount": inv.gm_approved_amount,
         })
 
     for c in cheques:
@@ -220,8 +240,9 @@ async def weekly_payments_view(
             "method_override": c.gm_method_override,
             "gm_decision": c.gm_decision,
             "gm_postpone_until": c.gm_postpone_until,
-            "actionable": _is_actionable(c),
+            "actionable": _is_actionable(c, next_date),
             "gm_decision_note": c.gm_decision_note,
+            "gm_approved_amount": c.gm_approved_amount,
         })
 
     for s in cc_stmts:
@@ -241,8 +262,9 @@ async def weekly_payments_view(
             "method_override": s.gm_method_override,
             "gm_decision": s.gm_decision,
             "gm_postpone_until": s.gm_postpone_until,
-            "actionable": _is_actionable(s),
+            "actionable": _is_actionable(s, next_date),
             "gm_decision_note": s.gm_decision_note,
+            "gm_approved_amount": s.gm_approved_amount,
         })
 
     if payroll_show:
@@ -263,8 +285,9 @@ async def weekly_payments_view(
             "method_override": payroll_decision.gm_method_override if payroll_decision else None,
             "gm_decision": payroll_decision.gm_decision if payroll_decision else None,
             "gm_postpone_until": payroll_decision.gm_postpone_until if payroll_decision else None,
-            "actionable": _is_actionable(payroll_decision) if payroll_decision else True,
+            "actionable": _is_actionable(payroll_decision, next_date) if payroll_decision else True,
             "gm_decision_note": payroll_decision.gm_decision_note if payroll_decision else None,
+            "gm_approved_amount": payroll_decision.gm_approved_amount if payroll_decision else None,
         })
 
     # Vade tarihine göre sırala (maaş sona)
@@ -279,17 +302,34 @@ async def weekly_payments_view(
     card_summary = []
     for c in cards:
         used = _cc_outstanding(db, c.id)
-        # Sonraki ödenmemiş ekstrenin vadesi
+        # Sonraki ödenmemiş ekstrenin vadesi; yoksa kartın statement_day + payment_offset
+        # ayarlarından bir sonraki ödeme tarihini hesapla.
         next_stmt = db.query(CreditCardStatement).filter(
             CreditCardStatement.card_id == c.id,
             CreditCardStatement.status == "unpaid",
         ).order_by(CreditCardStatement.due_date.asc()).first()
+        if next_stmt:
+            next_due = next_stmt.due_date
+        elif c.statement_day:
+            sd = c.statement_day
+            offset = c.payment_offset_days or 10
+            t = date.today()
+            stmt_month = t.month if t.day <= sd else (t.month % 12 + 1)
+            stmt_year = t.year + (1 if (t.day > sd and t.month == 12) else 0)
+            try:
+                stmt_d = date(stmt_year, stmt_month, sd)
+            except ValueError:
+                import calendar as _cal
+                stmt_d = date(stmt_year, stmt_month, _cal.monthrange(stmt_year, stmt_month)[1])
+            next_due = stmt_d + timedelta(days=offset)
+        else:
+            next_due = None
         card_summary.append({
             "id": c.id, "name": c.name,
             "limit": c.credit_limit or 0,
             "used": used,
             "available": (c.credit_limit or 0) - used,
-            "next_due": next_stmt.due_date if next_stmt else None,
+            "next_due": next_due,
         })
     cc_total_used = sum(c["used"] for c in card_summary)
     cc_total_available = sum(c["available"] for c in card_summary)
@@ -325,6 +365,7 @@ async def weekly_payment_decide(
     postpone_date: str = Form(""),
     method_override: str = Form(""),
     note: str = Form(""),
+    approved_amount: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -355,11 +396,42 @@ async def weekly_payment_decide(
     now = datetime.utcnow()
     note_clean = (note or "").strip() or None
     if action == "approve":
+        # Kalemin tam tutarı (kısmi onayda kıyas için)
+        if kalem_type == "invoice":
+            full_amount = item.remaining
+        elif kalem_type == "cheque":
+            full_amount = item.amount
+        elif kalem_type == "cc_statement":
+            full_amount = item.total_amount
+        else:  # payroll
+            full_amount = _payroll_due(db, item.period)["total"]
+
+        # approved_amount opsiyonel: boş veya tam tutar → tam onay; daha az → kısmi
+        try:
+            req_amt = float(approved_amount) if (approved_amount or "").strip() else full_amount
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, "Geçersiz onay tutarı") from exc
+        if req_amt <= 0 or req_amt > round(full_amount + 0.01, 2):
+            raise HTTPException(400, "Onay tutarı 0 ile tam tutar arasında olmalı")
+
+        is_partial = req_amt < round(full_amount - 0.01, 2)
         item.gm_decision = "approved"
         item.gm_decision_at = now
         item.gm_decision_by = current_user.id
-        item.gm_postpone_until = None
         item.gm_decision_note = note_clean
+        if is_partial:
+            # Kısmi onay: kalan kısmı için erteleme tarihi gerekli
+            try:
+                pd = date.fromisoformat(postpone_date)
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(400, "Kısmi onay için erteleme tarihi gerekli") from exc
+            if pd <= date.today():
+                raise HTTPException(400, "Erteleme tarihi gelecekte olmalı")
+            item.gm_approved_amount = round(req_amt, 2)
+            item.gm_postpone_until = pd
+        else:
+            item.gm_approved_amount = None
+            item.gm_postpone_until = None
     elif action == "reject":
         item.gm_decision = "rejected"
         item.gm_decision_at = now
@@ -385,6 +457,166 @@ async def weekly_payment_decide(
 
     db.commit()
     return RedirectResponse(url="/payments/weekly", status_code=303)
+
+
+@router.get("/weekly/export", name="weekly_payment_export")
+async def weekly_payment_export(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Haftalık ödeme listesini Excel olarak indir."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from fastapi.responses import StreamingResponse
+
+    weekday = _get_payment_weekday(db)
+    next_date = _next_payment_date(weekday)
+    today = date.today()
+    period = today.strftime("%Y-%m")
+
+    # View ile aynı filtreleme — yeniden hesapla
+    invoices = db.query(Invoice).filter(
+        Invoice.invoice_type == "gelen",
+        Invoice.status.in_(["approved", "partial"]),
+        Invoice.due_date != None,  # noqa: E711
+        Invoice.due_date <= next_date,
+    ).order_by(Invoice.due_date.asc()).all()
+    invoices = [i for i in invoices if i.remaining > 0 and _show_in_list(i, next_date)]
+
+    cheques = db.query(Cheque).filter(
+        Cheque.cheque_type == "verilen",
+        Cheque.status == "beklemede",
+        Cheque.due_date <= next_date,
+    ).order_by(Cheque.due_date.asc()).all()
+    cheques = [c for c in cheques if _show_in_list(c, next_date)]
+
+    cc_stmts = db.query(CreditCardStatement).filter(
+        CreditCardStatement.status == "unpaid",
+        CreditCardStatement.due_date <= next_date,
+    ).order_by(CreditCardStatement.due_date.asc()).all()
+    cc_stmts = [s for s in cc_stmts if _show_in_list(s, next_date)]
+
+    payroll_info = _payroll_due(db, period)
+    payroll_decision = db.query(PayrollDecision).filter(PayrollDecision.period == period).first()
+    payroll_show = (
+        payroll_info["total"] > 0 and (
+            payroll_decision is None or _show_in_list(payroll_decision, next_date)
+        )
+    )
+
+    decision_label = {
+        "approved": "Onaylandı", "rejected": "Reddedildi",
+        "postponed": "Ertelendi", None: "Bekliyor"
+    }
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ödeme Listesi"
+
+    # Başlık
+    ws.merge_cells("A1:I1")
+    ws["A1"] = f"Haftalık Ödeme Listesi — {next_date.strftime('%d.%m.%Y')}"
+    ws["A1"].font = Font(size=14, bold=True)
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    headers = ["Tip", "Tedarikçi/İlgili", "Referans", "Vade", "Tutar (₺)",
+               "Yöntem", "Durum", "Onaylanan (₺)", "Not"]
+    ws.append([])  # blank row
+    ws.append(headers)
+    head_row = ws.max_row
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=head_row, column=col)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="1A3A5C")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    rows = []
+    for inv in invoices:
+        rows.append([
+            "Fatura",
+            inv.vendor.name if inv.vendor else "—",
+            inv.reference.ref_no if inv.reference else "—",
+            inv.due_date.strftime("%d.%m.%Y") if inv.due_date else "",
+            float(inv.remaining),
+            _method_label(inv.gm_method_override or inv.payment_method),
+            decision_label.get(inv.gm_decision, inv.gm_decision or "Bekliyor"),
+            float(inv.gm_approved_amount) if inv.gm_approved_amount else None,
+            inv.gm_decision_note or "",
+        ])
+    for c in cheques:
+        rows.append([
+            "Çek",
+            (c.vendor.name if c.vendor else "") or "—",
+            c.cheque_no or "—",
+            c.due_date.strftime("%d.%m.%Y"),
+            float(c.amount),
+            _method_label(c.gm_method_override or "cek"),
+            decision_label.get(c.gm_decision, c.gm_decision or "Bekliyor"),
+            float(c.gm_approved_amount) if c.gm_approved_amount else None,
+            c.gm_decision_note or "",
+        ])
+    for s in cc_stmts:
+        rows.append([
+            "KK Ekstre",
+            s.card.name if s.card else "—",
+            "—",
+            s.due_date.strftime("%d.%m.%Y"),
+            float(s.total_amount),
+            _method_label(s.gm_method_override or "kredi_karti"),
+            decision_label.get(s.gm_decision, s.gm_decision or "Bekliyor"),
+            float(s.gm_approved_amount) if s.gm_approved_amount else None,
+            s.gm_decision_note or "",
+        ])
+    if payroll_show:
+        method = (payroll_decision.gm_method_override if payroll_decision else None) or "banka"
+        rows.append([
+            "Maaş",
+            f"Personel ({payroll_info['unpaid_count']} kişi)",
+            period, "",
+            float(payroll_info["total"]),
+            _method_label(method),
+            decision_label.get(
+                payroll_decision.gm_decision if payroll_decision else None,
+                "Bekliyor"
+            ),
+            float(payroll_decision.gm_approved_amount) if payroll_decision and payroll_decision.gm_approved_amount else None,
+            (payroll_decision.gm_decision_note if payroll_decision else None) or "",
+        ])
+
+    grand_total = 0
+    for r in rows:
+        ws.append(r)
+        grand_total += r[4] or 0
+
+    # Toplam satırı
+    ws.append([])
+    total_row = ws.max_row + 1
+    ws.cell(row=total_row, column=4, value="GENEL TOPLAM").font = Font(bold=True)
+    ws.cell(row=total_row, column=4).alignment = Alignment(horizontal="right")
+    ws.cell(row=total_row, column=5, value=grand_total).font = Font(bold=True)
+
+    # Sütun genişlikleri
+    widths = [10, 38, 18, 12, 14, 18, 14, 14, 30]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    # Para sütununa format
+    for row_idx in range(head_row + 1, ws.max_row + 1):
+        for col_idx in (5, 8):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = '#,##0.00 "₺"'
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"odeme-listesi-{next_date.isoformat()}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @router.post("/weekly/bulk-approve", name="weekly_payment_bulk_approve")
