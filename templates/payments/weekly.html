@@ -93,19 +93,24 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
     <span class="fw-semibold">Vadesi Gelen Ödemeler ({{ items | length }} kalem)</span>
+    {% if not current_user.is_approver %}
+    <span class="badge bg-light text-dark ms-2 fw-normal" title="Onay yetkisi yalnızca Genel Müdür'dedir">
+      <i class="bi bi-info-circle"></i> Onayı Genel Müdür verir
+    </span>
+    {% endif %}
+    {% if current_user.is_approver %}
     <button type="button" id="bulk-approve-btn" class="btn btn-sm btn-success ms-auto">
       <i class="bi bi-check-all"></i> Seçilenleri Onayla (<span id="selected-count">0</span>)
     </button>
-    <span class="fs-5 fw-bold text-danger ms-2">Toplam: {{ grand_total | money }}</span>
+    {% endif %}
+    <span class="fs-5 fw-bold text-danger ms-{% if current_user.is_approver %}2{% else %}auto{% endif %}">Toplam: {{ grand_total | money }}</span>
   </div>
-
-  <form id="bulk-approve-form" method="post" action="/payments/weekly/bulk-approve" style="display:none;"></form>
 
   <div class="card-body p-0">
     <table class="table table-hover mb-0 no-sort">
       <thead class="table-light">
         <tr>
-          <th style="width:36px;"><input type="checkbox" id="check-all" class="form-check-input"></th>
+          <th style="width:36px;">{% if current_user.is_approver %}<input type="checkbox" id="check-all" class="form-check-input">{% endif %}</th>
           <th>Tip</th>
           <th>Tedarikçi / İlgili</th>
           <th>Referans</th>
@@ -120,7 +125,7 @@
         {% for it in items %}
         <tr class="{% if it.gm_decision == 'approved' %}row-approved{% elif it.gm_decision == 'postponed' %}row-postponed{% endif %}">
           <td>
-            {% if it.actionable %}
+            {% if it.actionable and current_user.is_approver %}
             <input type="checkbox" class="form-check-input row-check"
                    data-type="{{ it.kalem_type }}" data-id="{{ it.kalem_id }}">
             {% endif %}
@@ -138,25 +143,25 @@
             {% if it.method_override %}<i class="bi bi-pencil-fill text-warning small" title="GM tarafından değiştirildi"></i>{% endif %}
           </td>
           <td>
+            {% set badge_title = it.gm_decision_note or "" %}
             {% if it.gm_decision == 'postponed' %}
-              <span class="badge bg-secondary gm-badge-decided">Ertelendi → {{ it.gm_postpone_until | date_tr }}</span>
+              <span class="badge bg-secondary gm-badge-decided" {% if badge_title %}title="{{ badge_title }}"{% endif %}>Ertelendi → {{ it.gm_postpone_until | date_tr }}</span>
             {% elif it.gm_decision == 'approved' %}
-              <span class="badge bg-success gm-badge-decided"><i class="bi bi-check-lg"></i> Onaylandı</span>
+              <span class="badge bg-success gm-badge-decided" {% if badge_title %}title="Not: {{ badge_title }}"{% endif %}><i class="bi bi-check-lg"></i> Onaylandı{% if badge_title %} <i class="bi bi-chat-text"></i>{% endif %}</span>
             {% elif it.gm_decision == 'rejected' %}
-              <span class="badge bg-danger gm-badge-decided">Reddedildi</span>
+              <span class="badge bg-danger gm-badge-decided" {% if badge_title %}title="Not: {{ badge_title }}"{% endif %}>Reddedildi{% if badge_title %} <i class="bi bi-chat-text"></i>{% endif %}</span>
             {% else %}
               <span class="badge bg-warning text-dark gm-badge-decided">Bekliyor</span>
             {% endif %}
           </td>
           <td class="text-end">
             <div class="d-flex gap-1 justify-content-end action-btn-group">
-              {% if it.actionable %}
-              <form method="post" action="/payments/weekly/decide" class="d-inline">
-                <input type="hidden" name="kalem_type" value="{{ it.kalem_type }}">
-                <input type="hidden" name="kalem_id" value="{{ it.kalem_id }}">
-                <input type="hidden" name="action" value="approve">
-                <button class="btn btn-sm btn-success" title="Onayla"><i class="bi bi-check-lg"></i></button>
-              </form>
+              {% if it.actionable and current_user.is_approver %}
+              <button type="button" class="btn btn-sm btn-success"
+                      data-bs-toggle="modal" data-bs-target="#approveModal"
+                      data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
+                      data-party="{{ it.party }}" data-amount="{{ it.amount | money }}"
+                      title="Onayla"><i class="bi bi-check-lg"></i></button>
               <form method="post" action="/payments/weekly/decide" class="d-inline"
                     onsubmit="return confirm('Bu kalemi reddetmek istediğinizden emin misiniz?');">
                 <input type="hidden" name="kalem_type" value="{{ it.kalem_type }}">
@@ -173,6 +178,7 @@
                       data-bs-toggle="modal" data-bs-target="#methodModal"
                       data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
                       data-current-method="{{ it.method_code or '' }}"
+                      data-amount-raw="{{ it.amount }}"
                       title="Yöntem"><i class="bi bi-credit-card"></i></button>
             </div>
           </td>
@@ -194,6 +200,61 @@
   </div>
 </div>
 
+<!-- Onay Modal (GM) -->
+{% if current_user.is_approver %}
+<div class="modal fade" id="approveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/payments/weekly/decide" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-check-circle text-success"></i> Ödemeyi Onayla</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="kalem_type" id="approve-kalem-type">
+        <input type="hidden" name="kalem_id" id="approve-kalem-id">
+        <input type="hidden" name="action" value="approve">
+        <div class="mb-2">
+          <div class="text-muted small">İlgili Taraf</div>
+          <div class="fw-semibold" id="approve-party">—</div>
+        </div>
+        <div class="mb-3">
+          <div class="text-muted small">Tutar</div>
+          <div class="fw-bold fs-5" id="approve-amount">—</div>
+        </div>
+        <label class="form-label">Not (opsiyonel)</label>
+        <textarea name="note" class="form-control" rows="3" placeholder="Onaya dair açıklama..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> Onayla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toplu Onay Modal -->
+<div class="modal fade" id="bulkApproveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form id="bulk-approve-form-modal" method="post" action="/payments/weekly/bulk-approve" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-check-all text-success"></i> Seçilenleri Onayla</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong><span id="bulk-modal-count">0</span></strong> kalem onaylanacak.</p>
+        <div id="bulk-hidden-items"></div>
+        <label class="form-label">Not (opsiyonel — hepsine uygulanır)</label>
+        <textarea name="note" class="form-control" rows="3" placeholder="Toplu onaya dair açıklama..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="submit" class="btn btn-success"><i class="bi bi-check-all"></i> Hepsini Onayla</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <!-- Erteleme Modal -->
 <div class="modal fade" id="postponeModal" tabindex="-1">
   <div class="modal-dialog">
@@ -207,8 +268,8 @@
         <input type="hidden" name="kalem_id" id="postpone-kalem-id">
         <input type="hidden" name="action" value="postpone">
         <label class="form-label">Yeni Tarih</label>
-        <input type="date" name="postpone_date" class="form-control" required>
-        <div class="text-muted small mt-2">Bu kalem o tarihteki haftanın ödeme listesinde otomatik olarak yeniden çıkacak.</div>
+        <input type="date" name="postpone_date" id="postpone-date-input" class="form-control" value="{{ next_payment_after_iso }}" required>
+        <div class="text-muted small mt-2">Varsayılan: bir sonraki ödeme günü ({{ next_payment_after | date_tr }}). Bu kalem o tarihteki haftanın ödeme listesinde otomatik olarak yeniden çıkacak.</div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
@@ -236,6 +297,16 @@
           <option value="{{ code }}">{{ label }}</option>
           {% endfor %}
         </select>
+        <div id="cc-limit-warning" class="alert alert-warning mt-3" style="display:none;">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <strong>Uyarı: Kredi kartı limiti aşılıyor!</strong>
+          <div class="small mt-1">
+            Ödeme tutarı: <strong id="cc-warn-amount">—</strong><br>
+            Toplam müsait limit: <strong id="cc-warn-available">—</strong><br>
+            Aşan: <strong id="cc-warn-excess" class="text-danger">—</strong>
+          </div>
+          <div class="small mt-2">Yine de devam edebilirsiniz.</div>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
@@ -246,48 +317,91 @@
 </div>
 
 <script>
+  // ---- Postpone Modal ----
   document.getElementById('postponeModal').addEventListener('show.bs.modal', function (e) {
     var btn = e.relatedTarget;
     document.getElementById('postpone-kalem-type').value = btn.dataset.kalemType;
     document.getElementById('postpone-kalem-id').value = btn.dataset.kalemId;
+    // Tarih varsayılanı bir sonraki ödeme günü; kullanıcı isterse değiştirir.
+    document.getElementById('postpone-date-input').value = "{{ next_payment_after_iso }}";
   });
+
+  // ---- Method (Yöntem Değiştir) Modal + KK limit uyarısı ----
+  var CC_TOTAL_AVAILABLE = {{ cc_total_available | round(2) }};
+  function ccFormatTL(n) {
+    return '₺' + Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function ccCheckLimit() {
+    var sel = document.getElementById('method-select');
+    var amt = parseFloat(document.getElementById('methodModal').dataset.itemAmount || '0');
+    var warn = document.getElementById('cc-limit-warning');
+    if (sel.value === 'kredi_karti' && amt > CC_TOTAL_AVAILABLE) {
+      document.getElementById('cc-warn-amount').textContent = ccFormatTL(amt);
+      document.getElementById('cc-warn-available').textContent = ccFormatTL(CC_TOTAL_AVAILABLE);
+      document.getElementById('cc-warn-excess').textContent = ccFormatTL(amt - CC_TOTAL_AVAILABLE);
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+  }
   document.getElementById('methodModal').addEventListener('show.bs.modal', function (e) {
     var btn = e.relatedTarget;
     document.getElementById('method-kalem-type').value = btn.dataset.kalemType;
     document.getElementById('method-kalem-id').value = btn.dataset.kalemId;
+    this.dataset.itemAmount = btn.dataset.amountRaw || '0';
     var current = btn.dataset.currentMethod || '';
     var sel = document.getElementById('method-select');
     if (current) for (var i = 0; i < sel.options.length; i++) {
       if (sel.options[i].value === current) { sel.selectedIndex = i; break; }
     }
+    ccCheckLimit();
+  });
+  document.getElementById('method-select').addEventListener('change', ccCheckLimit);
+
+  {% if current_user.is_approver %}
+  // ---- Onay Modal ----
+  document.getElementById('approveModal').addEventListener('show.bs.modal', function (e) {
+    var btn = e.relatedTarget;
+    document.getElementById('approve-kalem-type').value = btn.dataset.kalemType;
+    document.getElementById('approve-kalem-id').value = btn.dataset.kalemId;
+    document.getElementById('approve-party').textContent = btn.dataset.party || '—';
+    document.getElementById('approve-amount').textContent = btn.dataset.amount || '—';
+    // Notu sıfırla
+    var ta = document.querySelector('#approveModal textarea[name="note"]');
+    if (ta) ta.value = '';
   });
 
-  // --- Toplu Onay ---
+  // ---- Toplu Onay (modal) ----
   function updateSelectedCount() {
     var n = document.querySelectorAll('.row-check:checked').length;
-    document.getElementById('selected-count').textContent = n;
+    var el = document.getElementById('selected-count');
+    if (el) el.textContent = n;
   }
-  document.getElementById('check-all').addEventListener('change', function (e) {
+  var checkAll = document.getElementById('check-all');
+  if (checkAll) checkAll.addEventListener('change', function (e) {
     document.querySelectorAll('.row-check').forEach(function (c) { c.checked = e.target.checked; });
     updateSelectedCount();
   });
   document.querySelectorAll('.row-check').forEach(function (c) {
     c.addEventListener('change', updateSelectedCount);
   });
-  document.getElementById('bulk-approve-btn').addEventListener('click', function () {
+  var bulkBtn = document.getElementById('bulk-approve-btn');
+  if (bulkBtn) bulkBtn.addEventListener('click', function () {
     var checks = document.querySelectorAll('.row-check:checked');
     if (checks.length === 0) { alert('Lütfen onaylanacak kalemleri seçin.'); return; }
-    if (!confirm(checks.length + ' kalem onaylanacak. Devam edilsin mi?')) return;
-    var form = document.getElementById('bulk-approve-form');
-    form.innerHTML = '';
+    var holder = document.getElementById('bulk-hidden-items');
+    holder.innerHTML = '';
     checks.forEach(function (c) {
       var inp = document.createElement('input');
       inp.type = 'hidden';
       inp.name = 'items';
       inp.value = c.dataset.type + ':' + c.dataset.id;
-      form.appendChild(inp);
+      holder.appendChild(inp);
     });
-    form.submit();
+    document.getElementById('bulk-modal-count').textContent = checks.length;
+    var modal = new bootstrap.Modal(document.getElementById('bulkApproveModal'));
+    modal.show();
   });
+  {% endif %}
 </script>
 {% endblock %}

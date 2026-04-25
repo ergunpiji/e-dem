@@ -169,6 +169,7 @@ class CreditCardStatement(Base):
     gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
 
     card = relationship("CreditCard", back_populates="statements")
     txns = relationship("CreditCardTxn", back_populates="statement")
@@ -221,6 +222,7 @@ class Cheque(Base):
     gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
 
     vendor = relationship("FinancialVendor", back_populates="cheques")
     customer = relationship("Customer", back_populates="cheques")
@@ -299,6 +301,7 @@ class Invoice(Base):
     gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)  # nakit|banka|kredi_karti|cek|acik_hesap
+    gm_decision_note = Column(Text, nullable=True)
 
     reference = relationship("Reference", back_populates="invoices")
     vendor = relationship("FinancialVendor", back_populates="invoices")
@@ -746,6 +749,7 @@ class PayrollDecision(Base):
     gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     gm_postpone_until = Column(Date, nullable=True)
     gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
 
 
 # ---------------------------------------------------------------------------

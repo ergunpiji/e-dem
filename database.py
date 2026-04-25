@@ -235,6 +235,10 @@ def _migrate(engine) -> None:
         "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_decision_by INTEGER",
         "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_postpone_until DATE",
         "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_method_override VARCHAR(20)",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gm_decision_note TEXT",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gm_decision_note TEXT",
+        "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_decision_note TEXT",
+        "ALTER TABLE payroll_decisions ADD COLUMN IF NOT EXISTS gm_decision_note TEXT",
     ]
     with engine.begin() as conn:
         for sql in migrations:

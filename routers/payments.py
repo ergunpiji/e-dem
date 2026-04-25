@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from auth import require_admin, require_gm
+from auth import get_current_user, require_admin
 from database import get_db
 from models import (
     User, Invoice, Cheque, CreditCardStatement, CreditCard, CreditCardTxn,
@@ -136,11 +136,12 @@ def _method_label(code: Optional[str]) -> str:
 @router.get("/weekly", response_class=HTMLResponse, name="weekly_payments")
 async def weekly_payments_view(
     request: Request,
-    current_user: User = Depends(require_gm),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     weekday = _get_payment_weekday(db)
     next_date = _next_payment_date(weekday)
+    next_payment_after = next_date + timedelta(days=7)  # bir sonraki ödeme günü
     today = date.today()
     period = today.strftime("%Y-%m")
 
@@ -198,6 +199,7 @@ async def weekly_payments_view(
             "gm_decision": inv.gm_decision,
             "gm_postpone_until": inv.gm_postpone_until,
             "actionable": _is_actionable(inv),
+            "gm_decision_note": inv.gm_decision_note,
         })
 
     for c in cheques:
@@ -219,6 +221,7 @@ async def weekly_payments_view(
             "gm_decision": c.gm_decision,
             "gm_postpone_until": c.gm_postpone_until,
             "actionable": _is_actionable(c),
+            "gm_decision_note": c.gm_decision_note,
         })
 
     for s in cc_stmts:
@@ -239,6 +242,7 @@ async def weekly_payments_view(
             "gm_decision": s.gm_decision,
             "gm_postpone_until": s.gm_postpone_until,
             "actionable": _is_actionable(s),
+            "gm_decision_note": s.gm_decision_note,
         })
 
     if payroll_show:
@@ -260,6 +264,7 @@ async def weekly_payments_view(
             "gm_decision": payroll_decision.gm_decision if payroll_decision else None,
             "gm_postpone_until": payroll_decision.gm_postpone_until if payroll_decision else None,
             "actionable": _is_actionable(payroll_decision) if payroll_decision else True,
+            "gm_decision_note": payroll_decision.gm_decision_note if payroll_decision else None,
         })
 
     # Vade tarihine göre sırala (maaş sona)
@@ -295,6 +300,8 @@ async def weekly_payments_view(
             "request": request, "current_user": current_user,
             "page_title": "Haftalık Ödeme Listesi",
             "next_date": next_date,
+            "next_payment_after": next_payment_after,
+            "next_payment_after_iso": next_payment_after.isoformat(),
             "weekday": weekday,
             "weekday_name": WEEKDAYS_TR[weekday],
             "weekdays_tr": WEEKDAYS_TR,
@@ -317,11 +324,15 @@ async def weekly_payment_decide(
     action: str = Form(...),
     postpone_date: str = Form(""),
     method_override: str = Form(""),
-    current_user: User = Depends(require_gm),
+    note: str = Form(""),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if action not in ("approve", "reject", "postpone", "method"):
         raise HTTPException(400, "Geçersiz aksiyon")
+    # Onay/Red sadece Genel Müdür yetkisinde; ertele/yöntem değişikliği herkese açık
+    if action in ("approve", "reject") and not current_user.is_approver:
+        raise HTTPException(403, "Onay/Red için Genel Müdür yetkisi gereklidir.")
 
     if kalem_type == "invoice":
         item = db.query(Invoice).get(int(kalem_id))
@@ -342,16 +353,19 @@ async def weekly_payment_decide(
         raise HTTPException(404, "Kalem bulunamadı")
 
     now = datetime.utcnow()
+    note_clean = (note or "").strip() or None
     if action == "approve":
         item.gm_decision = "approved"
         item.gm_decision_at = now
         item.gm_decision_by = current_user.id
         item.gm_postpone_until = None
+        item.gm_decision_note = note_clean
     elif action == "reject":
         item.gm_decision = "rejected"
         item.gm_decision_at = now
         item.gm_decision_by = current_user.id
         item.gm_postpone_until = None
+        item.gm_decision_note = note_clean
     elif action == "postpone":
         try:
             new_date = date.fromisoformat(postpone_date)
@@ -376,11 +390,14 @@ async def weekly_payment_decide(
 @router.post("/weekly/bulk-approve", name="weekly_payment_bulk_approve")
 async def weekly_payment_bulk_approve(
     request: Request,
-    current_user: User = Depends(require_gm),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if not current_user.is_approver:
+        raise HTTPException(403, "Toplu onay için Genel Müdür yetkisi gereklidir.")
     form = await request.form()
     entries = form.getlist("items")
+    note_clean = (form.get("note", "") or "").strip() or None
     now = datetime.utcnow()
     count = 0
     for entry in entries:
@@ -407,6 +424,8 @@ async def weekly_payment_bulk_approve(
         item.gm_decision_at = now
         item.gm_decision_by = current_user.id
         item.gm_postpone_until = None
+        if note_clean:
+            item.gm_decision_note = note_clean
         count += 1
     db.commit()
     return RedirectResponse(url="/payments/weekly", status_code=303)
