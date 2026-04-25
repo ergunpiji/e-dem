@@ -16,11 +16,12 @@ from auth import get_current_user, require_admin
 from database import get_db
 from models import (
     User, PaymentInstruction, Invoice, Cheque, CreditCardStatement,
-    PayrollDecision, BankAccount, CashBook, CreditCard,
+    PayrollDecision, BankAccount, CashBook, CreditCard, ManualPaymentLine,
 )
 from payment_helpers import (
     apply_invoice_payment, apply_cheque_settlement,
     apply_cc_statement_payment, apply_payroll_payment,
+    apply_manual_payment,
 )
 from templates_config import templates
 
@@ -48,6 +49,10 @@ def _instruction_party_label(instr: PaymentInstruction, db: Session) -> str:
             return s.card.name if s.card else "KK"
     elif instr.source_type == "payroll":
         return f"Personel maaşı ({instr.source_period})"
+    elif instr.source_type == "manual" and instr.source_id:
+        line = db.query(ManualPaymentLine).get(instr.source_id)
+        if line:
+            return (line.party or line.description or "Manuel")[:80]
     return "—"
 
 
@@ -55,6 +60,7 @@ def _source_label(source_type: str) -> str:
     return {
         "invoice": "Fatura", "cheque": "Çek",
         "cc_statement": "KK Ekstre", "payroll": "Maaş",
+        "manual": "Manuel",
     }.get(source_type, source_type)
 
 
@@ -184,6 +190,17 @@ async def execute_instruction(
         ).first()
         if pd:
             pd.gm_decision = "approved"  # zaten 'approved' olmalı, garanti
+    elif instr.source_type == "manual":
+        line = db.query(ManualPaymentLine).get(instr.source_id)
+        if not line:
+            raise HTTPException(404, "Manuel kalem bulunamadı")
+        apply_manual_payment(
+            db, line,
+            payment_method=instr.payment_method, amount=instr.amount, pdate=pdate,
+            cash_book_id=cash_book_id, bank_account_id=bank_account_id,
+            credit_card_id=credit_card_id,
+            instruction_id=instr.id,
+        )
     else:
         raise HTTPException(400, "Geçersiz kaynak tipi")
 

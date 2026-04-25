@@ -21,7 +21,7 @@ from database import get_db
 from models import (
     User, Invoice, Cheque, CreditCardStatement, CreditCard, CreditCardTxn,
     Employee, SalaryPayment, PayrollDecision, SystemSetting,
-    BankAccount, BankMovement, CashEntry,
+    BankAccount, BankMovement, CashEntry, ManualPaymentLine,
     PAYMENT_METHODS,
 )
 from templates_config import templates
@@ -120,6 +120,8 @@ def _default_method_for(kalem_type: str, item) -> str:
         return "banka"  # verilen çek tahsilatı bankadan ödenir
     if kalem_type == "cc_statement":
         return "banka"
+    if kalem_type == "manual":
+        return getattr(item, "payment_method", None) or "banka"
     return "banka"  # payroll
 
 
@@ -245,6 +247,12 @@ async def weekly_payments_view(
         )
     )
 
+    # Manuel kalemler — açık olanlar (paid/cancelled değil), _show_in_list filtresine göre
+    manual_q = db.query(ManualPaymentLine).filter(
+        ManualPaymentLine.status == "open"
+    ).order_by(ManualPaymentLine.due_date.asc().nullslast(), ManualPaymentLine.created_at.asc()).all()
+    manuals = [m for m in manual_q if _show_in_list(m, next_date)]
+
     # Birleşik liste — template tek tablo render eder
     items = []
     for inv in invoices:
@@ -317,6 +325,32 @@ async def weekly_payments_view(
             "gm_decision_note": s.gm_decision_note,
             "gm_approved_amount": s.gm_approved_amount,
             "preparer_note": s.preparer_note,
+        })
+
+    for m in manuals:
+        items.append({
+            "kalem_type": "manual",
+            "kalem_id": m.id,
+            "type_label": "Manuel",
+            "type_color": "dark",
+            "party": m.party or m.description or "—",
+            "party_url": None,
+            "ref_no": "—",
+            "ref_url": None,
+            "detail_url": None,
+            "due_date": m.due_date,
+            "amount": m.amount,
+            "method_code": m.gm_method_override or m.payment_method,
+            "method_label": _method_label(m.gm_method_override or m.payment_method),
+            "method_override": m.gm_method_override,
+            "gm_decision": m.gm_decision,
+            "gm_postpone_until": m.gm_postpone_until,
+            "actionable": _is_actionable(m, next_date),
+            "gm_decision_note": m.gm_decision_note,
+            "gm_approved_amount": m.gm_approved_amount,
+            "preparer_note": m.preparer_note,
+            "manual_description": m.description,
+            "manual_can_delete": (m.gm_decision is None and m.status == "open"),
         })
 
     if payroll_show:
@@ -441,6 +475,8 @@ async def weekly_payment_decide(
         item = db.query(Cheque).get(int(kalem_id))
     elif kalem_type == "cc_statement":
         item = db.query(CreditCardStatement).get(int(kalem_id))
+    elif kalem_type == "manual":
+        item = db.query(ManualPaymentLine).get(int(kalem_id))
     elif kalem_type == "payroll":
         item = db.query(PayrollDecision).filter(PayrollDecision.period == kalem_id).first()
         if not item:
@@ -463,6 +499,8 @@ async def weekly_payment_decide(
             full_amount = item.amount
         elif kalem_type == "cc_statement":
             full_amount = item.total_amount
+        elif kalem_type == "manual":
+            full_amount = item.amount
         else:  # payroll
             full_amount = _payroll_due(db, item.period)["total"]
 
@@ -875,6 +913,8 @@ async def weekly_payment_bulk_approve(
             item = db.query(Cheque).get(int(kalem_id))
         elif kalem_type == "cc_statement":
             item = db.query(CreditCardStatement).get(int(kalem_id))
+        elif kalem_type == "manual":
+            item = db.query(ManualPaymentLine).get(int(kalem_id))
         elif kalem_type == "payroll":
             item = db.query(PayrollDecision).filter(PayrollDecision.period == kalem_id).first()
             if not item:
@@ -900,6 +940,8 @@ async def weekly_payment_bulk_approve(
             full_amount = item.amount
         elif kalem_type == "cc_statement":
             full_amount = item.total_amount
+        elif kalem_type == "manual":
+            full_amount = item.amount
         else:
             full_amount = _payroll_due(db, item.period)["total"]
         if full_amount and full_amount > 0:
@@ -932,6 +974,8 @@ async def weekly_payment_preparer_note(
         item = db.query(Cheque).get(int(kalem_id))
     elif kalem_type == "cc_statement":
         item = db.query(CreditCardStatement).get(int(kalem_id))
+    elif kalem_type == "manual":
+        item = db.query(ManualPaymentLine).get(int(kalem_id))
     elif kalem_type == "payroll":
         item = db.query(PayrollDecision).filter(PayrollDecision.period == kalem_id).first()
         if not item:
@@ -943,6 +987,71 @@ async def weekly_payment_preparer_note(
     if not item:
         raise HTTPException(404, "Kalem bulunamadı")
     item.preparer_note = note_clean
+    db.commit()
+    return RedirectResponse(url="/payments/weekly", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Manuel ödeme kalemi (ekle / sil)
+# ---------------------------------------------------------------------------
+
+@router.post("/weekly/manual/new", name="weekly_payment_manual_new")
+async def weekly_manual_new(
+    description: str = Form(...),
+    amount: float = Form(...),
+    payment_method: str = Form("banka"),
+    party: str = Form(""),
+    due_date: str = Form(""),
+    notes: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Liste hazırlık aşamasındayken kullanıcı manuel ödeme kalemi ekler."""
+    if _get_cycle_status(db) != "draft":
+        raise HTTPException(409, "Manuel kalem yalnızca hazırlık aşamasında eklenir")
+    if not description.strip():
+        raise HTTPException(400, "Açıklama zorunlu")
+    if amount <= 0:
+        raise HTTPException(400, "Tutar 0'dan büyük olmalı")
+    valid = {m[0] for m in PAYMENT_METHODS}
+    if payment_method not in valid:
+        raise HTTPException(400, "Geçersiz ödeme yöntemi")
+    dd = None
+    if due_date.strip():
+        try:
+            dd = date.fromisoformat(due_date.strip())
+        except ValueError:
+            raise HTTPException(400, "Geçersiz vade tarihi")
+    line = ManualPaymentLine(
+        description=description.strip(),
+        party=party.strip() or None,
+        amount=round(amount, 2),
+        payment_method=payment_method,
+        due_date=dd,
+        notes=notes.strip() or None,
+        status="open",
+        created_by=current_user.id,
+    )
+    db.add(line)
+    db.commit()
+    return RedirectResponse(url="/payments/weekly", status_code=303)
+
+
+@router.post("/weekly/manual/{line_id}/delete", name="weekly_payment_manual_delete")
+async def weekly_manual_delete(
+    line_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Manuel kalemi sil — sadece henüz GM kararı yokken (open) ve liste draft'ken."""
+    if _get_cycle_status(db) != "draft":
+        raise HTTPException(409, "Yalnızca hazırlık aşamasında silinebilir")
+    line = db.query(ManualPaymentLine).get(line_id)
+    if not line:
+        raise HTTPException(404, "Manuel kalem bulunamadı")
+    if line.gm_decision is not None or line.status != "open":
+        raise HTTPException(400, "Karar verilmiş veya işlenmiş kalem silinemez")
+    db.delete(line)
     db.commit()
     return RedirectResponse(url="/payments/weekly", status_code=303)
 

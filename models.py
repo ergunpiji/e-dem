@@ -779,6 +779,38 @@ class SystemSetting(Base):
 
 
 # ---------------------------------------------------------------------------
+# ManualPaymentLine — haftalık listeye manuel olarak eklenen ödeme kalemi
+# (sistemde fatura/çek/ekstre olarak kayıtlı olmayan ödemeler için)
+# ---------------------------------------------------------------------------
+
+class ManualPaymentLine(Base):
+    __tablename__ = "manual_payment_lines"
+
+    id = Column(Integer, primary_key=True)
+    description = Column(String(300), nullable=False)
+    party = Column(String(200))          # serbest metin tedarikçi/karşı taraf
+    amount = Column(Float, nullable=False)
+    payment_method = Column(String(20), default="banka", nullable=False)
+    due_date = Column(Date, nullable=True)
+    notes = Column(Text)
+    status = Column(String(20), default="open", nullable=False)  # open | paid | cancelled
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    paid_at = Column(DateTime, nullable=True)
+    # GM ödeme listesi alanları (Invoice/Cheque ile aynı)
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
+    preparer_note = Column(Text, nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+# ---------------------------------------------------------------------------
 # PaymentInstruction — GM onay → operatör infaz arasındaki bekleyen talimat
 # ---------------------------------------------------------------------------
 

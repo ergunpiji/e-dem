@@ -111,6 +111,58 @@
   </div>
 </div>
 
+{% if cycle_status == 'draft' %}
+<!-- Manuel kalem ekleme (sadece hazırlık aşamasında) -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent">
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            data-bs-toggle="collapse" data-bs-target="#manualForm">
+      <i class="bi bi-plus-circle"></i> Manuel Ödeme Kalemi Ekle
+    </button>
+    <span class="text-muted small ms-2">Sistemde fatura/çek/ekstre olarak kayıtlı olmayan ödemeleri buradan ekleyin.</span>
+  </div>
+  <div id="manualForm" class="collapse">
+    <div class="card-body">
+      <form method="post" action="/payments/weekly/manual/new" class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label small">Açıklama <span class="text-danger">*</span></label>
+          <input type="text" name="description" class="form-control form-control-sm" required
+                 placeholder="örn: Ofis kirası Mayıs 2026">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Karşı Taraf</label>
+          <input type="text" name="party" class="form-control form-control-sm"
+                 placeholder="örn: ABC Emlak">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Tutar <span class="text-danger">*</span></label>
+          <input type="number" step="0.01" min="0.01" name="amount" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Yöntem</label>
+          <select name="payment_method" class="form-select form-select-sm">
+            {% for code, label in payment_methods %}
+            <option value="{{ code }}" {% if code == 'banka' %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Vade</label>
+          <input type="date" name="due_date" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-9">
+          <label class="form-label small">Notlar</label>
+          <input type="text" name="notes" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button class="btn btn-primary btn-sm w-100"><i class="bi bi-plus"></i> Listeye Ekle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Ödeme listesi -->
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
@@ -235,6 +287,12 @@
                       data-current-method="{{ it.method_code or '' }}"
                       data-amount-raw="{{ it.amount }}"
                       title="Yöntem"><i class="bi bi-credit-card"></i></button>
+              {% if it.kalem_type == 'manual' and it.manual_can_delete and cycle_status == 'draft' %}
+              <form method="post" action="/payments/weekly/manual/{{ it.kalem_id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Bu manuel kalemi silmek istiyor musun?');">
+                <button class="btn btn-sm btn-outline-danger" title="Manuel kalemi sil"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
             </div>
           </td>
         </tr>

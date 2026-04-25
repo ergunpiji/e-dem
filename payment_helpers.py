@@ -14,7 +14,7 @@ from models import (
     Invoice, InvoicePayment, Cheque, CreditCardStatement, CreditCardTxn,
     BankMovement, CashEntry, BankAccount, CashBook, CreditCard,
     Employee, SalaryPayment, GeneralExpense, GeneralExpenseCategory,
-    PayrollDecision, User,
+    PayrollDecision, User, ManualPaymentLine,
 )
 
 
@@ -316,3 +316,68 @@ def apply_payroll_payment(
         db.add(sp)
 
     return {"count": len(unpaid), "total": total}
+
+
+# ---------------------------------------------------------------------------
+# ManualPaymentLine ödeme — serbest tanımlı ödeme kalemi
+# ---------------------------------------------------------------------------
+
+def apply_manual_payment(
+    db: Session,
+    line: ManualPaymentLine,
+    *,
+    payment_method: str,
+    amount: float,
+    pdate: date,
+    cash_book_id: Optional[int] = None,
+    bank_account_id: Optional[int] = None,
+    credit_card_id: Optional[int] = None,
+    instruction_id: Optional[int] = None,
+) -> None:
+    """Manuel ödeme kalemini öder + yan kayıt oluşturur."""
+    if not line:
+        raise HTTPException(404, "Manuel kalem bulunamadı")
+    if line.status != "open":
+        raise HTTPException(400, "Manuel kalem zaten kapatılmış")
+
+    desc = line.description + (f" — {line.party}" if line.party else "")
+
+    if payment_method == "banka":
+        if not bank_account_id:
+            raise HTTPException(400, "Banka hesabı seçilmeli")
+        db.add(BankMovement(
+            account_id=bank_account_id, movement_date=pdate, movement_type="cikis",
+            amount=amount, description=desc, instruction_id=instruction_id,
+        ))
+    elif payment_method == "nakit":
+        if not cash_book_id:
+            raise HTTPException(400, "Kasa seçilmeli")
+        db.add(CashEntry(
+            book_id=cash_book_id, entry_date=pdate, entry_type="cikis",
+            amount=amount, description=desc, instruction_id=instruction_id,
+        ))
+    elif payment_method == "kredi_karti":
+        if not credit_card_id:
+            raise HTTPException(400, "Kart seçilmeli")
+        db.add(CreditCardTxn(
+            card_id=credit_card_id, txn_date=pdate,
+            amount=amount, description=desc, instruction_id=instruction_id,
+        ))
+    elif payment_method == "cek":
+        # Manuel kalem için çek = yeni çek yaratıp beklemede bırak
+        cheque = Cheque(
+            cheque_type="verilen",
+            cheque_no="",
+            amount=amount,
+            currency="TRY",
+            cheque_date=pdate,
+            due_date=pdate,
+            status="beklemede",
+            created_by_instruction_id=instruction_id,
+        )
+        db.add(cheque)
+    else:
+        raise HTTPException(400, "Geçersiz ödeme yöntemi")
+
+    line.status = "paid"
+    line.paid_at = datetime.utcnow()
