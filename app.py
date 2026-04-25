@@ -141,6 +141,7 @@ from routers import employees as employees_router
 from routers import reports as reports_router
 from routers import hbf as hbf_router
 from routers import advances as advances_router
+from routers import payments as payments_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -158,3 +159,4 @@ app.include_router(employees_router.router)
 app.include_router(reports_router.router)
 app.include_router(hbf_router.router)
 app.include_router(advances_router.router)
+app.include_router(payments_router.router)

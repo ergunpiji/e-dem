@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block page_title %}Haftalık Ödeme Listesi{% endblock %}
+
+{% block content %}
+<style>
+  .summary-card { transition: transform .12s; }
+  .summary-card:hover { transform: translateY(-2px); }
+  .gm-badge-decided { font-size: 11px; padding: 2px 8px; }
+  .action-btn-group .btn { padding: 2px 8px; font-size: 12px; }
+</style>
+
+<!-- Üst özet: Banka / Kasa / KK -->
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm summary-card h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Banka Toplamı</div>
+        <div class="fs-3 fw-bold" style="color:{% if bank_balance >= 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ bank_balance | money }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm summary-card h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Kasa Toplamı</div>
+        <div class="fs-3 fw-bold" style="color:{% if cash_balance >= 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ cash_balance | money }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm summary-card h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Kredi Kartı Müsait Limit</div>
+        <div class="fs-3 fw-bold" style="color:{% if cc_total_available > 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ cc_total_available | money }}</div>
+        <div class="text-muted small">Kullanılan: {{ cc_total_used | money }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if card_summary %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent fw-semibold">Kredi Kartları</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0 no-sort">
+      <thead class="table-light">
+        <tr>
+          <th>Kart</th>
+          <th class="text-end">Limit</th>
+          <th class="text-end">Kullanılan</th>
+          <th class="text-end">Kalan</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in card_summary %}
+        <tr>
+          <td><a href="/credit-cards/{{ c.id }}" class="text-decoration-none">{{ c.name }}</a></td>
+          <td class="text-end">{{ c.limit | money }}</td>
+          <td class="text-end text-danger">{{ c.used | money }}</td>
+          <td class="text-end fw-semibold" style="color:{% if c.available > 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ c.available | money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Ödeme günü ayarı -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body d-flex align-items-center flex-wrap gap-2">
+    <div>
+      Sonraki ödeme günü: <strong>{{ next_date | date_tr }}</strong>
+      <span class="text-muted">({{ weekday_name }})</span>
+    </div>
+    {% if current_user.is_admin %}
+    <form method="post" action="/payments/settings/weekday" class="ms-auto d-flex align-items-center gap-2">
+      <label class="text-muted small mb-0">Ödeme Günü:</label>
+      <select name="weekday" class="form-select form-select-sm" style="width:auto;">
+        {% for i in range(7) %}
+        <option value="{{ i }}" {% if i == weekday %}selected{% endif %}>{{ weekdays_tr[i] }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-primary">Kaydet</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Ödeme listesi -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex align-items-center">
+    <span class="fw-semibold">Vadesi Gelen Ödemeler ({{ items | length }} kalem)</span>
+    <span class="ms-auto fs-5 fw-bold text-danger">Toplam: {{ grand_total | money }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 no-sort">
+      <thead class="table-light">
+        <tr>
+          <th>Tip</th>
+          <th>Tedarikçi / İlgili</th>
+          <th>Referans</th>
+          <th>Vade</th>
+          <th class="text-end">Tutar</th>
+          <th>Yöntem</th>
+          <th>Durum</th>
+          <th class="text-end" style="min-width:280px;">Aksiyonlar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td><span class="badge bg-{{ it.type_color }}">{{ it.type_label }}</span></td>
+          <td>{{ it.party }}</td>
+          <td>
+            {% if it.ref_url %}<a href="{{ it.ref_url }}" class="text-decoration-none">{{ it.ref_no }}</a>
+            {% else %}{{ it.ref_no }}{% endif %}
+          </td>
+          <td>{% if it.due_date %}{{ it.due_date | date_tr }}{% else %}—{% endif %}</td>
+          <td class="text-end fw-semibold">{{ it.amount | money }}</td>
+          <td>
+            {{ it.method_label }}
+            {% if it.method_override %}<i class="bi bi-pencil-fill text-warning small" title="GM tarafından değiştirildi"></i>{% endif %}
+          </td>
+          <td>
+            {% if it.gm_decision == 'postponed' %}
+              <span class="badge bg-secondary gm-badge-decided">Ertelendi → {{ it.gm_postpone_until | date_tr }}</span>
+            {% elif it.gm_decision == 'approved' %}
+              <span class="badge bg-success gm-badge-decided">Onaylandı</span>
+            {% elif it.gm_decision == 'rejected' %}
+              <span class="badge bg-danger gm-badge-decided">Reddedildi</span>
+            {% else %}
+              <span class="badge bg-warning text-dark gm-badge-decided">Bekliyor</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <div class="d-flex gap-1 justify-content-end action-btn-group">
+              <form method="post" action="/payments/weekly/decide" class="d-inline">
+                <input type="hidden" name="kalem_type" value="{{ it.kalem_type }}">
+                <input type="hidden" name="kalem_id" value="{{ it.kalem_id }}">
+                <input type="hidden" name="action" value="approve">
+                <button class="btn btn-sm btn-success" title="Onayla"><i class="bi bi-check-lg"></i></button>
+              </form>
+              <form method="post" action="/payments/weekly/decide" class="d-inline"
+                    onsubmit="return confirm('Bu kalemi reddetmek istediğinizden emin misiniz?');">
+                <input type="hidden" name="kalem_type" value="{{ it.kalem_type }}">
+                <input type="hidden" name="kalem_id" value="{{ it.kalem_id }}">
+                <input type="hidden" name="action" value="reject">
+                <button class="btn btn-sm btn-danger" title="Reddet"><i class="bi bi-x-lg"></i></button>
+              </form>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="modal" data-bs-target="#postponeModal"
+                      data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
+                      title="Ertele"><i class="bi bi-clock"></i></button>
+              <button type="button" class="btn btn-sm btn-outline-primary"
+                      data-bs-toggle="modal" data-bs-target="#methodModal"
+                      data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
+                      data-current-method="{{ it.method_code or '' }}"
+                      title="Yöntem"><i class="bi bi-credit-card"></i></button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted text-center py-4">Bu hafta vadesi gelen ödeme yok.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if items %}
+      <tfoot class="table-light">
+        <tr class="fw-bold">
+          <td colspan="4" class="text-end">GENEL TOPLAM</td>
+          <td class="text-end text-danger fs-5">{{ grand_total | money }}</td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+<!-- Erteleme Modal -->
+<div class="modal fade" id="postponeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/payments/weekly/decide" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ödemeyi Ertele</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="kalem_type" id="postpone-kalem-type">
+        <input type="hidden" name="kalem_id" id="postpone-kalem-id">
+        <input type="hidden" name="action" value="postpone">
+        <label class="form-label">Yeni Tarih</label>
+        <input type="date" name="postpone_date" class="form-control" required>
+        <div class="text-muted small mt-2">Bu kalem o tarihteki haftanın ödeme listesinde otomatik olarak yeniden çıkacak.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="submit" class="btn btn-warning">Ertele</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Yöntem Değiştirme Modal -->
+<div class="modal fade" id="methodModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/payments/weekly/decide" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ödeme Yöntemini Değiştir</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="kalem_type" id="method-kalem-type">
+        <input type="hidden" name="kalem_id" id="method-kalem-id">
+        <input type="hidden" name="action" value="method">
+        <label class="form-label">Yeni Ödeme Yöntemi</label>
+        <select name="method_override" id="method-select" class="form-select" required>
+          {% for code, label in payment_methods %}
+          <option value="{{ code }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.getElementById('postponeModal').addEventListener('show.bs.modal', function (e) {
+    var btn = e.relatedTarget;
+    document.getElementById('postpone-kalem-type').value = btn.dataset.kalemType;
+    document.getElementById('postpone-kalem-id').value = btn.dataset.kalemId;
+  });
+  document.getElementById('methodModal').addEventListener('show.bs.modal', function (e) {
+    var btn = e.relatedTarget;
+    document.getElementById('method-kalem-type').value = btn.dataset.kalemType;
+    document.getElementById('method-kalem-id').value = btn.dataset.kalemId;
+    var current = btn.dataset.currentMethod || '';
+    var sel = document.getElementById('method-select');
+    if (current) for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === current) { sel.selectedIndex = i; break; }
+    }
+  });
+</script>
+{% endblock %}

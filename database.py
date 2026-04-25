@@ -219,6 +219,22 @@ def _migrate(engine) -> None:
         "ALTER TABLE employee_advances ALTER COLUMN payment_method DROP NOT NULL",
         "ALTER TABLE employee_advances ALTER COLUMN advance_date DROP NOT NULL",
         # cash_day_closes tablosu create_all tarafından oluşturulur; burada ek migration yok
+        # GM haftalık ödeme listesi kararı — Invoice / Cheque / CreditCardStatement
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gm_decision VARCHAR(20)",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gm_decision_at TIMESTAMP",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gm_decision_by INTEGER",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gm_postpone_until DATE",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gm_method_override VARCHAR(20)",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gm_decision VARCHAR(20)",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gm_decision_at TIMESTAMP",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gm_decision_by INTEGER",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gm_postpone_until DATE",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gm_method_override VARCHAR(20)",
+        "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_decision VARCHAR(20)",
+        "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_decision_at TIMESTAMP",
+        "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_decision_by INTEGER",
+        "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_postpone_until DATE",
+        "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS gm_method_override VARCHAR(20)",
     ]
     with engine.begin() as conn:
         for sql in migrations:

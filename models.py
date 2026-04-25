@@ -163,6 +163,12 @@ class CreditCardStatement(Base):
     total_amount = Column(Float, default=0.0, nullable=False)
     status = Column(Enum("unpaid", "paid", name="cc_statement_status"), default="unpaid", nullable=False)
     paid_at = Column(DateTime)
+    # GM haftalık ödeme listesi kararı
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
 
     card = relationship("CreditCard", back_populates="statements")
     txns = relationship("CreditCardTxn", back_populates="statement")
@@ -209,6 +215,12 @@ class Cheque(Base):
     )
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # GM haftalık ödeme listesi kararı
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
 
     vendor = relationship("FinancialVendor", back_populates="cheques")
     customer = relationship("Customer", back_populates="cheques")
@@ -281,6 +293,12 @@ class Invoice(Base):
     notes = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # GM (Genel Müdür) haftalık ödeme listesi kararı
+    gm_decision = Column(String(20), nullable=True)  # approved | rejected | postponed | NULL
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)  # nakit|banka|kredi_karti|cek|acik_hesap
 
     reference = relationship("Reference", back_populates="invoices")
     vendor = relationship("FinancialVendor", back_populates="invoices")
@@ -712,3 +730,31 @@ PAYMENT_METHODS = [
 ]
 
 VAT_RATES = [0.0, 0.01, 0.08, 0.10, 0.18, 0.20]
+
+
+# ---------------------------------------------------------------------------
+# Maaş kararı (PayrollDecision) — bir ay için GM toplu maaş kararını saklar
+# ---------------------------------------------------------------------------
+
+class PayrollDecision(Base):
+    __tablename__ = "payroll_decisions"
+
+    id = Column(Integer, primary_key=True)
+    period = Column(String(7), nullable=False, unique=True)  # YYYY-MM
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# SystemSetting — basit key-value config (örn. ödeme günü)
+# ---------------------------------------------------------------------------
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(String(500))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
