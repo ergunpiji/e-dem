@@ -60,13 +60,25 @@ def _next_payment_date(weekday: int, today: Optional[date] = None) -> date:
     return today + timedelta(days=days_ahead)
 
 
-def _pending_or_due_postponed(item, ref_date: date) -> bool:
-    if item.gm_decision is None:
+def _show_in_list(item, ref_date: date) -> bool:
+    """Listede gösterilecek mi? Onaylananlar görünür kalır (yeşil ışık,
+    fiili ödeme yapılınca status değişip filtreden düşer). Reddedilenler
+    listeden kaldırılır. Ertelenenler ancak vade geldiğinde tekrar çıkar."""
+    d = item.gm_decision
+    if d is None:
         return True
-    if (item.gm_decision == "postponed" and item.gm_postpone_until
-            and item.gm_postpone_until <= ref_date):
+    if d == "approved":
         return True
-    return False
+    if d == "rejected":
+        return False
+    if d == "postponed":
+        return bool(item.gm_postpone_until and item.gm_postpone_until <= ref_date)
+    return True
+
+
+def _is_actionable(item) -> bool:
+    """Henüz karar verilmemiş veya ertelenmiş — checkbox/onay butonu görünür."""
+    return item.gm_decision in (None, "postponed")
 
 
 def _cash_total(db) -> float:
@@ -139,7 +151,7 @@ async def weekly_payments_view(
         Invoice.due_date != None,  # noqa: E711
         Invoice.due_date <= next_date,
     ).order_by(Invoice.due_date.asc()).all()
-    invoices = [i for i in inv_q if i.remaining > 0 and _pending_or_due_postponed(i, next_date)]
+    invoices = [i for i in inv_q if i.remaining > 0 and _show_in_list(i, next_date)]
 
     # Çekler
     chq_q = db.query(Cheque).filter(
@@ -147,14 +159,14 @@ async def weekly_payments_view(
         Cheque.status == "beklemede",
         Cheque.due_date <= next_date,
     ).order_by(Cheque.due_date.asc()).all()
-    cheques = [c for c in chq_q if _pending_or_due_postponed(c, next_date)]
+    cheques = [c for c in chq_q if _show_in_list(c, next_date)]
 
     # KK Ekstreleri (Çarşamba kuralından bağımsız — kendi vadesi geçerli)
     cc_q = db.query(CreditCardStatement).filter(
         CreditCardStatement.status == "unpaid",
         CreditCardStatement.due_date <= next_date,
     ).order_by(CreditCardStatement.due_date.asc()).all()
-    cc_stmts = [s for s in cc_q if _pending_or_due_postponed(s, next_date)]
+    cc_stmts = [s for s in cc_q if _show_in_list(s, next_date)]
 
     # Maaş — bu ay ödenmemiş aktifler
     payroll_info = _payroll_due(db, period)
@@ -162,7 +174,7 @@ async def weekly_payments_view(
     payroll_show = (
         payroll_info["total"] > 0 and (
             payroll_decision is None
-            or _pending_or_due_postponed(payroll_decision, next_date)
+            or _show_in_list(payroll_decision, next_date)
         )
     )
 
@@ -185,6 +197,7 @@ async def weekly_payments_view(
             "method_override": inv.gm_method_override,
             "gm_decision": inv.gm_decision,
             "gm_postpone_until": inv.gm_postpone_until,
+            "actionable": _is_actionable(inv),
         })
 
     for c in cheques:
@@ -205,6 +218,7 @@ async def weekly_payments_view(
             "method_override": c.gm_method_override,
             "gm_decision": c.gm_decision,
             "gm_postpone_until": c.gm_postpone_until,
+            "actionable": _is_actionable(c),
         })
 
     for s in cc_stmts:
@@ -224,6 +238,7 @@ async def weekly_payments_view(
             "method_override": s.gm_method_override,
             "gm_decision": s.gm_decision,
             "gm_postpone_until": s.gm_postpone_until,
+            "actionable": _is_actionable(s),
         })
 
     if payroll_show:
@@ -244,6 +259,7 @@ async def weekly_payments_view(
             "method_override": payroll_decision.gm_method_override if payroll_decision else None,
             "gm_decision": payroll_decision.gm_decision if payroll_decision else None,
             "gm_postpone_until": payroll_decision.gm_postpone_until if payroll_decision else None,
+            "actionable": _is_actionable(payroll_decision) if payroll_decision else True,
         })
 
     # Vade tarihine göre sırala (maaş sona)
@@ -258,11 +274,17 @@ async def weekly_payments_view(
     card_summary = []
     for c in cards:
         used = _cc_outstanding(db, c.id)
+        # Sonraki ödenmemiş ekstrenin vadesi
+        next_stmt = db.query(CreditCardStatement).filter(
+            CreditCardStatement.card_id == c.id,
+            CreditCardStatement.status == "unpaid",
+        ).order_by(CreditCardStatement.due_date.asc()).first()
         card_summary.append({
             "id": c.id, "name": c.name,
             "limit": c.credit_limit or 0,
             "used": used,
             "available": (c.credit_limit or 0) - used,
+            "next_due": next_stmt.due_date if next_stmt else None,
         })
     cc_total_used = sum(c["used"] for c in card_summary)
     cc_total_available = sum(c["available"] for c in card_summary)
@@ -347,6 +369,45 @@ async def weekly_payment_decide(
             raise HTTPException(400, "Geçersiz ödeme yöntemi")
         item.gm_method_override = method_override
 
+    db.commit()
+    return RedirectResponse(url="/payments/weekly", status_code=303)
+
+
+@router.post("/weekly/bulk-approve", name="weekly_payment_bulk_approve")
+async def weekly_payment_bulk_approve(
+    request: Request,
+    current_user: User = Depends(require_gm),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    entries = form.getlist("items")
+    now = datetime.utcnow()
+    count = 0
+    for entry in entries:
+        if ":" not in entry:
+            continue
+        kalem_type, kalem_id = entry.split(":", 1)
+        if kalem_type == "invoice":
+            item = db.query(Invoice).get(int(kalem_id))
+        elif kalem_type == "cheque":
+            item = db.query(Cheque).get(int(kalem_id))
+        elif kalem_type == "cc_statement":
+            item = db.query(CreditCardStatement).get(int(kalem_id))
+        elif kalem_type == "payroll":
+            item = db.query(PayrollDecision).filter(PayrollDecision.period == kalem_id).first()
+            if not item:
+                item = PayrollDecision(period=kalem_id)
+                db.add(item)
+                db.flush()
+        else:
+            continue
+        if not item:
+            continue
+        item.gm_decision = "approved"
+        item.gm_decision_at = now
+        item.gm_decision_by = current_user.id
+        item.gm_postpone_until = None
+        count += 1
     db.commit()
     return RedirectResponse(url="/payments/weekly", status_code=303)
 

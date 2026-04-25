@@ -7,6 +7,9 @@
   .summary-card:hover { transform: translateY(-2px); }
   .gm-badge-decided { font-size: 11px; padding: 2px 8px; }
   .action-btn-group .btn { padding: 2px 8px; font-size: 12px; }
+  .vade-cell { white-space: nowrap; }
+  tr.row-approved { background-color: #f0fdf4; }
+  tr.row-postponed { background-color: #f8fafc; }
 </style>
 
 <!-- Üst özet: Banka / Kasa / KK -->
@@ -49,6 +52,7 @@
           <th class="text-end">Limit</th>
           <th class="text-end">Kullanılan</th>
           <th class="text-end">Kalan</th>
+          <th class="vade-cell">Sonraki Vade</th>
         </tr>
       </thead>
       <tbody>
@@ -58,6 +62,7 @@
           <td class="text-end">{{ c.limit | money }}</td>
           <td class="text-end text-danger">{{ c.used | money }}</td>
           <td class="text-end fw-semibold" style="color:{% if c.available > 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ c.available | money }}</td>
+          <td class="vade-cell">{% if c.next_due %}{{ c.next_due | date_tr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -69,10 +74,7 @@
 <!-- Ödeme günü ayarı -->
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-body d-flex align-items-center flex-wrap gap-2">
-    <div>
-      Sonraki ödeme günü: <strong>{{ next_date | date_tr }}</strong>
-      <span class="text-muted">({{ weekday_name }})</span>
-    </div>
+    <div>Sonraki ödeme günü: <strong>{{ next_date | date_tr }}</strong></div>
     {% if current_user.is_admin %}
     <form method="post" action="/payments/settings/weekday" class="ms-auto d-flex align-items-center gap-2">
       <label class="text-muted small mb-0">Ödeme Günü:</label>
@@ -89,34 +91,47 @@
 
 <!-- Ödeme listesi -->
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex align-items-center">
+  <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
     <span class="fw-semibold">Vadesi Gelen Ödemeler ({{ items | length }} kalem)</span>
-    <span class="ms-auto fs-5 fw-bold text-danger">Toplam: {{ grand_total | money }}</span>
+    <button type="button" id="bulk-approve-btn" class="btn btn-sm btn-success ms-auto">
+      <i class="bi bi-check-all"></i> Seçilenleri Onayla (<span id="selected-count">0</span>)
+    </button>
+    <span class="fs-5 fw-bold text-danger ms-2">Toplam: {{ grand_total | money }}</span>
   </div>
+
+  <form id="bulk-approve-form" method="post" action="/payments/weekly/bulk-approve" style="display:none;"></form>
+
   <div class="card-body p-0">
     <table class="table table-hover mb-0 no-sort">
       <thead class="table-light">
         <tr>
+          <th style="width:36px;"><input type="checkbox" id="check-all" class="form-check-input"></th>
           <th>Tip</th>
           <th>Tedarikçi / İlgili</th>
           <th>Referans</th>
-          <th>Vade</th>
+          <th class="vade-cell">Vade</th>
           <th class="text-end">Tutar</th>
           <th>Yöntem</th>
           <th>Durum</th>
-          <th class="text-end" style="min-width:280px;">Aksiyonlar</th>
+          <th class="text-end" style="min-width:230px;">Aksiyonlar</th>
         </tr>
       </thead>
       <tbody>
         {% for it in items %}
-        <tr>
+        <tr class="{% if it.gm_decision == 'approved' %}row-approved{% elif it.gm_decision == 'postponed' %}row-postponed{% endif %}">
+          <td>
+            {% if it.actionable %}
+            <input type="checkbox" class="form-check-input row-check"
+                   data-type="{{ it.kalem_type }}" data-id="{{ it.kalem_id }}">
+            {% endif %}
+          </td>
           <td><span class="badge bg-{{ it.type_color }}">{{ it.type_label }}</span></td>
           <td>{{ it.party }}</td>
           <td>
             {% if it.ref_url %}<a href="{{ it.ref_url }}" class="text-decoration-none">{{ it.ref_no }}</a>
             {% else %}{{ it.ref_no }}{% endif %}
           </td>
-          <td>{% if it.due_date %}{{ it.due_date | date_tr }}{% else %}—{% endif %}</td>
+          <td class="vade-cell">{% if it.due_date %}{{ it.due_date | date_tr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="text-end fw-semibold">{{ it.amount | money }}</td>
           <td>
             {{ it.method_label }}
@@ -126,7 +141,7 @@
             {% if it.gm_decision == 'postponed' %}
               <span class="badge bg-secondary gm-badge-decided">Ertelendi → {{ it.gm_postpone_until | date_tr }}</span>
             {% elif it.gm_decision == 'approved' %}
-              <span class="badge bg-success gm-badge-decided">Onaylandı</span>
+              <span class="badge bg-success gm-badge-decided"><i class="bi bi-check-lg"></i> Onaylandı</span>
             {% elif it.gm_decision == 'rejected' %}
               <span class="badge bg-danger gm-badge-decided">Reddedildi</span>
             {% else %}
@@ -135,6 +150,7 @@
           </td>
           <td class="text-end">
             <div class="d-flex gap-1 justify-content-end action-btn-group">
+              {% if it.actionable %}
               <form method="post" action="/payments/weekly/decide" class="d-inline">
                 <input type="hidden" name="kalem_type" value="{{ it.kalem_type }}">
                 <input type="hidden" name="kalem_id" value="{{ it.kalem_id }}">
@@ -148,6 +164,7 @@
                 <input type="hidden" name="action" value="reject">
                 <button class="btn btn-sm btn-danger" title="Reddet"><i class="bi bi-x-lg"></i></button>
               </form>
+              {% endif %}
               <button type="button" class="btn btn-sm btn-outline-secondary"
                       data-bs-toggle="modal" data-bs-target="#postponeModal"
                       data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
@@ -161,13 +178,13 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="text-muted text-center py-4">Bu hafta vadesi gelen ödeme yok.</td></tr>
+        <tr><td colspan="9" class="text-muted text-center py-4">Bu hafta vadesi gelen ödeme yok.</td></tr>
         {% endfor %}
       </tbody>
       {% if items %}
       <tfoot class="table-light">
         <tr class="fw-bold">
-          <td colspan="4" class="text-end">GENEL TOPLAM</td>
+          <td colspan="5" class="text-end">GENEL TOPLAM</td>
           <td class="text-end text-danger fs-5">{{ grand_total | money }}</td>
           <td colspan="3"></td>
         </tr>
@@ -243,6 +260,34 @@
     if (current) for (var i = 0; i < sel.options.length; i++) {
       if (sel.options[i].value === current) { sel.selectedIndex = i; break; }
     }
+  });
+
+  // --- Toplu Onay ---
+  function updateSelectedCount() {
+    var n = document.querySelectorAll('.row-check:checked').length;
+    document.getElementById('selected-count').textContent = n;
+  }
+  document.getElementById('check-all').addEventListener('change', function (e) {
+    document.querySelectorAll('.row-check').forEach(function (c) { c.checked = e.target.checked; });
+    updateSelectedCount();
+  });
+  document.querySelectorAll('.row-check').forEach(function (c) {
+    c.addEventListener('change', updateSelectedCount);
+  });
+  document.getElementById('bulk-approve-btn').addEventListener('click', function () {
+    var checks = document.querySelectorAll('.row-check:checked');
+    if (checks.length === 0) { alert('Lütfen onaylanacak kalemleri seçin.'); return; }
+    if (!confirm(checks.length + ' kalem onaylanacak. Devam edilsin mi?')) return;
+    var form = document.getElementById('bulk-approve-form');
+    form.innerHTML = '';
+    checks.forEach(function (c) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'items';
+      inp.value = c.dataset.type + ':' + c.dataset.id;
+      form.appendChild(inp);
+    });
+    form.submit();
   });
 </script>
 {% endblock %}
