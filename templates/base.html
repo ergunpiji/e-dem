@@ -83,9 +83,18 @@
       .main-content { margin-left: 0; }
     }
   </style>
+  {% set is_popup = request.query_params.get('popup') == '1' %}
+  {% if is_popup %}
+  <style>
+    .sidebar, .topbar { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+    .page-content { padding: 16px; }
+  </style>
+  {% endif %}
   {% block extra_css %}{% endblock %}
 </head>
 <body>
+{% if not is_popup %}
 <!-- Sidebar -->
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-header">
@@ -213,9 +222,11 @@
     {% endif %}
   </div>
 </nav>
+{% endif %}
 
 <!-- Main Content -->
 <div class="main-content">
+  {% if not is_popup %}
   <div class="topbar">
     <button onclick="history.back()"
             class="btn btn-sm btn-outline-secondary me-3 d-flex align-items-center"
@@ -230,6 +241,7 @@
       {% block topbar_actions %}{% endblock %}
     </div>
   </div>
+  {% endif %}
 
   <div class="page-content">
     {% block content %}{% endblock %}

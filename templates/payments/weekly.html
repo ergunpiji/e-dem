@@ -52,7 +52,7 @@
           <th class="text-end">Limit</th>
           <th class="text-end">Kullanılan</th>
           <th class="text-end">Kalan</th>
-          <th class="vade-cell">Sonraki Vade</th>
+          <th class="vade-cell">Son Ödeme Tarihi</th>
         </tr>
       </thead>
       <tbody>
@@ -133,10 +133,26 @@
                    data-type="{{ it.kalem_type }}" data-id="{{ it.kalem_id }}">
             {% endif %}
           </td>
-          <td><span class="badge bg-{{ it.type_color }}">{{ it.type_label }}</span></td>
-          <td>{{ it.party }}</td>
           <td>
-            {% if it.ref_url %}<a href="{{ it.ref_url }}" class="text-decoration-none">{{ it.ref_no }}</a>
+            <span class="badge bg-{{ it.type_color }}">{{ it.type_label }}</span>
+            {% if it.detail_url %}
+            <a href="{{ it.detail_url }}?popup=1" class="popup-link text-decoration-none ms-1"
+               data-popup-title="{{ it.type_label }} Detayı"
+               title="{{ it.type_label }} kartını aç">
+              <i class="bi bi-box-arrow-up-right small text-muted"></i>
+            </a>
+            {% endif %}
+          </td>
+          <td>
+            {% if it.party_url %}
+            <a href="{{ it.party_url }}?popup=1" class="popup-link text-decoration-none"
+               data-popup-title="Tedarikçi/İlgili Kart">{{ it.party }}</a>
+            {% else %}{{ it.party }}{% endif %}
+          </td>
+          <td>
+            {% if it.ref_url %}
+            <a href="{{ it.ref_url }}?popup=1" class="popup-link text-decoration-none"
+               data-popup-title="Referans Detayı">{{ it.ref_no }}</a>
             {% else %}{{ it.ref_no }}{% endif %}
           </td>
           <td class="vade-cell">{% if it.due_date %}{{ it.due_date | date_tr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
@@ -161,12 +177,21 @@
           </td>
           <td class="text-end">
             <div class="d-flex gap-1 justify-content-end action-btn-group">
+              <button type="button" class="btn btn-sm {% if it.preparer_note %}btn-warning{% else %}btn-outline-secondary{% endif %}"
+                      data-bs-toggle="modal" data-bs-target="#preparerNoteModal"
+                      data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
+                      data-party="{{ it.party }}"
+                      data-current-note="{{ it.preparer_note or '' }}"
+                      title="{% if it.preparer_note %}Not (mevcut): {{ it.preparer_note }}{% else %}GM için not düş{% endif %}">
+                <i class="bi bi-{% if it.preparer_note %}chat-text-fill{% else %}chat-text{% endif %}"></i>
+              </button>
               {% if it.actionable and current_user.is_approver %}
               <button type="button" class="btn btn-sm btn-success"
                       data-bs-toggle="modal" data-bs-target="#approveModal"
                       data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
                       data-party="{{ it.party }}" data-amount="{{ it.amount | money }}"
                       data-amount-raw="{{ it.amount }}"
+                      data-preparer-note="{{ it.preparer_note or '' }}"
                       title="Onayla"><i class="bi bi-check-lg"></i></button>
               <form method="post" action="/payments/weekly/decide" class="d-inline"
                     onsubmit="return confirm('Bu kalemi reddetmek istediğinizden emin misiniz?');">
@@ -206,6 +231,52 @@
   </div>
 </div>
 
+<!-- Detay Popup (iframe) -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width: 95%;">
+    <div class="modal-content" style="height: 90vh;">
+      <div class="modal-header">
+        <h5 class="modal-title" id="popup-title">Detay</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0" style="overflow: hidden;">
+        <iframe id="popup-iframe" src="" style="width:100%; height:100%; border:0;"></iframe>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hazırlayan Notu Modal -->
+<div class="modal fade" id="preparerNoteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/payments/weekly/preparer-note" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-chat-text"></i> Genel Müdür için Not</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="kalem_type" id="prepnote-kalem-type">
+        <input type="hidden" name="kalem_id" id="prepnote-kalem-id">
+        <div class="mb-2">
+          <div class="text-muted small">İlgili Taraf</div>
+          <div class="fw-semibold" id="prepnote-party">—</div>
+        </div>
+        <label class="form-label">Not (GM bunu görecek)</label>
+        <textarea name="note" id="prepnote-textarea" class="form-control" rows="4"
+                  placeholder="Önemli, ertelenebilir, açıklama..."></textarea>
+        <div class="form-text">Boş bırakılırsa not silinir.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Onay Modal (GM) -->
 {% if current_user.is_approver %}
 <div class="modal fade" id="approveModal" tabindex="-1">
@@ -226,6 +297,10 @@
         <div class="mb-3">
           <div class="text-muted small">Toplam Tutar</div>
           <div class="fw-bold fs-5" id="approve-amount">—</div>
+        </div>
+        <div id="approve-preparer-note-box" class="alert alert-info py-2 mb-3" style="display:none;">
+          <div class="small text-muted mb-1"><i class="bi bi-chat-text"></i> Hazırlayanın Notu</div>
+          <div id="approve-preparer-note-text" class="fw-semibold"></div>
         </div>
         <label class="form-label">Onaylanacak Tutar</label>
         <input type="number" step="0.01" min="0.01" name="approved_amount" id="approve-amount-input" class="form-control" required>
@@ -335,6 +410,30 @@
 </div>
 
 <script>
+  // ---- Detail Popup (iframe) ----
+  document.querySelectorAll('.popup-link').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      var url = this.getAttribute('href');
+      var title = this.dataset.popupTitle || 'Detay';
+      document.getElementById('popup-iframe').src = url;
+      document.getElementById('popup-title').textContent = title;
+      new bootstrap.Modal(document.getElementById('detailModal')).show();
+    });
+  });
+  document.getElementById('detailModal').addEventListener('hidden.bs.modal', function () {
+    document.getElementById('popup-iframe').src = '';
+  });
+
+  // ---- Preparer Note Modal ----
+  document.getElementById('preparerNoteModal').addEventListener('show.bs.modal', function (e) {
+    var btn = e.relatedTarget;
+    document.getElementById('prepnote-kalem-type').value = btn.dataset.kalemType;
+    document.getElementById('prepnote-kalem-id').value = btn.dataset.kalemId;
+    document.getElementById('prepnote-party').textContent = btn.dataset.party || '—';
+    document.getElementById('prepnote-textarea').value = btn.dataset.currentNote || '';
+  });
+
   // ---- Postpone Modal ----
   document.getElementById('postponeModal').addEventListener('show.bs.modal', function (e) {
     var btn = e.relatedTarget;
@@ -396,6 +495,15 @@
     document.getElementById('approve-postpone-date').value = "{{ next_payment_after_iso }}";
     var ta = document.querySelector('#approveModal textarea[name="note"]');
     if (ta) ta.value = '';
+    // Hazırlayan notu göster
+    var pnote = btn.dataset.preparerNote || '';
+    var box = document.getElementById('approve-preparer-note-box');
+    if (pnote) {
+      document.getElementById('approve-preparer-note-text').textContent = pnote;
+      box.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+    }
   });
   document.getElementById('approve-amount-input').addEventListener('input', function () {
     var v = parseFloat(this.value || '0');
