@@ -72,20 +72,42 @@
 {% endif %}
 
 <!-- Ödeme günü ayarı -->
-<div class="card border-0 shadow-sm mb-3">
+<!-- Cycle status & submit -->
+<div class="card border-0 shadow-sm mb-3" style="border-left: 4px solid {% if cycle_status == 'submitted' %}#16a34a{% else %}#f59e0b{% endif %} !important;">
   <div class="card-body d-flex align-items-center flex-wrap gap-2">
-    <div>Sonraki ödeme günü: <strong>{{ next_date | date_tr }}</strong></div>
-    {% if current_user.is_admin %}
-    <form method="post" action="/payments/settings/weekday" class="ms-auto d-flex align-items-center gap-2">
-      <label class="text-muted small mb-0">Ödeme Günü:</label>
-      <select name="weekday" class="form-select form-select-sm" style="width:auto;">
-        {% for i in range(7) %}
-        <option value="{{ i }}" {% if i == weekday %}selected{% endif %}>{{ weekdays_tr[i] }}</option>
-        {% endfor %}
-      </select>
-      <button class="btn btn-sm btn-outline-primary">Kaydet</button>
-    </form>
-    {% endif %}
+    <div>
+      Sonraki ödeme günü: <strong>{{ next_date | date_tr }}</strong>
+      <span class="ms-2">
+        {% if cycle_status == 'submitted' %}
+          <span class="badge bg-success"><i class="bi bi-check2-circle"></i> GM Onayında</span>
+        {% else %}
+          <span class="badge bg-warning text-dark"><i class="bi bi-pencil-square"></i> Hazırlık</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      {% if cycle_status == 'draft' %}
+        <form method="post" action="/payments/weekly/submit" class="d-inline"
+              onsubmit="return confirm('Liste GM onayına gönderilecek. Devam edilsin mi?');">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-send"></i> GM'ye Gönder</button>
+        </form>
+      {% elif current_user.is_admin or current_user.is_approver %}
+        <form method="post" action="/payments/weekly/unsubmit" class="d-inline">
+          <button class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-counterclockwise"></i> Hazırlığa Geri Al</button>
+        </form>
+      {% endif %}
+      {% if current_user.is_admin %}
+      <form method="post" action="/payments/settings/weekday" class="d-flex align-items-center gap-2">
+        <label class="text-muted small mb-0">Ödeme Günü:</label>
+        <select name="weekday" class="form-select form-select-sm" style="width:auto;">
+          {% for i in range(7) %}
+          <option value="{{ i }}" {% if i == weekday %}selected{% endif %}>{{ weekdays_tr[i] }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-outline-primary">Kaydet</button>
+      </form>
+      {% endif %}
+    </div>
   </div>
 </div>
 
@@ -101,7 +123,7 @@
     <a href="/payments/weekly/export" class="btn btn-sm btn-outline-success ms-auto" title="Excel olarak indir">
       <i class="bi bi-file-earmark-excel"></i> Excel
     </a>
-    {% if current_user.is_approver %}
+    {% if current_user.is_approver and cycle_status == 'submitted' %}
     <button type="button" id="bulk-approve-btn" class="btn btn-sm btn-success">
       <i class="bi bi-check-all"></i> Seçilenleri Onayla (<span id="selected-count">0</span>)
     </button>
@@ -113,7 +135,7 @@
     <table class="table table-hover mb-0">
       <thead class="table-light">
         <tr>
-          <th class="no-sort" style="width:36px;">{% if current_user.is_approver %}<input type="checkbox" id="check-all" class="form-check-input">{% endif %}</th>
+          <th class="no-sort" style="width:36px;">{% if current_user.is_approver and cycle_status == 'submitted' %}<input type="checkbox" id="check-all" class="form-check-input">{% endif %}</th>
           <th>Tip</th>
           <th>Tedarikçi / İlgili</th>
           <th>Referans</th>
@@ -128,7 +150,7 @@
         {% for it in items %}
         <tr class="{% if it.gm_decision == 'approved' %}row-approved{% elif it.gm_decision == 'postponed' %}row-postponed{% endif %}">
           <td>
-            {% if it.actionable and current_user.is_approver %}
+            {% if it.actionable and current_user.is_approver and cycle_status == 'submitted' %}
             <input type="checkbox" class="form-check-input row-check"
                    data-type="{{ it.kalem_type }}" data-id="{{ it.kalem_id }}">
             {% endif %}
@@ -185,7 +207,7 @@
                       title="{% if it.preparer_note %}Not (mevcut): {{ it.preparer_note }}{% else %}GM için not düş{% endif %}">
                 <i class="bi bi-{% if it.preparer_note %}chat-text-fill{% else %}chat-text{% endif %}"></i>
               </button>
-              {% if it.actionable and current_user.is_approver %}
+              {% if it.actionable and current_user.is_approver and cycle_status == 'submitted' %}
               <button type="button" class="btn btn-sm btn-success"
                       data-bs-toggle="modal" data-bs-target="#approveModal"
                       data-kalem-type="{{ it.kalem_type }}" data-kalem-id="{{ it.kalem_id }}"
@@ -200,6 +222,8 @@
                 <input type="hidden" name="action" value="reject">
                 <button class="btn btn-sm btn-danger" title="Reddet"><i class="bi bi-x-lg"></i></button>
               </form>
+              {% elif cycle_status == 'draft' and current_user.is_approver %}
+              <span class="text-muted small fst-italic">Liste hazırlık aşamasında</span>
               {% endif %}
               <button type="button" class="btn btn-sm btn-outline-secondary"
                       data-bs-toggle="modal" data-bs-target="#postponeModal"

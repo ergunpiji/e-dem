@@ -63,6 +63,39 @@ def _next_payment_date(weekday: int, today: Optional[date] = None) -> date:
     return today + timedelta(days=days_ahead)
 
 
+def _current_cycle_key() -> str:
+    """ISO hafta anahtarı: 2026-W17 gibi."""
+    iso = date.today().isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def _get_cycle_status(db: Session) -> str:
+    """Haftalık ödeme döngüsü durumu: 'draft' (hazırlık) | 'submitted' (GM onayında).
+    Yeni haftaya geçildiyse otomatik 'draft'a sıfırlanır."""
+    s = db.query(SystemSetting).filter(SystemSetting.key == "weekly_cycle_status").first()
+    if not s or not s.value:
+        return "draft"
+    try:
+        week_key, status = s.value.split(":", 1)
+    except ValueError:
+        return "draft"
+    if week_key != _current_cycle_key():
+        return "draft"  # otomatik hafta resetleme
+    return status if status in ("draft", "submitted") else "draft"
+
+
+def _set_cycle_status(db: Session, status: str) -> None:
+    """Mevcut haftaya status yaz."""
+    if status not in ("draft", "submitted"):
+        raise HTTPException(400, "Geçersiz cycle status")
+    val = f"{_current_cycle_key()}:{status}"
+    s = db.query(SystemSetting).filter(SystemSetting.key == "weekly_cycle_status").first()
+    if s:
+        s.value = val
+    else:
+        db.add(SystemSetting(key="weekly_cycle_status", value=val))
+
+
 def _show_in_list(item, ref_date: date) -> bool:
     """Listede gösterilecek mi? Onaylananlar görünür kalır (yeşil ışık,
     fiili ödeme yapılınca status değişip filtreden düşer). Reddedilenler
@@ -374,6 +407,7 @@ async def weekly_payments_view(
             "cc_total_used": cc_total_used,
             "cc_total_available": cc_total_available,
             "payment_methods": PAYMENT_METHODS,
+            "cycle_status": _get_cycle_status(db),
         },
     )
 
@@ -395,6 +429,11 @@ async def weekly_payment_decide(
     # Onay/Red sadece Genel Müdür yetkisinde; ertele/yöntem değişikliği herkese açık
     if action in ("approve", "reject") and not current_user.is_approver:
         raise HTTPException(403, "Onay/Red için Genel Müdür yetkisi gereklidir.")
+    # Onay/Red yalnızca liste GM onayına gönderildiğinde mümkün
+    if action in ("approve", "reject") and _get_cycle_status(db) != "submitted":
+        raise HTTPException(
+            409, "Önce listeyi GM onayına gönderin. (Liste şu an hazırlık aşamasında)"
+        )
 
     if kalem_type == "invoice":
         item = db.query(Invoice).get(int(kalem_id))
@@ -553,23 +592,113 @@ async def weekly_payment_export(
     def _decision_text(d):
         return decision_label.get(d, "Bekliyor")
 
+    # ----- Stil sabitleri -----
+    NAVY = "1A3A5C"     # Brand ana renk
+    NAVY_2 = "1E5F8C"   # Brand sekonder
+    GRAY = "F1F5F9"     # Açık gri
+    LIGHT_BG = "F8FAFC" # Çok açık arka plan
+    GREEN = "16A34A"
+    RED = "DC2626"
+    ORANGE = "F59E0B"
+
+    from openpyxl.styles import Border, Side
+    thin = Side(border_style="thin", color="E2E8F0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    money_fmt = '#,##0.00 [$₺-tr-TR]'
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Odeme Listesi"
+    ws.sheet_view.showGridLines = False
 
-    headers = ["Tip", "Tedarikci/Ilgili", "Referans", "Vade", "Tutar (TL)",
-               "Yontem", "Durum", "Onaylanan (TL)", "Not"]
-    ws.append(headers)
-    header_fill = PatternFill("solid", fgColor="1A3A5C")
-    for col_idx in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+    HEADERS = ["Tip", "Tedarikçi / İlgili", "Referans", "Vade",
+               "Tutar", "Yöntem", "Durum", "Onaylanan", "Not"]
+    NCOLS = len(HEADERS)
+    last_letter = chr(ord('A') + NCOLS - 1)  # 'I'
 
-    rows = []
-    for inv in invoices:
-        rows.append([
+    # ===== BAŞLIK BLOĞU =====
+    # Şirket marka satırı
+    ws.row_dimensions[1].height = 32
+    ws.merge_cells(f"A1:{last_letter}1")
+    c1 = ws["A1"]
+    c1.value = "PRİZMATİK — Finans Yönetim Programı"
+    c1.font = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
+    c1.fill = PatternFill("solid", fgColor=NAVY)
+    c1.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Liste başlığı
+    ws.row_dimensions[2].height = 28
+    ws.merge_cells(f"A2:{last_letter}2")
+    c2 = ws["A2"]
+    c2.value = f"Haftalık Ödeme Listesi  —  {next_date.strftime('%d.%m.%Y')}"
+    c2.font = Font(name="Calibri", size=13, bold=True, color="FFFFFF")
+    c2.fill = PatternFill("solid", fgColor=NAVY_2)
+    c2.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Meta satırı (durum + tarih + toplam yer tutucu)
+    ws.row_dimensions[3].height = 22
+    ws.merge_cells(f"A3:D3")
+    ws["A3"] = f"Hazırlandı: {today.strftime('%d.%m.%Y %H:%M')}    Hazırlayan: {current_user.name}"
+    ws["A3"].font = Font(size=10, italic=True, color="64748B")
+    ws["A3"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.merge_cells(f"E3:{last_letter}3")
+    ws[f"E3"] = ""  # toplam birazdan basılacak
+    ws[f"E3"].alignment = Alignment(horizontal="right", vertical="center", indent=1)
+
+    # Bölüm helper
+    def _section_header(row_idx: int, label: str, count: int, total: float):
+        ws.row_dimensions[row_idx].height = 22
+        ws.merge_cells(f"A{row_idx}:{last_letter}{row_idx}")
+        cell = ws.cell(row=row_idx, column=1)
+        cell.value = f"  {label}  ·  {count} kalem  ·  Toplam {total:,.2f} ₺".replace(",", "X").replace(".", ",").replace("X", ".")
+        cell.font = Font(size=11, bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=NAVY_2)
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    def _write_table_header(row_idx: int):
+        ws.row_dimensions[row_idx].height = 24
+        for i, h in enumerate(HEADERS, 1):
+            cell = ws.cell(row=row_idx, column=i, value=h)
+            cell.font = Font(bold=True, color="FFFFFF", size=10)
+            cell.fill = PatternFill("solid", fgColor=NAVY)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border
+
+    def _write_data_row(row_idx: int, data: list, alt: bool, decision: Optional[str]):
+        bg = PatternFill("solid", fgColor=LIGHT_BG) if alt else PatternFill(fill_type=None)
+        for i, val in enumerate(data, 1):
+            cell = ws.cell(row=row_idx, column=i, value=val)
+            cell.font = Font(size=10)
+            cell.border = border
+            if not alt:
+                cell.fill = PatternFill(fill_type=None)
+            else:
+                cell.fill = bg
+            # Hizalama kuralları
+            if i in (5, 8):  # Tutar, Onaylanan
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                if isinstance(val, (int, float)):
+                    cell.number_format = money_fmt
+            elif i == 4:  # Vade
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            elif i == 7:  # Durum
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                color_map = {
+                    "Onaylandı": GREEN, "Reddedildi": RED,
+                    "Ertelendi": "64748B", "Bekliyor": ORANGE,
+                }
+                if decision in (None, "approved", "rejected", "postponed") and val in color_map:
+                    cell.font = Font(size=10, bold=True, color=color_map[val])
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=1)
+
+    # ===== BÖLÜMLER =====
+    cur_row = 5  # başlık + meta + boşluk sonrası
+    ws.row_dimensions[4].height = 8  # ince boşluk
+    grand_total = 0.0
+
+    sections = [
+        ("FATURALAR", "Fatura", invoices, lambda inv: [
             "Fatura",
             inv.vendor.name if inv.vendor else "—",
             inv.reference.ref_no if inv.reference else "—",
@@ -577,23 +706,21 @@ async def weekly_payment_export(
             float(inv.remaining or 0),
             _method_label(inv.gm_method_override or inv.payment_method),
             _decision_text(inv.gm_decision),
-            float(inv.gm_approved_amount) if inv.gm_approved_amount else None,
+            float(inv.gm_approved_amount) if inv.gm_approved_amount else "",
             inv.gm_decision_note or "",
-        ])
-    for c in cheques:
-        rows.append([
-            "Cek",
+        ]),
+        ("ÇEKLER", "Cek", cheques, lambda c: [
+            "Çek",
             (c.vendor.name if c.vendor else "") or "—",
             c.cheque_no or "—",
             c.due_date.strftime("%d.%m.%Y") if c.due_date else "",
             float(c.amount or 0),
             _method_label(c.gm_method_override or "cek"),
             _decision_text(c.gm_decision),
-            float(c.gm_approved_amount) if c.gm_approved_amount else None,
+            float(c.gm_approved_amount) if c.gm_approved_amount else "",
             c.gm_decision_note or "",
-        ])
-    for s in cc_stmts:
-        rows.append([
+        ]),
+        ("KREDİ KARTI EKSTRELERİ", "KK", cc_stmts, lambda s: [
             "KK Ekstre",
             s.card.name if s.card else "—",
             "—",
@@ -601,55 +728,116 @@ async def weekly_payment_export(
             float(s.total_amount or 0),
             _method_label(s.gm_method_override or "kredi_karti"),
             _decision_text(s.gm_decision),
-            float(s.gm_approved_amount) if s.gm_approved_amount else None,
+            float(s.gm_approved_amount) if s.gm_approved_amount else "",
             s.gm_decision_note or "",
-        ])
+        ]),
+    ]
+
+    payroll_rows = []
     if payroll_show:
-        method = (payroll_decision.gm_method_override
-                  if payroll_decision else None) or "banka"
-        approved_amt = (payroll_decision.gm_approved_amount
-                        if payroll_decision and payroll_decision.gm_approved_amount
-                        else None)
-        note_val = (payroll_decision.gm_decision_note
-                    if payroll_decision else None) or ""
-        rows.append([
-            "Maas",
-            f"Personel ({payroll_info['unpaid_count']} kisi)",
+        method_p = (payroll_decision.gm_method_override
+                    if payroll_decision else None) or "banka"
+        approved_amt_p = (payroll_decision.gm_approved_amount
+                          if payroll_decision and payroll_decision.gm_approved_amount
+                          else "")
+        note_val_p = (payroll_decision.gm_decision_note
+                      if payroll_decision else None) or ""
+        payroll_rows.append([
+            "Maaş",
+            f"Personel ({payroll_info['unpaid_count']} kişi)",
             period, "",
             float(payroll_info["total"] or 0),
-            _method_label(method),
+            _method_label(method_p),
             _decision_text(payroll_decision.gm_decision if payroll_decision else None),
-            float(approved_amt) if approved_amt else None,
-            note_val,
+            float(approved_amt_p) if approved_amt_p else "",
+            note_val_p,
         ])
 
-    grand_total = 0.0
-    for r in rows:
-        ws.append(r)
-        grand_total += r[4] or 0
+    for section_label, _key, items_list, builder in sections:
+        if not items_list:
+            continue
+        section_total = 0.0
+        rows_data = []
+        for itm in items_list:
+            data = builder(itm)
+            section_total += data[4] or 0
+            rows_data.append((data, itm))
 
-    # Toplam satırı
-    ws.append([])
-    total_row = ws.max_row + 1
-    label_cell = ws.cell(row=total_row, column=4, value="GENEL TOPLAM")
-    label_cell.font = Font(bold=True)
-    label_cell.alignment = Alignment(horizontal="right")
-    total_cell = ws.cell(row=total_row, column=5, value=grand_total)
-    total_cell.font = Font(bold=True)
-    total_cell.number_format = '#,##0.00'
+        _section_header(cur_row, section_label, len(items_list), section_total)
+        cur_row += 1
+        _write_table_header(cur_row)
+        cur_row += 1
+        for idx, (data, itm) in enumerate(rows_data):
+            decision = getattr(itm, "gm_decision", None)
+            _write_data_row(cur_row, data, alt=(idx % 2 == 1), decision=decision)
+            cur_row += 1
+        # Bölüm alt-toplamı
+        ws.row_dimensions[cur_row].height = 20
+        ws.merge_cells(f"A{cur_row}:D{cur_row}")
+        cell = ws.cell(row=cur_row, column=1, value=f"  {section_label} Ara Toplam")
+        cell.font = Font(size=10, bold=True, color=NAVY)
+        cell.alignment = Alignment(horizontal="right", vertical="center")
+        cell.fill = PatternFill("solid", fgColor=GRAY)
+        amt_cell = ws.cell(row=cur_row, column=5, value=section_total)
+        amt_cell.font = Font(size=10, bold=True, color=NAVY)
+        amt_cell.alignment = Alignment(horizontal="right", vertical="center")
+        amt_cell.number_format = money_fmt
+        amt_cell.fill = PatternFill("solid", fgColor=GRAY)
+        for c_idx in range(6, NCOLS + 1):
+            ws.cell(row=cur_row, column=c_idx).fill = PatternFill("solid", fgColor=GRAY)
+        cur_row += 1
+        # Bölümler arası boşluk
+        ws.row_dimensions[cur_row].height = 6
+        cur_row += 1
 
-    # Sütun genişlikleri (sabit harflerle)
-    widths = {"A": 12, "B": 38, "C": 18, "D": 12, "E": 16,
-              "F": 18, "G": 14, "H": 16, "I": 30}
+        grand_total += section_total
+
+    # MAAŞ bölümü
+    if payroll_rows:
+        section_total = sum(r[4] or 0 for r in payroll_rows)
+        _section_header(cur_row, "PERSONEL MAAŞI", len(payroll_rows), section_total)
+        cur_row += 1
+        _write_table_header(cur_row)
+        cur_row += 1
+        for idx, data in enumerate(payroll_rows):
+            decision = payroll_decision.gm_decision if payroll_decision else None
+            _write_data_row(cur_row, data, alt=(idx % 2 == 1), decision=decision)
+            cur_row += 1
+        grand_total += section_total
+
+    # ===== GENEL TOPLAM =====
+    ws.row_dimensions[cur_row].height = 6
+    cur_row += 1
+    ws.row_dimensions[cur_row].height = 30
+    ws.merge_cells(f"A{cur_row}:D{cur_row}")
+    total_label = ws.cell(row=cur_row, column=1, value="  GENEL TOPLAM")
+    total_label.font = Font(size=13, bold=True, color="FFFFFF")
+    total_label.fill = PatternFill("solid", fgColor=NAVY)
+    total_label.alignment = Alignment(horizontal="right", vertical="center")
+    total_amount = ws.cell(row=cur_row, column=5, value=grand_total)
+    total_amount.font = Font(size=14, bold=True, color="FFFFFF")
+    total_amount.fill = PatternFill("solid", fgColor=NAVY)
+    total_amount.alignment = Alignment(horizontal="right", vertical="center")
+    total_amount.number_format = money_fmt
+    for c_idx in range(6, NCOLS + 1):
+        c = ws.cell(row=cur_row, column=c_idx)
+        c.fill = PatternFill("solid", fgColor=NAVY)
+    # Üst satırdaki meta E3'e toplamı yaz
+    ws[f"E3"] = f"Toplam: {grand_total:,.2f} ₺".replace(",", "X").replace(".", ",").replace("X", ".")
+    ws[f"E3"].font = Font(size=11, bold=True, color="DC2626")
+
+    # ===== Sütun genişlikleri =====
+    widths = {"A": 14, "B": 36, "C": 18, "D": 13, "E": 18,
+              "F": 18, "G": 14, "H": 16, "I": 36}
     for letter, w in widths.items():
         ws.column_dimensions[letter].width = w
 
-    # Para sütunlarında (E, H) sayı formatı
-    for row_idx in range(2, ws.max_row + 1):
-        for col_idx in (5, 8):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            if isinstance(cell.value, (int, float)):
-                cell.number_format = '#,##0.00'
+    # Yazdırma ayarları
+    ws.print_options.horizontalCentered = True
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -670,6 +858,8 @@ async def weekly_payment_bulk_approve(
 ):
     if not current_user.is_approver:
         raise HTTPException(403, "Toplu onay için Genel Müdür yetkisi gereklidir.")
+    if _get_cycle_status(db) != "submitted":
+        raise HTTPException(409, "Önce listeyi GM onayına gönderin.")
     form = await request.form()
     entries = form.getlist("items")
     note_clean = (form.get("note", "") or "").strip() or None
@@ -753,6 +943,32 @@ async def weekly_payment_preparer_note(
     if not item:
         raise HTTPException(404, "Kalem bulunamadı")
     item.preparer_note = note_clean
+    db.commit()
+    return RedirectResponse(url="/payments/weekly", status_code=303)
+
+
+@router.post("/weekly/submit", name="weekly_payment_submit")
+async def weekly_payment_submit(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Listeyi GM onayına gönder (draft → submitted)."""
+    if _get_cycle_status(db) != "draft":
+        raise HTTPException(409, "Liste zaten GM onayında")
+    _set_cycle_status(db, "submitted")
+    db.commit()
+    return RedirectResponse(url="/payments/weekly", status_code=303)
+
+
+@router.post("/weekly/unsubmit", name="weekly_payment_unsubmit")
+async def weekly_payment_unsubmit(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Onaya gönderilmiş listeyi geri çek (sadece GM/Admin)."""
+    if not (current_user.is_admin or current_user.is_approver):
+        raise HTTPException(403, "Sadece GM/Admin geri çekebilir")
+    _set_cycle_status(db, "draft")
     db.commit()
     return RedirectResponse(url="/payments/weekly", status_code=303)
 
