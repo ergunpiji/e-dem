@@ -14,6 +14,7 @@ from models import (
     User, Reference, Invoice, CashBook, CashEntry,
     BankAccount, BankMovement, GeneralExpense,
     CreditCard, CreditCardStatement, CreditCardTxn,
+    PaymentInstruction,
 )
 from templates_config import templates
 
@@ -112,6 +113,13 @@ async def dashboard(
     bank_accounts = db.query(BankAccount).all()
     bank_total = sum(_bank_balance(db, a.id) for a in bank_accounts)
 
+    # Bekleyen ödeme talimatları (GM onaylı, operatör infaz bekliyor)
+    pending_instructions = db.query(PaymentInstruction).filter(
+        PaymentInstruction.status == "pending"
+    ).all()
+    pending_instr_count = len(pending_instructions)
+    pending_instr_total = sum(i.amount or 0 for i in pending_instructions)
+
     # Son referanslar & faturalar
     son_referanslar = (
         db.query(Reference).order_by(Reference.created_at.desc()).limit(5).all()
@@ -137,5 +145,7 @@ async def dashboard(
             "son_referanslar": son_referanslar,
             "son_faturalar": son_faturalar,
             "year": year,
+            "pending_instr_count": pending_instr_count,
+            "pending_instr_total": pending_instr_total,
         },
     )
