@@ -165,6 +165,11 @@
     <a href="/payments/weekly" class="sidebar-link {% if '/payments/weekly' in request.url.path %}active{% endif %}">
       <i class="bi bi-calendar-check"></i> Haftalık Ödeme Listesi
     </a>
+    <a href="/payment-instructions/inbox" class="sidebar-link {% if '/payment-instructions' in request.url.path %}active{% endif %}">
+      <i class="bi bi-inbox"></i> Bekleyen Talimatlar
+      {% set pending_count = request.state.nav_counts.get('pending_instructions', 0) %}
+      {% if pending_count %}<span class="ms-auto badge-nav">{{ pending_count }}</span>{% endif %}
+    </a>
     {% endif %}
 
     <!-- Raporlar -->

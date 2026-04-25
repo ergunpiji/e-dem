@@ -62,17 +62,23 @@ async def nav_counts_middleware(request: Request, call_next):
     from auth import decode_token, COOKIE_NAME
     from database import SessionLocal
     from sqlalchemy import func
-    from models import Invoice
+    from models import Invoice, PaymentInstruction
 
     token = request.cookies.get(COOKIE_NAME)
     if token:
         payload = decode_token(token)
-        if payload and payload.get("is_admin"):
+        if payload:
             db = SessionLocal()
             try:
-                counts["invoices_unpaid"] = (
-                    db.query(func.count(Invoice.id))
-                    .filter(Invoice.status.in_(["approved", "partial"]))
+                if payload.get("is_admin"):
+                    counts["invoices_unpaid"] = (
+                        db.query(func.count(Invoice.id))
+                        .filter(Invoice.status.in_(["approved", "partial"]))
+                        .scalar() or 0
+                    )
+                counts["pending_instructions"] = (
+                    db.query(func.count(PaymentInstruction.id))
+                    .filter(PaymentInstruction.status == "pending")
                     .scalar() or 0
                 )
             except Exception:
