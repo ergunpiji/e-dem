@@ -52,7 +52,7 @@
           <th class="text-end">Limit</th>
           <th class="text-end">Kullanılan</th>
           <th class="text-end">Kalan</th>
-          <th class="vade-cell">Son Ödeme Tarihi</th>
+          <th class="vade-cell text-center">Son Ödeme Tarihi</th>
         </tr>
       </thead>
       <tbody>
@@ -62,7 +62,7 @@
           <td class="text-end">{{ c.limit | money }}</td>
           <td class="text-end text-danger">{{ c.used | money }}</td>
           <td class="text-end fw-semibold" style="color:{% if c.available > 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ c.available | money }}</td>
-          <td class="vade-cell">{% if c.next_due %}{{ c.next_due | date_tr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="vade-cell text-center">{% if c.next_due %}{{ c.next_due | date_tr }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
