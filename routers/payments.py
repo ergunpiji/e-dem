@@ -79,6 +79,17 @@ def _show_in_list(item, ref_date: date) -> bool:
     return True
 
 
+def _default_method_for(kalem_type: str, item) -> str:
+    """Talimat oluştururken yöntem seçilmediyse kullanılacak default."""
+    if kalem_type == "invoice":
+        return getattr(item, "payment_method", None) or "banka"
+    if kalem_type == "cheque":
+        return "banka"  # verilen çek tahsilatı bankadan ödenir
+    if kalem_type == "cc_statement":
+        return "banka"
+    return "banka"  # payroll
+
+
 def _is_actionable(item, ref_date: date) -> bool:
     """Yeni karar verilebilir mi? (Onayla/Reddet butonu + checkbox görünür)
     - Karar verilmemiş kalemler: actionable
@@ -442,12 +453,33 @@ async def weekly_payment_decide(
         else:
             item.gm_approved_amount = None
             item.gm_postpone_until = None
+
+        # Onaylanan tutar için PaymentInstruction yarat (operatör hedef hesabı sonra seçer)
+        from routers.payment_instructions import create_instruction
+        method_for_instr = item.gm_method_override or _default_method_for(kalem_type, item)
+        source_id_or_period = item.period if kalem_type == "payroll" else item.id
+        create_instruction(
+            db,
+            source_type=kalem_type,
+            source_id_or_period=source_id_or_period,
+            amount=round(req_amt, 2),
+            payment_method=method_for_instr,
+            note=note_clean or "",
+            current_user=current_user,
+        )
     elif action == "reject":
         item.gm_decision = "rejected"
         item.gm_decision_at = now
         item.gm_decision_by = current_user.id
         item.gm_postpone_until = None
         item.gm_decision_note = note_clean
+        # Pending instruction varsa iptal et
+        from routers.payment_instructions import cancel_pending_for_source
+        source_id_or_period = item.period if kalem_type == "payroll" else item.id
+        cancel_pending_for_source(
+            db, kalem_type, source_id_or_period, current_user.id,
+            f"GM tarafından reddedildi" + (f": {note_clean}" if note_clean else ""),
+        )
     elif action == "postpone":
         try:
             new_date = date.fromisoformat(postpone_date)
@@ -669,6 +701,26 @@ async def weekly_payment_bulk_approve(
         item.gm_postpone_until = None
         if note_clean:
             item.gm_decision_note = note_clean
+
+        # Tam onay tutarı için instruction yarat (kısmi onay decide endpoint'ine özel)
+        from routers.payment_instructions import create_instruction, get_pending_for_source
+        if kalem_type == "invoice":
+            full_amount = item.remaining
+        elif kalem_type == "cheque":
+            full_amount = item.amount
+        elif kalem_type == "cc_statement":
+            full_amount = item.total_amount
+        else:
+            full_amount = _payroll_due(db, item.period)["total"]
+        if full_amount and full_amount > 0:
+            source_id_or_period = item.period if kalem_type == "payroll" else item.id
+            if not get_pending_for_source(db, kalem_type, source_id_or_period):
+                method_for_instr = item.gm_method_override or _default_method_for(kalem_type, item)
+                create_instruction(
+                    db, source_type=kalem_type, source_id_or_period=source_id_or_period,
+                    amount=round(full_amount, 2), payment_method=method_for_instr,
+                    note=note_clean or "", current_user=current_user,
+                )
         count += 1
     db.commit()
     return RedirectResponse(url="/payments/weekly", status_code=303)

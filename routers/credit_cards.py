@@ -197,13 +197,23 @@ async def credit_card_statement_close(
 async def credit_card_statement_pay(
     card_id: int,
     stmt_id: int,
+    payment_method: str = Form("banka"),
+    bank_account_id: int = Form(None),
+    cash_book_id: int = Form(None),
+    pay_date: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """KK ekstresini öder + ödeme kaynağı hesapta yan kayıt oluşturur (bug fix)."""
+    from payment_helpers import apply_cc_statement_payment
     stmt = db.query(CreditCardStatement).get(stmt_id)
     if not stmt or stmt.card_id != card_id:
         raise HTTPException(status_code=404)
-    stmt.status = "paid"
-    stmt.paid_at = datetime.utcnow()
+    pdate = date.fromisoformat(pay_date) if pay_date else date.today()
+    apply_cc_statement_payment(
+        db, stmt,
+        payment_method=payment_method, pdate=pdate,
+        bank_account_id=bank_account_id, cash_book_id=cash_book_id,
+    )
     db.commit()
     return RedirectResponse(url=f"/credit-cards/{card_id}", status_code=status.HTTP_302_FOUND)

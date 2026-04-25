@@ -242,91 +242,24 @@ async def invoice_pay(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from payment_helpers import apply_invoice_payment
     inv = db.query(Invoice).get(invoice_id)
     if not inv or inv.status == "paid":
         raise HTTPException(status_code=400, detail="Fatura bulunamadı veya zaten ödendi.")
 
-    total = inv.total_with_vat
-    amount = pay_amount if pay_amount and pay_amount > 0 else total
-    amount = min(amount, inv.remaining)  # kalan tutarı aşamasın
+    amount = pay_amount if pay_amount and pay_amount > 0 else inv.total_with_vat
     pdate = date.fromisoformat(pay_date) if pay_date else date.today()
 
-    is_income = inv.invoice_type in ("kesilen", "komisyon")
-    flow = "giris" if is_income else "cikis"
-    desc = f"Fatura {inv.invoice_no or inv.id}" + (f" — {inv.vendor.name}" if inv.vendor else "")
-
-    pmt = InvoicePayment(
-        invoice_id=invoice_id,
-        payment_date=pdate,
-        amount=amount,
-        payment_method=payment_method,
-        notes=pay_notes.strip(),
-        created_by=current_user.id,
+    apply_invoice_payment(
+        db, inv,
+        payment_method=payment_method, amount=amount, pdate=pdate,
+        current_user=current_user,
+        cash_book_id=cash_book_id, bank_account_id=bank_account_id,
+        credit_card_id=credit_card_id,
+        cheque_no=cheque_no, cheque_bank=cheque_bank,
+        cheque_date_str=cheque_date, cheque_due_date_str=cheque_due_date,
+        pay_notes=pay_notes,
     )
-
-    if payment_method == "nakit" and cash_book_id:
-        pmt.cash_book_id = cash_book_id
-        db.add(CashEntry(
-            book_id=cash_book_id,
-            entry_date=pdate,
-            entry_type=flow,
-            amount=amount,
-            description=desc,
-            invoice_id=invoice_id,
-            ref_id=inv.ref_id,
-        ))
-
-    elif payment_method == "banka" and bank_account_id:
-        pmt.bank_account_id = bank_account_id
-        db.add(BankMovement(
-            account_id=bank_account_id,
-            movement_date=pdate,
-            movement_type=flow,
-            amount=amount,
-            description=desc,
-            invoice_id=invoice_id,
-            ref_id=inv.ref_id,
-        ))
-
-    elif payment_method == "kredi_karti" and credit_card_id:
-        pmt.credit_card_id = credit_card_id
-        db.add(CreditCardTxn(
-            card_id=credit_card_id,
-            txn_date=pdate,
-            amount=amount,
-            description=desc,
-            invoice_id=invoice_id,
-            ref_id=inv.ref_id,
-        ))
-
-    elif payment_method == "cek":
-        cheque = Cheque(
-            vendor_id=inv.vendor_id,
-            cheque_type="alınan" if is_income else "verilen",
-            cheque_no=cheque_no.strip(),
-            bank=cheque_bank.strip(),
-            amount=amount,
-            currency=inv.currency,
-            cheque_date=date.fromisoformat(cheque_date) if cheque_date else pdate,
-            due_date=date.fromisoformat(cheque_due_date) if cheque_due_date else pdate,
-            status="beklemede",
-        )
-        db.add(cheque)
-        db.flush()
-        pmt.cheque_id = cheque.id
-
-    db.add(pmt)
-    db.flush()
-
-    # Status güncelle
-    new_paid = sum(p.amount for p in inv.payments)
-    if new_paid >= total - 0.01:
-        inv.status = "paid"
-        inv.paid_at = datetime.utcnow()
-        inv.payment_method = payment_method
-    else:
-        inv.status = "partial"
-
     db.commit()
     return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=status.HTTP_302_FOUND)
 
@@ -389,31 +322,24 @@ async def invoice_pay_bulk(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Toplu ödeme — her fatura için InvoicePayment + yan kayıt yaratır (audit)."""
+    from payment_helpers import apply_invoice_payment
+    today = date.today()
     for inv_id in invoice_ids:
         inv = db.query(Invoice).get(inv_id)
         if not inv or inv.status == "paid":
             continue
-        total = inv.amount * (1 + inv.vat_rate)
-        desc = f"Fatura {inv.invoice_no or inv.id}" + (f" — {inv.vendor.name}" if inv.vendor else "")
-        is_income = inv.invoice_type in ("kesilen", "komisyon")
-        flow = "giris" if is_income else "cikis"
-        inv.payment_method = payment_method
-        inv.paid_at = datetime.utcnow()
-        inv.status = "paid"
-        if payment_method == "nakit" and cash_book_id:
-            inv.cash_book_id = cash_book_id
-            db.add(CashEntry(book_id=cash_book_id, entry_date=date.today(),
-                entry_type=flow, amount=total, description=desc,
-                invoice_id=inv.id, ref_id=inv.ref_id))
-        elif payment_method == "banka" and bank_account_id:
-            inv.bank_account_id = bank_account_id
-            db.add(BankMovement(account_id=bank_account_id, movement_date=date.today(),
-                movement_type=flow, amount=total, description=desc,
-                invoice_id=inv.id, ref_id=inv.ref_id))
-        elif payment_method == "kredi_karti" and credit_card_id:
-            inv.credit_card_id = credit_card_id
-            db.add(CreditCardTxn(card_id=credit_card_id, txn_date=date.today(),
-                amount=total, description=desc, invoice_id=inv.id, ref_id=inv.ref_id))
+        try:
+            apply_invoice_payment(
+                db, inv,
+                payment_method=payment_method, amount=inv.remaining, pdate=today,
+                current_user=current_user,
+                cash_book_id=cash_book_id, bank_account_id=bank_account_id,
+                credit_card_id=credit_card_id,
+            )
+        except HTTPException:
+            # Bir fatura için hedef hesap eksikse atla; toplu işlemi yarıda kesme
+            continue
     db.commit()
     return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
