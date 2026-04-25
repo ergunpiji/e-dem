@@ -189,6 +189,7 @@ class CreditCardTxn(Base):
     is_refund = Column(Boolean, default=False, nullable=False)
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     card = relationship("CreditCard", back_populates="txns")
     statement = relationship("CreditCardStatement", back_populates="txns")
@@ -227,6 +228,7 @@ class Cheque(Base):
     gm_decision_note = Column(Text, nullable=True)
     gm_approved_amount = Column(Float, nullable=True)
     preparer_note = Column(Text, nullable=True)
+    created_by_instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     vendor = relationship("FinancialVendor", back_populates="cheques")
     customer = relationship("Customer", back_populates="cheques")
@@ -351,6 +353,7 @@ class CashEntry(Base):
     related_party = Column(String(150), nullable=True)
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     book = relationship("CashBook", back_populates="entries")
     reference = relationship("Reference", back_populates="cash_entries")
@@ -368,6 +371,7 @@ class BankMovement(Base):
     description = Column(String(300))
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     account = relationship("BankAccount", back_populates="movements")
     reference = relationship("Reference", back_populates="bank_movements")
@@ -393,6 +397,7 @@ class InvoicePayment(Base):
     notes = Column(String(300))
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     invoice = relationship("Invoice", back_populates="payments")
     bank_account = relationship("BankAccount")
@@ -519,6 +524,7 @@ class SalaryPayment(Base):
     paid_at = Column(DateTime, nullable=False)
     general_expense_id = Column(Integer, ForeignKey("general_expenses.id"), nullable=True)
     notes = Column(Text)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     employee = relationship("Employee", back_populates="salary_payments")
     bank_account = relationship("BankAccount", back_populates="salary_payments")
@@ -770,3 +776,41 @@ class SystemSetting(Base):
     key = Column(String(100), primary_key=True)
     value = Column(String(500))
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# PaymentInstruction — GM onay → operatör infaz arasındaki bekleyen talimat
+# ---------------------------------------------------------------------------
+
+class PaymentInstruction(Base):
+    __tablename__ = "payment_instructions"
+
+    id = Column(Integer, primary_key=True)
+    # Kaynak: hangi kalem türü için bu talimat
+    source_type = Column(String(20), nullable=False)  # invoice|cheque|cc_statement|payroll
+    source_id = Column(Integer, nullable=True)        # invoice.id / cheque.id / cc_statement.id
+    source_period = Column(String(7), nullable=True)  # payroll için 'YYYY-MM'
+    # GM onay verisi
+    amount = Column(Float, nullable=False)
+    payment_method = Column(String(20), nullable=False)  # nakit|banka|kredi_karti|cek
+    note = Column(Text, nullable=True)
+    # Operatör infaz hedefi (execution'da seçilir)
+    target_bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
+    target_cash_book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=True)
+    target_credit_card_id = Column(Integer, ForeignKey("credit_cards.id"), nullable=True)
+    # Durum
+    status = Column(String(20), default="pending", nullable=False)  # pending|executed|cancelled
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)  # GM
+    executed_at = Column(DateTime, nullable=True)
+    executed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancelled_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    cancel_reason = Column(Text, nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    executor = relationship("User", foreign_keys=[executed_by])
+    canceller = relationship("User", foreign_keys=[cancelled_by])
+    target_bank_account = relationship("BankAccount")
+    target_cash_book = relationship("CashBook")
+    target_credit_card = relationship("CreditCard")

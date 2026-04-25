@@ -247,6 +247,13 @@ def _migrate(engine) -> None:
         "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS preparer_note TEXT",
         "ALTER TABLE credit_card_statements ADD COLUMN IF NOT EXISTS preparer_note TEXT",
         "ALTER TABLE payroll_decisions ADD COLUMN IF NOT EXISTS preparer_note TEXT",
+        # PaymentInstruction izlenebilirlik FK'lar — payment_instructions tablosu create_all ile oluşur
+        "ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS instruction_id INTEGER",
+        "ALTER TABLE bank_movements ADD COLUMN IF NOT EXISTS instruction_id INTEGER",
+        "ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS instruction_id INTEGER",
+        "ALTER TABLE credit_card_txns ADD COLUMN IF NOT EXISTS instruction_id INTEGER",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS created_by_instruction_id INTEGER",
+        "ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS instruction_id INTEGER",
     ]
     with engine.begin() as conn:
         for sql in migrations:
