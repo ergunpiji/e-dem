@@ -8,6 +8,7 @@
     <div class="btn-group btn-group-sm ms-3" role="group">
       <a href="?status=received" class="btn {% if selected_status == 'received' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Yeni</a>
       <a href="?status=imported" class="btn {% if selected_status == 'imported' %}btn-primary{% else %}btn-outline-secondary{% endif %}">İçe Aktarıldı</a>
+      <a href="?status=returned" class="btn {% if selected_status == 'returned' %}btn-primary{% else %}btn-outline-secondary{% endif %}">İade Edildi</a>
       <a href="?status=ignored"  class="btn {% if selected_status == 'ignored'  %}btn-primary{% else %}btn-outline-secondary{% endif %}">Yok Sayıldı</a>
     </div>
     <form method="post" action="/einvoice-ui/inbox/sync" class="ms-auto d-inline">
@@ -47,15 +48,13 @@
           </td>
           <td class="text-end">
             {% if it.status == 'received' %}
-            <button type="button" class="btn btn-sm btn-success"
-                    data-bs-toggle="modal" data-bs-target="#importModal"
-                    data-id="{{ it.id }}" data-sender="{{ it.sender_name }}"
-                    data-tax="{{ it.sender_tax_no }}" data-amount="{{ it.total_amount | money }}">
-              <i class="bi bi-download"></i> İçe Aktar
+            <button type="button" class="btn btn-sm btn-primary preview-btn"
+                    data-id="{{ it.id }}">
+              <i class="bi bi-eye"></i> Önizle ve Karar Ver
             </button>
             <form method="post" action="/einvoice-ui/inbox/{{ it.id }}/ignore" class="d-inline"
-                  onsubmit="return confirm('Yok say (artık görünmesin)?');">
-              <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye-slash"></i></button>
+                  onsubmit="return confirm('Yok say (sadece local olarak gizle, GİB ile etkileşim yok)?');">
+              <button class="btn btn-sm btn-outline-secondary" title="Yok say (local)"><i class="bi bi-eye-slash"></i></button>
             </form>
             {% elif it.imported_invoice_id %}
             <a href="/invoices/{{ it.imported_invoice_id }}" class="btn btn-sm btn-outline-primary">
@@ -72,61 +71,34 @@
   </div>
 </div>
 
-<!-- Import Modal -->
-<div class="modal fade" id="importModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form id="import-form" method="post" action="" class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-download text-success"></i> E-Faturayı İçe Aktar</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<!-- Önizleme + Karar Modal (AJAX ile içerik yüklenir) -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content" id="preview-content">
+      <div class="modal-body text-center py-5">
+        <div class="spinner-border text-primary"></div>
+        <div class="text-muted mt-2">E-fatura detayı yükleniyor...</div>
       </div>
-      <div class="modal-body">
-        <div class="mb-2">
-          <div class="text-muted small">Gönderen</div>
-          <div class="fw-semibold" id="im-sender">—</div>
-        </div>
-        <div class="mb-2">
-          <div class="text-muted small">Vergi No</div>
-          <div class="fw-semibold" id="im-tax">—</div>
-        </div>
-        <div class="mb-3">
-          <div class="text-muted small">Tutar</div>
-          <div class="fw-bold fs-5" id="im-amount">—</div>
-        </div>
-        <hr>
-        <label class="form-label">Tedarikçi Eşleştirme</label>
-        <select name="vendor_id" class="form-select mb-2">
-          <option value="">— Vergi numarasıyla otomatik eşleşsin / yoksa yeni yarat —</option>
-          {% for v in vendors %}
-          <option value="{{ v.id }}">{{ v.name }} {% if v.tax_no %}({{ v.tax_no }}){% endif %}</option>
-          {% endfor %}
-        </select>
-        <label class="form-label">Yeni Tedarikçi Adı (eşleşme yoksa)</label>
-        <input type="text" name="new_vendor_name" class="form-control mb-2" placeholder="Boş bırakılırsa gönderen adı kullanılır">
-
-        <label class="form-label">Referans (Opsiyonel)</label>
-        <select name="ref_id" class="form-select">
-          <option value="">— Yok —</option>
-          {% for r in references %}
-          <option value="{{ r.id }}">{{ r.ref_no }} · {{ r.title[:40] }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Vazgeç</button>
-        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> Faturayı Yarat</button>
-      </div>
-    </form>
+    </div>
   </div>
 </div>
 
 <script>
-  document.getElementById('importModal').addEventListener('show.bs.modal', function (e) {
-    var btn = e.relatedTarget;
-    document.getElementById('import-form').action = '/einvoice-ui/inbox/' + btn.dataset.id + '/import';
-    document.getElementById('im-sender').textContent = btn.dataset.sender || '—';
-    document.getElementById('im-tax').textContent = btn.dataset.tax || '—';
-    document.getElementById('im-amount').textContent = btn.dataset.amount || '—';
+  document.querySelectorAll('.preview-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = this.dataset.id;
+      var modalEl = document.getElementById('previewModal');
+      var content = document.getElementById('preview-content');
+      content.innerHTML = '<div class="modal-body text-center py-5"><div class="spinner-border text-primary"></div><div class="text-muted mt-2">Yükleniyor...</div></div>';
+      var modal = new bootstrap.Modal(modalEl);
+      modal.show();
+      fetch('/einvoice-ui/inbox/' + id + '/preview', { headers: { 'Accept': 'text/html' } })
+        .then(function (r) { return r.text(); })
+        .then(function (html) { content.innerHTML = html; })
+        .catch(function (err) {
+          content.innerHTML = '<div class="modal-body"><div class="alert alert-danger">Yükleme hatası: ' + err + '</div></div>';
+        });
+    });
   });
 </script>
 {% endblock %}

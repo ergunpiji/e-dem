@@ -120,19 +120,42 @@ class FakeProvider(BaseProvider):
     def fetch_inbox_item(self, external_uuid: str) -> dict:
         for it in _FAKE_INBOX:
             if it.external_uuid == external_uuid:
+                # Demo amaçlı 2-3 kalem üret
+                base = it.total_amount / 1.20  # KDV %20 varsayımı
+                if it.total_amount > 5000:
+                    lines = [
+                        {"description": "Hizmet bedeli — Ana iş", "qty": 1,
+                         "unit": "ADET", "unit_price": base * 0.7,
+                         "vat_rate": 0.20, "vat_amount": base * 0.7 * 0.20,
+                         "total": base * 0.7 * 1.20},
+                        {"description": "Ek hizmet — Destek", "qty": 2,
+                         "unit": "SAAT", "unit_price": base * 0.15,
+                         "vat_rate": 0.20, "vat_amount": base * 0.30 * 0.20,
+                         "total": base * 0.30 * 1.20},
+                    ]
+                else:
+                    lines = [
+                        {"description": "Tek kalem hizmet bedeli", "qty": 1,
+                         "unit": "ADET", "unit_price": base,
+                         "vat_rate": 0.20, "vat_amount": base * 0.20,
+                         "total": it.total_amount},
+                    ]
                 return {
                     "external_uuid": it.external_uuid,
                     "sender_tax_no": it.sender_tax_no,
                     "sender_name": it.sender_name,
+                    "sender_address": "İstanbul / Türkiye (demo adres)",
+                    "sender_email": f"info@{it.sender_tax_no}.com.tr",
                     "invoice_no": it.invoice_no,
                     "invoice_date": it.invoice_date.isoformat(),
+                    "due_date": it.invoice_date.isoformat(),
                     "total_amount": it.total_amount,
+                    "subtotal": round(base, 2),
+                    "vat_total": round(it.total_amount - base, 2),
                     "currency": it.currency,
-                    "lines": [
-                        {"description": "Demo Hizmet", "qty": 1, "unit_price": it.total_amount / 1.20,
-                         "vat_rate": 0.20, "vat_amount": it.total_amount - it.total_amount / 1.20,
-                         "total": it.total_amount},
-                    ],
+                    "lines": lines,
+                    "pdf_url": f"https://fake-einvoice.local/pdf/{it.external_uuid}.pdf",
+                    "xml_preview": f"<Invoice><ID>{it.invoice_no}</ID><IssueDate>{it.invoice_date.isoformat()}</IssueDate><LegalMonetaryTotal>{it.total_amount}</LegalMonetaryTotal></Invoice>",
                     "raw": it.raw,
                 }
         return {}

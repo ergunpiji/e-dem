@@ -150,6 +150,72 @@ async def inbox_sync_ui(
     return RedirectResponse(url=f"/einvoice-ui/inbox?synced={n}", status_code=303)
 
 
+@router.get("/einvoice-ui/inbox/{item_id}/preview", name="einvoice_inbox_preview")
+async def inbox_preview(
+    item_id: int,
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Inbox kaleminin detayını fragment olarak döner — modal AJAX için."""
+    _require_module_active(db)
+    mod = _get_einvoice_module(request)
+    item = db.query(mod.InboxItem).get(item_id)
+    if not item:
+        raise HTTPException(404)
+    detail = mod.provider.fetch_inbox_item(item.external_uuid)
+    vendors = db.query(FinancialVendor).filter(
+        FinancialVendor.active == True  # noqa: E712
+    ).order_by(FinancialVendor.name).all()
+    references = db.query(Reference).filter(
+        Reference.status == "aktif"
+    ).order_by(Reference.created_at.desc()).all()
+    return templates.TemplateResponse(
+        "einvoice/_preview_modal.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "item": item,
+            "detail": detail,
+            "vendors": vendors,
+            "references": references,
+        },
+    )
+
+
+@router.post("/einvoice-ui/inbox/{item_id}/return", name="einvoice_inbox_return_ui")
+async def inbox_return(
+    item_id: int,
+    request: Request,
+    reason: str = Form(""),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Faturayı reddet (iade) — GİB'e olumsuz uygulama yanıtı gider."""
+    _require_module_active(db)
+    mod = _get_einvoice_module(request)
+    item = db.query(mod.InboxItem).get(item_id)
+    if not item:
+        raise HTTPException(404)
+    if item.status != "received":
+        raise HTTPException(400, f"Kalem zaten işlenmiş ({item.status})")
+    # Provider'a iade yanıtını gönder (FakeProvider'da no-op)
+    try:
+        result = mod.provider.cancel_invoice(item.external_uuid, reason or "Alıcı tarafından reddedildi")
+        if not result.success:
+            raise HTTPException(502, f"Provider iade hatası: {result.detail}")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # Provider iade'yi desteklemiyor olabilir; yine de local'de işaretle
+        print(f"[einvoice] iade provider hatası: {exc}", flush=True)
+    item.status = "returned"
+    item.imported_at = datetime.utcnow()
+    item.imported_by = current_user.id
+    db.commit()
+    return RedirectResponse(url="/einvoice-ui/inbox", status_code=303)
+
+
 @router.post("/einvoice-ui/inbox/{item_id}/ignore", name="einvoice_inbox_ignore_ui")
 async def inbox_ignore_ui(
     item_id: int,
