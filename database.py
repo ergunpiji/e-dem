@@ -260,6 +260,19 @@ def _migrate(engine) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(40)",
         # ManualPaymentLine referans bağlantısı
         "ALTER TABLE manual_payment_lines ADD COLUMN IF NOT EXISTS ref_id INTEGER",
+        # E-Fatura entegrasyonu (prizma-einvoice paketi)
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS einvoice_status VARCHAR(20)",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS einvoice_uuid VARCHAR(64)",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS einvoice_pdf_url TEXT",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS einvoice_sent_at TIMESTAMP",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS einvoice_inbox_id INTEGER",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS einvoice_external_uuid VARCHAR(64)",
+        "ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_efatura_user BOOLEAN",
+        "ALTER TABLE customers ADD COLUMN IF NOT EXISTS efatura_alias VARCHAR(100)",
+        "ALTER TABLE customers ADD COLUMN IF NOT EXISTS efatura_checked_at TIMESTAMP",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS is_efatura_user BOOLEAN",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS efatura_alias VARCHAR(100)",
+        "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS efatura_checked_at TIMESTAMP",
     ]
     with engine.begin() as conn:
         for sql in migrations:

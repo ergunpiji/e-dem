@@ -52,10 +52,17 @@
   </div>
 </div>
 
+{% if module.simulation_note %}
+<div class="blocked-banner" style="background:#eff6ff;border-color:#bfdbfe;border-left-color:#3b82f6;">
+  <i class="bi bi-flask-fill icon" style="color:#3b82f6;"></i>
+  <strong>Simülasyon Modu:</strong> {{ module.simulation_note }}
+</div>
+{% endif %}
+
 {% if module.blocked_reason %}
 <div class="blocked-banner">
   <i class="bi bi-info-circle-fill icon"></i>
-  <strong>Aktivasyon için:</strong> {{ module.blocked_reason }}
+  <strong>Not:</strong> {{ module.blocked_reason }}
 </div>
 {% endif %}
 
@@ -79,20 +86,28 @@
 
 <div class="info-section">
   <h5><i class="bi bi-gear"></i> Aktivasyon</h5>
-  <p class="text-muted mb-2">
-    {% if module.status == 'inactive' %}
-    Bu modülün aktivasyon sihirbazı, ön koşullar tamamlandıktan sonra burada açılacak.
-    Şu an pasif durumda; uygulama akışlarına etkisi yok.
-    {% elif module.status == 'planned' %}
-    Bu modül henüz planlama aşamasında. Daha önce aktive edilmesi gereken modüller var.
-    {% elif module.status == 'configuring' %}
-    Aktivasyon devam ediyor; sihirbazı bitirip canlıya alabilirsiniz.
+  <p class="text-muted mb-3">
+    {% if module.enabled %}
+    Modül <strong class="text-success">aktif</strong>. İlgili UI bölümleri sidebar ve sayfalarda görünür.
     {% else %}
-    Modül aktif. Ayar ve kullanım için ilgili sayfalara gidin.
+    Modül <strong class="text-warning">pasif</strong>. Aktive ettiğinizde sidebar'a ve ilgili sayfalara
+    UI elementleri eklenecek; mevcut akışlarınız değişmez.
     {% endif %}
   </p>
-  <button class="btn btn-primary" disabled>
-    <i class="bi bi-play-fill"></i> Aktive Et (yakında)
-  </button>
+
+  {% if module.enabled %}
+  <form method="post" action="/admin/modules/{{ module.key }}/deactivate"
+        onsubmit="return confirm('Modülü devre dışı bırakmak istediğinizden emin misiniz? UI elementleri gizlenecek.');">
+    <button type="submit" class="btn btn-outline-warning">
+      <i class="bi bi-pause-fill"></i> Devre Dışı Bırak
+    </button>
+  </form>
+  {% else %}
+  <form method="post" action="/admin/modules/{{ module.key }}/activate">
+    <button type="submit" class="btn btn-success">
+      <i class="bi bi-play-fill"></i> Aktive Et
+    </button>
+  </form>
+  {% endif %}
 </div>
 {% endblock %}

@@ -86,3 +86,15 @@ templates.env.filters["money"]        = format_money
 templates.env.filters["role_label"]   = role_label
 templates.env.filters["fromjson"]     = fromjson_filter
 templates.env.filters["tojson"]       = tojson_filter
+
+
+def module_enabled(request, module_key: str) -> bool:
+    """Modül flag'ini template'lerden kontrol eder.
+    Kullanım: {% if module_enabled(request, 'einvoice') %}...{% endif %}"""
+    if request is None:
+        return False
+    enabled = getattr(request.state, "enabled_modules", None) or set()
+    return module_key in enabled
+
+
+templates.env.globals["module_enabled"] = module_enabled

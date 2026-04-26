@@ -55,6 +55,10 @@ class Customer(Base):
     phone = Column(String(50))
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # E-Fatura mükellef sorgu cache'i
+    is_efatura_user = Column(Boolean, nullable=True)
+    efatura_alias = Column(String(100), nullable=True)
+    efatura_checked_at = Column(DateTime, nullable=True)
 
     references = relationship("Reference", back_populates="customer")
     cheques = relationship("Cheque", back_populates="customer")
@@ -80,6 +84,10 @@ class FinancialVendor(Base):
     notes = Column(Text)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # E-Fatura mükellef sorgu cache'i
+    is_efatura_user = Column(Boolean, nullable=True)
+    efatura_alias = Column(String(100), nullable=True)
+    efatura_checked_at = Column(DateTime, nullable=True)
 
     invoices = relationship("Invoice", back_populates="vendor")
     cheques = relationship("Cheque", back_populates="vendor")
@@ -304,6 +312,13 @@ class Invoice(Base):
     notes = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # E-Fatura entegrasyonu (prizma-einvoice paketi tarafından kullanılır)
+    einvoice_status = Column(String(20), nullable=True)
+    einvoice_uuid = Column(String(64), nullable=True)
+    einvoice_pdf_url = Column(Text, nullable=True)
+    einvoice_sent_at = Column(DateTime, nullable=True)
+    einvoice_inbox_id = Column(Integer, nullable=True)        # gelen invoice ise
+    einvoice_external_uuid = Column(String(64), nullable=True)
     # GM (Genel Müdür) haftalık ödeme listesi kararı
     gm_decision = Column(String(20), nullable=True)  # approved | rejected | postponed | NULL
     gm_decision_at = Column(DateTime, nullable=True)
