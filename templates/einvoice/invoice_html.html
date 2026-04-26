@@ -14,8 +14,10 @@
   .page { max-width: 820px; margin: auto; background: #fff;
           box-shadow: 0 8px 32px rgba(0,0,0,.08); border-radius: 6px; padding: 30px 36px; }
   .top-bar { display:flex; align-items:center; justify-content:space-between;
-             padding-bottom:14px; border-bottom: 3px solid #1A3A5C; }
-  .top-bar h1 { margin:0; color:#1A3A5C; font-size: 22px; font-weight: 800; }
+             padding-bottom:14px; border-bottom: 3px solid {{ company('brand_color', '#1A3A5C') }}; }
+  .top-bar h1 { margin:0; color: {{ company('brand_color', '#1A3A5C') }}; font-size: 22px; font-weight: 800; }
+  .top-bar .left { display: flex; align-items: center; gap: 14px; }
+  .top-bar .left img { max-height: 60px; max-width: 200px; }
   .top-bar .meta { font-size: 11px; color: #64748b; text-align:right; }
   .top-bar .meta strong { color:#1A3A5C; }
   .stamp {
@@ -30,20 +32,20 @@
   .box .name { font-weight: 700; font-size: 13px; }
   .box .row { font-size: 11.5px; color:#475569; margin-top:3px; }
   table.lines { width:100%; border-collapse: collapse; margin-top: 16px; font-size: 11.5px; }
-  table.lines th { background: #1A3A5C; color: #fff; padding: 8px 10px; text-align: left; font-weight: 700; font-size: 11px; }
+  table.lines th { background: {{ company('brand_color', '#1A3A5C') }}; color: #fff; padding: 8px 10px; text-align: left; font-weight: 700; font-size: 11px; }
   table.lines td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; }
   table.lines td.r { text-align: right; }
   table.lines td.c { text-align: center; }
   .totals { margin-top: 12px; display:flex; justify-content: flex-end; }
   .totals table { font-size: 12.5px; }
   .totals td { padding: 4px 14px; }
-  .totals tr.grand { background:#1A3A5C; color:#fff; font-weight:700; font-size: 14px; }
+  .totals tr.grand { background: {{ company('brand_color', '#1A3A5C') }}; color:#fff; font-weight:700; font-size: 14px; }
   .totals tr.grand td { padding: 8px 14px; }
   .footer { margin-top: 26px; padding-top: 12px; border-top: 1px dashed #cbd5e1;
             font-size: 11px; color: #94a3b8; text-align: center; }
   .uuid-box { margin-top: 14px; background: #f1f5f9; padding: 10px 12px; border-radius:4px;
               font-size: 11px; color:#475569; }
-  .uuid-box code { color:#1A3A5C; }
+  .uuid-box code { color: {{ company('brand_color', '#1A3A5C') }}; }
 
   @media print {
     body { background: #fff; padding: 0; }
@@ -52,7 +54,7 @@
   }
   .toolbar { max-width: 820px; margin: 0 auto 16px; display:flex; gap:8px; justify-content:flex-end; }
   .toolbar a, .toolbar button { padding: 6px 14px; font-size: 13px; border-radius: 6px;
-                                 background: #1A3A5C; color:#fff; border:0; cursor:pointer;
+                                 background: {{ company('brand_color', '#1A3A5C') }}; color:#fff; border:0; cursor:pointer;
                                  text-decoration: none; }
   .toolbar .secondary { background: #64748b; }
 </style>
@@ -66,15 +68,18 @@
 
 <div class="page">
   <div class="top-bar">
-    <div>
-      <h1>e-Fatura</h1>
-      <div style="font-size:11px;color:#64748b;margin-top:4px;">
-        UBL-TR · {{ invoice.currency or 'TRY' }} ·
-        {% if is_fake %}
-        <span class="stamp stamp-fake">Sandbox / Test</span>
-        {% else %}
-        <span class="stamp stamp-prod">Resmi</span>
-        {% endif %}
+    <div class="left">
+      {% if company('logo_path') %}<img src="{{ company('logo_path') }}" alt="Logo">{% endif %}
+      <div>
+        <h1>e-Fatura</h1>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">
+          UBL-TR · {{ invoice.currency or 'TRY' }} ·
+          {% if is_fake %}
+          <span class="stamp stamp-fake">Sandbox / Test</span>
+          {% else %}
+          <span class="stamp stamp-prod">Resmi</span>
+          {% endif %}
+        </div>
       </div>
     </div>
     <div class="meta">
@@ -87,10 +92,13 @@
   <div class="grid-2">
     <div class="box">
       <h6>Düzenleyen (Satıcı)</h6>
-      <div class="name">PRİZMATİK · Demo Şirket A.Ş.</div>
-      <div class="row">Vergi No: <code>1234567890</code></div>
-      <div class="row">Vergi Dairesi: Beşiktaş</div>
-      <div class="row">İstanbul / Türkiye</div>
+      <div class="name">{{ company('name', 'Şirket Profili henüz tanımlanmadı') }}</div>
+      {% if company('tax_no') %}<div class="row">Vergi No: <code>{{ company('tax_no') }}</code></div>{% endif %}
+      {% if company('tax_office') %}<div class="row">Vergi Dairesi: {{ company('tax_office') }}</div>{% endif %}
+      {% if company('address') %}<div class="row">{{ company('address') }}</div>{% endif %}
+      {% if company('phone') %}<div class="row">Tel: {{ company('phone') }}</div>{% endif %}
+      {% if company('email') %}<div class="row">{{ company('email') }}</div>{% endif %}
+      {% if company('kep_address') %}<div class="row">KEP: {{ company('kep_address') }}</div>{% endif %}
     </div>
     <div class="box">
       <h6>Alıcı</h6>
@@ -159,6 +167,20 @@
       <tr class="grand"><td>ÖDENECEK TUTAR</td><td class="r" style="text-align:right;">{{ (ns.subtotal + ns.vat) | money }}</td></tr>
     </table>
   </div>
+
+  {% if company('iban_1') or company('iban_2') %}
+  <div class="uuid-box" style="margin-top:14px;">
+    <strong>Banka Bilgileri</strong>
+    {% if company('iban_1') %}<div>{{ company('iban_1_bank') }} — <code>{{ company('iban_1') }}</code></div>{% endif %}
+    {% if company('iban_2') %}<div>{{ company('iban_2_bank') }} — <code>{{ company('iban_2') }}</code></div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if company('invoice_footer') %}
+  <div style="margin-top:12px;padding:10px 12px;background:#fffbeb;border-left:3px solid #f59e0b;font-size:11.5px;color:#475569;">
+    {{ company('invoice_footer') }}
+  </div>
+  {% endif %}
 
   <div class="uuid-box">
     <strong>Belge UUID/ETTN:</strong> <code>{{ invoice.einvoice_uuid or '—' }}</code><br>

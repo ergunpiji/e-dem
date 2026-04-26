@@ -236,7 +236,9 @@ async def tax_reports_export(
     ws.row_dimensions[1].height = 30
     ws.merge_cells("A1:E1")
     c = ws["A1"]
-    c.value = f"PRİZMATİK · KDV Özet — {month_names[month-1]} {year}"
+    from templates_config import company as _company
+    _short = _company('short_name') or _company('name') or 'Prizma Finans'
+    c.value = f"{_short} · KDV Özet — {month_names[month-1]} {year}"
     c.font = Font(size=14, bold=True, color="FFFFFF")
     c.fill = PatternFill("solid", fgColor=NAVY)
     c.alignment = Alignment(horizontal="center", vertical="center")

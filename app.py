@@ -194,6 +194,7 @@ from routers import admin_modules as admin_modules_router
 from routers import einvoice_host as einvoice_host_router
 from routers import tax_reports as tax_reports_router
 from routers import edefter as edefter_router
+from routers import company_profile as company_profile_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -218,6 +219,7 @@ app.include_router(admin_modules_router.router)
 app.include_router(einvoice_host_router.router)
 app.include_router(tax_reports_router.router)
 app.include_router(edefter_router.router)
+app.include_router(company_profile_router.router)
 
 # E-Fatura modülünü mount et (router /einvoice/* prefix'ile eklenir).
 # Endpoint'ler her zaman erişilebilir; aktif/pasif kontrolü feature flag ile

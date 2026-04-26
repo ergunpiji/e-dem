@@ -98,3 +98,52 @@ def module_enabled(request, module_key: str) -> bool:
 
 
 templates.env.globals["module_enabled"] = module_enabled
+
+
+# --- Şirket profili (SystemSetting'tan) ---
+
+# Cache: her request'te DB'ye gitmemek için runtime cache (admin formu yazınca temizlenir)
+_company_settings_cache: dict[str, str] = {}
+_company_cache_loaded = False
+
+
+def _load_company_settings() -> dict:
+    """SystemSetting 'company_*' anahtarlarını cache'e yükle."""
+    global _company_cache_loaded
+    if _company_cache_loaded:
+        return _company_settings_cache
+    try:
+        from database import SessionLocal
+        from models import SystemSetting
+        db = SessionLocal()
+        try:
+            rows = db.query(SystemSetting).filter(
+                SystemSetting.key.like("company_%")
+            ).all()
+            _company_settings_cache.clear()
+            for r in rows:
+                _company_settings_cache[r.key] = r.value or ""
+            _company_cache_loaded = True
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return _company_settings_cache
+
+
+def invalidate_company_cache() -> None:
+    """Şirket profili güncellendikten sonra cache'i temizle."""
+    global _company_cache_loaded
+    _company_cache_loaded = False
+    _company_settings_cache.clear()
+
+
+def company(key: str, default: str = "") -> str:
+    """Template global: {{ company('name', 'Prizmatik') }}"""
+    settings = _load_company_settings()
+    full_key = f"company_{key}" if not key.startswith("company_") else key
+    val = settings.get(full_key, "") or ""
+    return val or default
+
+
+templates.env.globals["company"] = company

@@ -136,9 +136,13 @@
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="sidebar-logo">
-      <img src="/static/prizmatik-logo-beyaz.png" alt="Prizmatik">
+      {% if company('logo_path') %}
+        <img src="{{ company('logo_path') }}" alt="{{ company('short_name', 'Logo') }}">
+      {% else %}
+        <img src="/static/prizmatik-logo-beyaz.png" alt="Prizmatik">
+      {% endif %}
     </div>
-    <div class="sidebar-subtitle">Finans Yönetim Programı</div>
+    <div class="sidebar-subtitle">{{ company('short_name', 'Prizmatik') }} · Finans Yönetim Programı</div>
   </div>
 
   <div style="flex:1; overflow-y:auto;">
@@ -277,6 +281,9 @@
     </a>
     <a href="/admin/modules" class="sidebar-link {% if '/admin/modules' in request.url.path %}active{% endif %}">
       <i class="bi bi-puzzle"></i> Modüller
+    </a>
+    <a href="/admin/company-profile" class="sidebar-link {% if '/admin/company-profile' in request.url.path %}active{% endif %}">
+      <i class="bi bi-building-fill"></i> Şirket Profili
     </a>
     {% endif %}
   </div>

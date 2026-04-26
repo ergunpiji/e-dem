@@ -668,7 +668,8 @@ async def weekly_payment_export(
     ws.row_dimensions[1].height = 32
     ws.merge_cells(f"A1:{last_letter}1")
     c1 = ws["A1"]
-    c1.value = "PRİZMATİK — Finans Yönetim Programı"
+    from templates_config import company
+    c1.value = f"{company('short_name', 'PRİZMATİK')} — Finans Yönetim Programı"
     c1.font = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
     c1.fill = PatternFill("solid", fgColor=NAVY)
     c1.alignment = Alignment(horizontal="center", vertical="center")
@@ -1155,11 +1156,15 @@ async def weekly_payment_submit(
             app_url = (os.environ.get("APP_URL") or "").rstrip("/")
             link = f"{app_url}/payments/weekly" if app_url else "/payments/weekly"
 
-            subject = f"Prizma Finans — Haftalık Ödeme Listesi onayınız bekliyor ({next_date.strftime('%d.%m.%Y')})"
+            from templates_config import company as _company
+            company_name = _company('short_name') or _company('name') or "Prizma Finans"
+            brand_color = _company('brand_color', '#1A3A5C')
+
+            subject = f"{company_name} — Haftalık Ödeme Listesi onayınız bekliyor ({next_date.strftime('%d.%m.%Y')})"
             html = f"""
 <div style="font-family:'Segoe UI',Tahoma,Arial,sans-serif;max-width:640px;margin:auto;background:#f1f5f9;padding:24px;">
-  <div style="background:#1A3A5C;color:#fff;padding:18px 22px;border-radius:6px 6px 0 0;">
-    <div style="font-size:18px;font-weight:bold;">PRİZMATİK — Finans Yönetim Programı</div>
+  <div style="background:{brand_color};color:#fff;padding:18px 22px;border-radius:6px 6px 0 0;">
+    <div style="font-size:18px;font-weight:bold;">{company_name} — Finans Yönetim Programı</div>
   </div>
   <div style="background:#1E5F8C;color:#fff;padding:14px 22px;">
     <div style="font-size:15px;font-weight:bold;">Haftalık Ödeme Listesi Onayınız Bekliyor</div>
@@ -1194,7 +1199,7 @@ async def weekly_payment_submit(
         <tr><td style="padding:8px 12px;border-top:1px solid #e2e8f0;">Personel Maaşı</td>
             <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{'1' if payroll_show else '0'}</td>
             <td style="padding:8px 12px;text-align:right;border-top:1px solid #e2e8f0;">{_fmt(pr_t)}</td></tr>
-        <tr style="background:#1A3A5C;color:#fff;font-weight:bold;">
+        <tr style="background:{brand_color};color:#fff;font-weight:bold;">
           <td style="padding:10px 12px;">GENEL TOPLAM</td>
           <td></td>
           <td style="padding:10px 12px;text-align:right;">{_fmt(grand)}</td>
