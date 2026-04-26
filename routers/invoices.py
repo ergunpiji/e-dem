@@ -83,6 +83,7 @@ async def invoice_new_get(
 
 @router.post("/new", name="invoice_new_post")
 async def invoice_new_post(
+    request: Request,
     ref_id: int = Form(None),
     vendor_id: int = Form(None),
     invoice_type: str = Form(...),
@@ -92,10 +93,10 @@ async def invoice_new_post(
     currency: str = Form("TRY"),
     notes: str = Form(""),
     items_json: str = Form("[]"),
+    send_to_gib: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    import json as _json
     net_total, vat_total = _parse_items(items_json)
     amount = net_total
     vat_rate = (vat_total / net_total) if net_total else 0.0
@@ -116,7 +117,110 @@ async def invoice_new_post(
     )
     db.add(inv)
     db.commit()
-    return RedirectResponse(url=f"/invoices/{inv.id}", status_code=status.HTTP_302_FOUND)
+    db.refresh(inv)
+
+    # "Kaydet ve GİB'e Gönder" basıldıysa ve modül aktifse otomatik gönder
+    redirect_query = ""
+    if (send_to_gib == "1" and invoice_type in ("kesilen", "komisyon")
+            and current_user.is_admin):
+        # Modül aktif mi?
+        from models import SystemSetting
+        s = db.query(SystemSetting).filter(
+            SystemSetting.key == "module_einvoice_enabled"
+        ).first()
+        if s and s.value == "1":
+            # Müşteri bilgisi tam mı?
+            customer = inv.reference.customer if (inv.reference and inv.reference.customer) else None
+            missing = []
+            if not customer:
+                missing.append("müşteri")
+            else:
+                if not customer.tax_no:
+                    missing.append("vergi no")
+                if not customer.tax_office:
+                    missing.append("vergi dairesi")
+
+            if missing:
+                # Eksik bilgi var — kayıt edildi, gönderim atlandı, uyarı
+                redirect_query = f"?ef_warning=" + ",".join(missing)
+            else:
+                # Gönder
+                try:
+                    from app import einvoice_module as mod
+                    if mod is not None:
+                        from datetime import datetime as _dt
+                        # Mükellef cache kontrolü
+                        if customer.is_efatura_user is None:
+                            info = mod.provider.check_efatura_user(customer.tax_no)
+                            customer.is_efatura_user = info.is_user
+                            customer.efatura_alias = info.alias
+                            customer.efatura_checked_at = _dt.utcnow()
+                            db.flush()
+                        is_efatura = bool(customer.is_efatura_user)
+
+                        # Kalemlerden InvoicePayload üret
+                        import json as _json
+                        lines = []
+                        try:
+                            raw = _json.loads(inv.items_json or "[]")
+                            for li in raw:
+                                lines.append({
+                                    "description": li.get("description") or "Hizmet",
+                                    "quantity": float(li.get("qty") or 1),
+                                    "unit": li.get("unit") or "ADET",
+                                    "unit_price": float(li.get("price") or 0),
+                                    "vat_rate": float(li.get("vat_rate") or inv.vat_rate or 0.20),
+                                    "discount": float(li.get("discount") or 0),
+                                })
+                        except Exception:  # noqa: BLE001
+                            pass
+                        if not lines:
+                            lines = [{
+                                "description": inv.invoice_no or "Hizmet bedeli",
+                                "quantity": 1, "unit": "ADET",
+                                "unit_price": float(inv.amount or 0),
+                                "vat_rate": float(inv.vat_rate or 0.20),
+                                "discount": 0,
+                            }]
+                        payload_dict = {
+                            "invoice_no": inv.invoice_no or f"INV-{inv.id}",
+                            "invoice_date": inv.invoice_date.isoformat(),
+                            "currency": inv.currency or "TRY",
+                            "is_efatura": is_efatura,
+                            "customer": {
+                                "name": customer.name, "tax_no": customer.tax_no,
+                                "tax_office": customer.tax_office,
+                                "address": customer.address or "",
+                                "email": customer.email or "",
+                                "phone": customer.phone or "",
+                                "alias": customer.efatura_alias,
+                            },
+                            "lines": lines,
+                            "notes": inv.notes or "",
+                        }
+                        from prizma_einvoice import build_invoice_payload_from_dict, submit_payload
+                        sub = submit_payload(
+                            db,
+                            invoice_id=inv.id,
+                            payload=build_invoice_payload_from_dict(payload_dict),
+                            submission_model=mod.Submission,
+                            provider=mod.provider,
+                            user_id=current_user.id,
+                        )
+                        inv.einvoice_status = sub.status
+                        inv.einvoice_uuid = sub.uuid
+                        inv.einvoice_pdf_url = sub.pdf_url
+                        inv.einvoice_sent_at = sub.submitted_at
+                        db.commit()
+                        redirect_query = "?ef_sent=1"
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[invoice-create-send] hata: {exc}", flush=True)
+                    redirect_query = "?ef_error=1"
+
+    return RedirectResponse(
+        url=f"/invoices/{inv.id}{redirect_query}",
+        status_code=status.HTTP_302_FOUND,
+    )
 
 
 @router.get("/{invoice_id}", response_class=HTMLResponse, name="invoice_detail")

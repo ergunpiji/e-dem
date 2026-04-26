@@ -11,6 +11,32 @@
 
 {% block content %}
 {% set is_income = invoice.invoice_type in ('kesilen', 'komisyon') %}
+
+{# Flash mesajları — yeni fatura kayıt sonrası "Kaydet ve GİB'e Gönder" sonucu #}
+{% set ef_sent = request.query_params.get('ef_sent') %}
+{% set ef_warning = request.query_params.get('ef_warning') %}
+{% set ef_error = request.query_params.get('ef_error') %}
+{% if ef_sent %}
+<div class="alert alert-success py-2 mb-3">
+  <i class="bi bi-check-circle-fill"></i>
+  <strong>GİB'e gönderildi.</strong> Status: <span class="badge bg-success">{{ invoice.einvoice_status }}</span>
+  {% if invoice.einvoice_uuid %}— UUID: <code>{{ invoice.einvoice_uuid }}</code>{% endif %}
+</div>
+{% endif %}
+{% if ef_warning %}
+<div class="alert alert-warning py-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  <strong>Fatura kaydedildi ama GİB'e gönderilmedi.</strong>
+  Eksik müşteri bilgisi: <strong>{{ ef_warning | replace(',', ', ') }}</strong>.
+  Müşteriyi düzenleyip ardından detayda "GİB'e Gönder" butonunu kullanın.
+</div>
+{% endif %}
+{% if ef_error %}
+<div class="alert alert-danger py-2 mb-3">
+  <i class="bi bi-x-circle-fill"></i>
+  <strong>GİB gönderim hatası.</strong> Detayda "GİB'e Gönder" butonu ile tekrar deneyin (log'larda detay var).
+</div>
+{% endif %}
 {% set total = invoice.amount * (1 + invoice.vat_rate) %}
 {% set paid = invoice.paid_amount %}
 {% set remaining = invoice.remaining %}
