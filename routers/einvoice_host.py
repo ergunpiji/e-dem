@@ -150,6 +150,45 @@ async def inbox_sync_ui(
     return RedirectResponse(url=f"/einvoice-ui/inbox?synced={n}", status_code=303)
 
 
+@router.get("/einvoice-ui/invoice/{invoice_id}/pdf", name="einvoice_invoice_pdf")
+async def invoice_pdf(
+    invoice_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """E-fatura PDF görüntüleme. Gerçek entegratör URL'i varsa oraya
+    redirect; yoksa (örn. FakeProvider) yerel HTML preview döner."""
+    _require_module_active(db)
+    inv = db.query(Invoice).get(invoice_id)
+    if not inv:
+        raise HTTPException(404, "Fatura bulunamadı")
+    pdf_url = inv.einvoice_pdf_url or ""
+    # Gerçek (https) URL varsa ve fake değilse redirect
+    if pdf_url.startswith("https://") and "fake-einvoice.local" not in pdf_url:
+        return RedirectResponse(url=pdf_url, status_code=302)
+    # Aksi → yerel HTML preview render et
+    customer = inv.reference.customer if (inv.reference and inv.reference.customer) else None
+    items = []
+    if inv.items_json:
+        try:
+            items = json.loads(inv.items_json)
+        except Exception:  # noqa: BLE001
+            items = []
+    return templates.TemplateResponse(
+        "einvoice/invoice_html.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "page_title": f"E-Fatura {inv.invoice_no or inv.id}",
+            "invoice": inv,
+            "customer": customer,
+            "items": items,
+            "is_fake": "fake-einvoice.local" in pdf_url or not pdf_url,
+        },
+    )
+
+
 @router.get("/einvoice-ui/inbox/{item_id}/preview", name="einvoice_inbox_preview")
 async def inbox_preview(
     item_id: int,

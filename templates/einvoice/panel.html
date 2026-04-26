@@ -95,7 +95,9 @@
           </td>
           <td><code class="small">{{ s.uuid or '—' }}</code></td>
           <td class="text-end">
-            {% if s.pdf_url %}<a href="{{ s.pdf_url }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
+            <a href="/einvoice-ui/invoice/{{ s.invoice_id }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary" title="PDF görüntüle">
+              <i class="bi bi-file-earmark-pdf"></i>
+            </a>
           </td>
         </tr>
         {% endfor %}

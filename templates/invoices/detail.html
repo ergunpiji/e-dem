@@ -114,8 +114,8 @@
           </form>
           {% endif %}
           {% endif %}
-          {% if invoice.einvoice_pdf_url %}
-          <a href="{{ invoice.einvoice_pdf_url }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+          {% if invoice.einvoice_status %}
+          <a href="/einvoice-ui/invoice/{{ invoice.id }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-file-earmark-pdf"></i> PDF
           </a>
           {% endif %}
