@@ -209,6 +209,32 @@
     </a>
     {% endif %}
 
+    {# E-Fatura modülü aktif ise sidebar grubunu göster #}
+    {% if module_enabled(request, 'einvoice') %}
+    <div class="nav-section-label">E-Fatura</div>
+    <a href="/einvoice-ui" class="sidebar-link {% if request.url.path == '/einvoice-ui' %}active{% endif %}">
+      <i class="bi bi-receipt-cutoff"></i> E-Fatura Paneli
+    </a>
+    <a href="/einvoice-ui/inbox" class="sidebar-link {% if '/einvoice-ui/inbox' in request.url.path %}active{% endif %}">
+      <i class="bi bi-envelope-arrow-down"></i> Gelen E-Faturalar
+    </a>
+    {% endif %}
+
+    {# E-Defter / Vergi Raporları modülleri aktif ise #}
+    {% if module_enabled(request, 'edefter') or module_enabled(request, 'tax_reports') %}
+    <div class="nav-section-label">Vergi & Defter</div>
+    {% if module_enabled(request, 'tax_reports') %}
+    <a href="/tax-reports" class="sidebar-link {% if request.url.path.startswith('/tax-reports') %}active{% endif %}">
+      <i class="bi bi-file-earmark-bar-graph"></i> Vergi Raporları
+    </a>
+    {% endif %}
+    {% if module_enabled(request, 'edefter') %}
+    <a href="/edefter" class="sidebar-link {% if request.url.path.startswith('/edefter') %}active{% endif %}">
+      <i class="bi bi-journal-text"></i> E-Defter
+    </a>
+    {% endif %}
+    {% endif %}
+
     <!-- Raporlar -->
     <div class="nav-section-label">Raporlar</div>
     <a href="/reports/pl" class="sidebar-link {% if '/reports/pl' in request.url.path %}active{% endif %}">
