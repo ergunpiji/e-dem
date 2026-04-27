@@ -145,7 +145,7 @@
     <div class="sidebar-subtitle">{{ company('short_name', 'Prizmatik') }} · Finans Yönetim Programı</div>
   </div>
 
-  <div style="flex:1; overflow-y:auto;">
+  <div id="sidebar-scroll" style="flex:1; overflow-y:auto;">
     <!-- Dashboard -->
     <a href="/dashboard" class="sidebar-link {% if request.url.path == '/dashboard' %}active{% endif %}">
       <i class="bi bi-speedometer2"></i> Dashboard
@@ -375,6 +375,28 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/static/js/table-sort.js"></script>
+<script>
+  // Sidebar scroll pozisyonunu sayfalar arası koru (sessionStorage)
+  (function () {
+    var sc = document.getElementById('sidebar-scroll');
+    if (!sc) return;
+    try {
+      var saved = sessionStorage.getItem('sidebarScrollTop');
+      if (saved !== null) {
+        sc.scrollTop = parseInt(saved, 10) || 0;
+      }
+    } catch (e) { /* sessionStorage yoksa görmezden gel */ }
+    var saveTimer = null;
+    sc.addEventListener('scroll', function () {
+      // 60ms throttle — gereksiz yazımı azalt
+      if (saveTimer) return;
+      saveTimer = setTimeout(function () {
+        try { sessionStorage.setItem('sidebarScrollTop', sc.scrollTop); } catch (e) {}
+        saveTimer = null;
+      }, 60);
+    }, { passive: true });
+  })();
+</script>
 {% block extra_js %}{% endblock %}
 </body>
 </html>
