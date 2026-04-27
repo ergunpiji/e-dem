@@ -143,6 +143,18 @@ def company(key: str, default: str = "") -> str:
     settings = _load_company_settings()
     full_key = f"company_{key}" if not key.startswith("company_") else key
     val = settings.get(full_key, "") or ""
+    # logo_path için dosya gerçekten var mı kontrol et — yoksa fallback'e düş.
+    # (Örn. Railway ephemeral disk restart'ta uploads klasörü sıfırlanır.)
+    if full_key == "company_logo_path" and val:
+        try:
+            import os
+            rel = val.lstrip("/")
+            base = os.path.dirname(os.path.abspath(__file__))
+            abs_path = os.path.join(base, rel)
+            if not os.path.isfile(abs_path):
+                return default
+        except Exception:  # noqa: BLE001
+            return default
     return val or default
 
 
