@@ -168,6 +168,47 @@
     </div>
     {% endif %}
 
+    <!-- Aynı dönemdeki diğer izinler -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body py-3 px-3">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="mb-0" style="font-size:13px;font-weight:700">
+            <i class="bi bi-calendar3 me-2 text-primary"></i>
+            Bu Dönemdeki Diğer İzinler
+            <span class="text-muted fw-normal ms-1" style="font-size:11px">
+              ({{ leave.start_date | date_tr }} – {{ leave.end_date | next_day | date_tr }})
+            </span>
+          </h6>
+          <a href="/leaves/calendar/view?year={{ leave.start_date.year }}&month={{ leave.start_date.month }}"
+             class="btn btn-outline-primary btn-sm" style="font-size:11px;padding:2px 10px">
+            <i class="bi bi-calendar3 me-1"></i>Takvimde Aç
+          </a>
+        </div>
+
+        {% if concurrent %}
+        <div style="font-size:12px">
+          {% for r in concurrent %}
+          {% set sl = status_labels.get(r.status, ('secondary', r.status)) %}
+          {% set emp_r = r.employee %}
+          <a href="/leaves/{{ r.id }}"
+             class="d-flex align-items-center gap-2 py-2 text-decoration-none text-dark border-bottom"
+             style="border-color:#f1f5f9 !important">
+            <span style="width:9px;height:9px;border-radius:50%;background:{{ r.leave_type.color }};flex-shrink:0;display:inline-block"></span>
+            <span class="fw-semibold" style="min-width:130px">{{ emp_r.name if emp_r else '—' }}</span>
+            <span class="text-muted">{{ r.start_date | date_tr }} – {{ r.end_date | next_day | date_tr }}</span>
+            <span class="text-muted ms-1">({{ r.total_days }} gün)</span>
+            <span class="badge bg-{{ sl[0] }} ms-auto" style="font-size:10px">{{ sl[1] }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted" style="font-size:12px">
+          <i class="bi bi-check-circle text-success me-1"></i>Bu tarihlerde başka izin bulunmuyor.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
     <a href="/leaves" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-arrow-left me-1"></i>Geri
     </a>

@@ -540,6 +540,18 @@ async def leave_detail(
     if leave.leave_type.requires_balance and employee:
         balance = _active_balance(db, employee.id, leave.leave_type_id, leave.start_date)
 
+    # Aynı tarihlerdeki diğer izinler (takvim mini-görünüm için)
+    concurrent = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.id != leave.id,
+            LeaveRequest.status.in_(["talep", "mudur_onayladi", "onaylandi"]),
+            LeaveRequest.start_date <= leave.end_date,
+            LeaveRequest.end_date >= leave.start_date,
+        )
+        .all()
+    )
+
     return templates.TemplateResponse(
         "leaves/detail.html",
         {
@@ -548,6 +560,7 @@ async def leave_detail(
             "balance": balance, "status_labels": LEAVE_STATUS_LABELS,
             "page_title": f"İzin Talebi — {leave.leave_type.name}",
             "overlap_warn": bool(overlap_warn),
+            "concurrent": concurrent,
             **ctx,
         },
     )
