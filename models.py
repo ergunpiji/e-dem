@@ -664,6 +664,57 @@ class HBF(Base):
     cash_book = relationship("CashBook")
 
 
+# ---------------------------------------------------------------------------
+# Fon Havuzu
+# ---------------------------------------------------------------------------
+
+class FundPool(Base):
+    __tablename__ = "fund_pools"
+
+    id             = Column(Integer, primary_key=True)
+    name           = Column(String(200), nullable=False)
+    customer_id    = Column(Integer, ForeignKey("customers.id"), nullable=True)
+    currency       = Column(String(3), default="TRY", nullable=False)
+    initial_amount = Column(Float, nullable=False)        # KDV dahil başlangıç
+    vat_rate       = Column(Float, default=0.20)          # 0.20 = %20
+    invoice_date   = Column(Date, nullable=True)
+    invoice_no     = Column(String(100), nullable=True)
+    year           = Column(Integer, nullable=True)
+    notes          = Column(String(500), nullable=True)
+    created_by     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    customer  = relationship("Customer")
+    creator   = relationship("User", foreign_keys=[created_by])
+    transfers = relationship(
+        "FundTransfer", back_populates="fund_pool",
+        cascade="all, delete-orphan",
+        order_by="FundTransfer.transfer_date",
+    )
+
+
+class FundTransfer(Base):
+    __tablename__ = "fund_transfers"
+
+    id            = Column(Integer, primary_key=True)
+    fund_pool_id  = Column(Integer, ForeignKey("fund_pools.id"), nullable=False)
+    ref_id        = Column(Integer, ForeignKey("references.id"), nullable=True)
+    direction     = Column(
+        Enum("out", "in", name="fund_direction_enum"), nullable=False
+    )
+    amount        = Column(Float, nullable=False)          # KDV dahil
+    vat_rate      = Column(Float, default=0.20)
+    exchange_rate = Column(Float, default=1.0)            # TRY kuru (yabancı para için)
+    transfer_date = Column(Date, nullable=False)
+    description   = Column(String(300), nullable=True)
+    created_by    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    fund_pool = relationship("FundPool", back_populates="transfers")
+    reference = relationship("Reference")
+    creator   = relationship("User", foreign_keys=[created_by])
+
+
 HBF_STATUS_LABELS = {
     "taslak":     "Taslak",
     "beklemede":  "Beklemede",
