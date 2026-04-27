@@ -6,9 +6,9 @@ from datetime import date, datetime
 from typing import List
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, safe_redirect
 from database import get_db
 from models import (
     Invoice, InvoicePayment, Reference, FinancialVendor, CashBook, BankAccount,
@@ -36,7 +36,7 @@ async def invoices_list(
         query = query.filter(Invoice.status == status_filter)
     if q:
         query = query.filter(Invoice.invoice_no.ilike(f"%{q}%"))
-    invoices = query.order_by(Invoice.invoice_date.desc()).all()
+    invoices = query.options(joinedload(Invoice.payments)).order_by(Invoice.invoice_date.desc()).all()
     return templates.TemplateResponse(
         "invoices/list.html",
         {
@@ -384,14 +384,21 @@ async def invoice_payment_delete(
         raise HTTPException(status_code=404)
 
     # İlgili kasa/banka hareketlerini de sil
+    # instruction_id FK varsa bunu önceliklendir; yoksa tutar yakınlığıyla eşleştir
     for ce in list(inv.cash_entries):
-        if ce.invoice_id == invoice_id and ce.amount == pmt.amount:
-            db.delete(ce)
-            break
+        if ce.invoice_id == invoice_id:
+            if (pmt.instruction_id and ce.instruction_id == pmt.instruction_id) or (
+                not pmt.instruction_id and abs(ce.amount - pmt.amount) < 0.01
+            ):
+                db.delete(ce)
+                break
     for bm in list(inv.bank_movements):
-        if bm.invoice_id == invoice_id and bm.amount == pmt.amount:
-            db.delete(bm)
-            break
+        if bm.invoice_id == invoice_id:
+            if (pmt.instruction_id and bm.instruction_id == pmt.instruction_id) or (
+                not pmt.instruction_id and abs(bm.amount - pmt.amount) < 0.01
+            ):
+                db.delete(bm)
+                break
 
     db.delete(pmt)
     db.flush()
@@ -445,7 +452,7 @@ async def invoice_pay_bulk(
             # Bir fatura için hedef hesap eksikse atla; toplu işlemi yarıda kesme
             continue
     db.commit()
-    return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=safe_redirect(redirect_url, "/invoices"), status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/{invoice_id}/delete", name="invoice_delete")

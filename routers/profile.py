@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from auth import get_current_user, safe_redirect
 from database import get_db
 from models import User
 
@@ -29,5 +29,5 @@ async def profile_update(
     current_user.title = (title or "").strip() or None
     current_user.phone = (phone or "").strip() or None
     db.commit()
-    referer = request.headers.get("referer") or "/dashboard"
+    referer = safe_redirect(request.headers.get("referer", ""), "/dashboard")
     return RedirectResponse(url=referer, status_code=303)

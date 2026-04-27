@@ -6,6 +6,7 @@ HttpOnly cookie ile token saklama
 import os
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import Depends, HTTPException, Request, status
 from jose import JWTError, jwt
@@ -191,3 +192,13 @@ def require_permission(permission: str):
             )
         return current_user
     return Depends(_dep)
+
+
+def safe_redirect(url: str, default: str = "/") -> str:
+    """URL'nin aynı-origin olduğunu doğrula; dış URL ise default'a düş."""
+    if not url:
+        return default
+    parsed = urlparse(url)
+    if parsed.scheme or parsed.netloc:
+        return default
+    return url

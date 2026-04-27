@@ -3,6 +3,7 @@ E-dem — Hizmet kataloğu router'ı (Admin only)
 """
 
 import io
+import os
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -200,7 +201,13 @@ async def services_import(
     """Excel'den hizmet toplu içe aktar."""
     import openpyxl
 
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".xlsx", ".xls"}:
+        return RedirectResponse(url="/services?import_msg=Hata:+Sadece+.xlsx+dosyaları+yüklenebilir", status_code=303)
+
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        return RedirectResponse(url="/services?import_msg=Hata:+Dosya+5+MB+limitini+aşıyor", status_code=303)
     wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     ws = wb.active
 

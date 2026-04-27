@@ -388,6 +388,8 @@ async def hbf_edit_post(
     hbf = db.query(HBF).get(hbf_id)
     if not hbf or hbf.status != "taslak":
         raise HTTPException(status_code=404)
+    if hbf.created_by != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Bu HBF'yi düzenleme yetkiniz yok.")
     items, total = _parse_items(items_json)
     refs, first_ref_id = _parse_refs(refs_json)
     ref_nos = ", ".join(r["ref_no"] for r in refs) if refs else None
@@ -430,6 +432,8 @@ async def hbf_submit(
     hbf = db.query(HBF).get(hbf_id)
     if not hbf or hbf.status != "taslak":
         raise HTTPException(status_code=404)
+    if hbf.created_by != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Bu HBF'yi gönderme yetkiniz yok.")
     hbf.status = "beklemede"
     db.commit()
     return RedirectResponse(url=f"/hbf/{hbf_id}", status_code=status.HTTP_302_FOUND)

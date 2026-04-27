@@ -164,4 +164,8 @@ async def customer_delete(
             db.commit()
         except Exception:
             db.rollback()
-    return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
+            return RedirectResponse(
+                url="/customers?err=delete_failed",
+                status_code=status.HTTP_302_FOUND,
+            )
+    return RedirectResponse(url="/customers?ok=deleted", status_code=status.HTTP_302_FOUND)

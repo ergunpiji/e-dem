@@ -18,9 +18,24 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from auth import require_admin
 from database import get_db
-from models import Customer, Venue, User, _uuid, _now, SUPPLIER_TYPES
+from models import Customer, FinancialVendor, User
+
+SUPPLIER_TYPES = [
+    {"value": "otel",       "label": "Otel"},
+    {"value": "etkinlik",   "label": "Etkinlik Mekanı"},
+    {"value": "restaurant", "label": "Restoran"},
+    {"value": "teknik",     "label": "Teknik Ekipman"},
+    {"value": "dekor",      "label": "Dekor / Süsleme"},
+    {"value": "transfer",   "label": "Transfer / Ulaşım"},
+    {"value": "tasarim",    "label": "Tasarım & Baskı"},
+    {"value": "susleme",    "label": "Süsleme"},
+    {"value": "ik",         "label": "İnsan Kaynakları"},
+    {"value": "diger",      "label": "Diğer"},
+]
 
 router = APIRouter(prefix="/bulk-import", tags=["bulk_import"])
 from templates_config import templates
@@ -169,8 +184,7 @@ def _validate_customers(rows: list[dict], db: Session) -> list[dict]:
 
 
 def _validate_venues(rows: list[dict], db: Session) -> list[dict]:
-    # Mevcut isimler — sadece bilgi amaçlı (hata değil, güncelleme yapılır)
-    existing_names = {v.name.lower() for v in db.query(Venue.name).all()}
+    existing_names = {v.name.lower() for v in db.query(FinancialVendor).all()}
     out = []
     for i, r in enumerate(rows):
         errors = []
@@ -186,9 +200,6 @@ def _validate_venues(rows: list[dict], db: Session) -> list[dict]:
         r["supplier_type"] = stype
         if not r.get("c_name"):
             r["c_name"] = "Yetkili"
-        if not r.get("c_email"):
-            r["c_email"] = "eposta yok"
-        # Mevcut kayıt varsa güncelleme yapılacağını işaretle (uyarı, hata değil)
         r["_will_update"] = r.get("name", "").lower() in existing_names
         out.append({**r, "_row": i + 2, "_errors": errors, "_valid": len(errors) == 0})
     return out
@@ -211,7 +222,6 @@ def _save_customers(rows: list[dict], db: Session) -> tuple[int, int]:
                 "phone": r.get("c_phone", ""),
             }
         db.add(Customer(
-            id           = _uuid(),
             name         = r["name"],
             code         = r["code"].lower(),
             sector       = r.get("sector", ""),
@@ -223,7 +233,7 @@ def _save_customers(rows: list[dict], db: Session) -> tuple[int, int]:
             notes        = r.get("notes", ""),
             payment_term = r.get("payment_term", ""),
             contacts_json = json.dumps([contact] if contact else []),
-            created_at   = _now(),
+            created_at   = datetime.utcnow(),
         ))
         saved += 1
     db.commit()
@@ -238,55 +248,32 @@ def _save_venues(rows: list[dict], db: Session) -> tuple[int, int]:
             continue
         cities_extra = [c.strip() for c in r.get("cities_extra", "").split(",") if c.strip()]
         all_cities = list({r["city"]} | set(cities_extra))
-        contact = {
-            "name":  r.get("c_name", ""),
-            "title": r.get("c_title", ""),
-            "email": r.get("c_email", ""),
-            "phone": r.get("c_phone", ""),
-        }
-        stars = None
-        try:
-            stars = int(float(r.get("stars") or 0)) or None
-        except (ValueError, TypeError):
-            pass
-        total_rooms = 0
-        try:
-            total_rooms = int(float(r.get("total_rooms") or 0))
-        except (ValueError, TypeError):
-            pass
+        contact_str = r.get("c_name", "")
+        if r.get("c_title"):
+            contact_str += f" ({r['c_title']})"
 
-        # Upsert: aynı isimli kayıt varsa (aktif/pasif) güncelle, yoksa ekle
-        existing = db.query(Venue).filter(Venue.name == r["name"]).first()
+        existing = db.query(FinancialVendor).filter(FinancialVendor.name == r["name"]).first()
         if existing:
-            existing.city          = r["city"]
-            existing.cities_json   = json.dumps(all_cities)
-            existing.supplier_type = r["supplier_type"]
-            existing.address       = r.get("address", "")
-            existing.stars         = stars
-            existing.total_rooms   = total_rooms
-            existing.website       = r.get("website", "")
-            existing.notes         = r.get("notes", "")
-            existing.payment_term  = r.get("payment_term", "")
-            existing.contacts_json = json.dumps([contact])
-            existing.halls_json    = "[]"
-            existing.active        = True
+            existing.vendor_type  = r["supplier_type"]
+            existing.address      = r.get("address", "")
+            existing.phone        = r.get("c_phone", "")
+            existing.email        = r.get("c_email", "")
+            existing.cities       = ",".join(all_cities)
+            existing.contact      = contact_str
+            existing.notes        = r.get("notes", "")
+            existing.active       = True
         else:
-            db.add(Venue(
-                id            = _uuid(),
-                name          = r["name"],
-                city          = r["city"],
-                cities_json   = json.dumps(all_cities),
-                supplier_type = r["supplier_type"],
-                address       = r.get("address", ""),
-                stars         = stars,
-                total_rooms   = total_rooms,
-                website       = r.get("website", ""),
-                notes         = r.get("notes", ""),
-                payment_term  = r.get("payment_term", ""),
-                contacts_json = json.dumps([contact]),
-                halls_json    = "[]",
-                active        = True,
-                created_at    = _now(),
+            db.add(FinancialVendor(
+                name         = r["name"],
+                vendor_type  = r["supplier_type"],
+                address      = r.get("address", ""),
+                phone        = r.get("c_phone", ""),
+                email        = r.get("c_email", ""),
+                cities       = ",".join(all_cities),
+                contact      = contact_str,
+                notes        = r.get("notes", ""),
+                active       = True,
+                created_at   = datetime.utcnow(),
             ))
         saved += 1
     db.commit()

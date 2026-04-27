@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, safe_redirect
 from database import get_db
 from models import (
     User, PaymentInstruction, Invoice, Cheque, CreditCardStatement,
@@ -216,7 +216,7 @@ async def execute_instruction(
         instr.target_credit_card_id = credit_card_id
 
     db.commit()
-    return RedirectResponse(url=redirect_url, status_code=303)
+    return RedirectResponse(url=safe_redirect(redirect_url, "/payment-instructions/inbox"), status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ async def cancel_instruction(
     instr.cancelled_by = current_user.id
     instr.cancel_reason = cancel_reason.strip()
     db.commit()
-    return RedirectResponse(url=redirect_url, status_code=303)
+    return RedirectResponse(url=safe_redirect(redirect_url, "/payment-instructions/inbox"), status_code=303)
 
 
 # ---------------------------------------------------------------------------

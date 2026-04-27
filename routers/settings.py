@@ -122,6 +122,10 @@ async def settings_save(
         content = await logo_file.read()
         if content:
             ext = os.path.splitext(logo_file.filename)[1].lower() or ".png"
+            if ext not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+                return RedirectResponse(url="/settings?logo_err=ext", status_code=303)
+            if len(content) > 2 * 1024 * 1024:  # 2 MB sınırı
+                return RedirectResponse(url="/settings?logo_err=size", status_code=303)
             os.makedirs(LOGO_DIR, exist_ok=True)
             path = LOGO_PATH + ext
             with open(path, "wb") as f:

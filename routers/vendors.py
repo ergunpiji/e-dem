@@ -5,7 +5,7 @@ Finansal Tedarikçi (FinancialVendor) yönetimi
 from datetime import date as _date
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from auth import get_current_user
 from database import get_db
@@ -203,7 +203,7 @@ async def vendor_detail(
     if period != "all":
         cutoff = today - timedelta(days=int(period))
         inv_q = inv_q.filter(Invoice.invoice_date >= cutoff)
-    invoices = inv_q.order_by(Invoice.invoice_date.desc()).all()
+    invoices = inv_q.options(joinedload(Invoice.payments)).order_by(Invoice.invoice_date.desc()).all()
 
     prepayments = (
         db.query(VendorPrepayment)
