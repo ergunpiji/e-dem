@@ -225,11 +225,16 @@ class Cheque(Base):
     cheque_date = Column(Date, nullable=False)
     due_date = Column(Date, nullable=False)
     status = Column(
-        Enum("beklemede", "tahsil_edildi", "iade", "karsilıksız", name="cheque_status_enum"),
+        Enum("beklemede", "tahsil_edildi", "iade", "karsilıksız", "iptal", name="cheque_status_enum"),
         default="beklemede", nullable=False
     )
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Tahsilat / ödeme bilgisi
+    bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
+    settled_date = Column(Date, nullable=True)
+    settled_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    attachment = Column(String(300), nullable=True)  # static/cheque_docs/{filename}
     # GM haftalık ödeme listesi kararı
     gm_decision = Column(String(20), nullable=True)
     gm_decision_at = Column(DateTime, nullable=True)
@@ -243,6 +248,8 @@ class Cheque(Base):
 
     vendor = relationship("FinancialVendor", back_populates="cheques")
     customer = relationship("Customer", back_populates="cheques")
+    bank_account = relationship("BankAccount", foreign_keys=[bank_account_id])
+    settler = relationship("User", foreign_keys=[settled_by])
 
 
 # ---------------------------------------------------------------------------

@@ -172,11 +172,12 @@ def _migrate(engine) -> None:
             raw.set_isolation_level(0)  # AUTOCOMMIT
             cur = raw.cursor()
             cur.execute("ALTER TYPE invoice_status_enum ADD VALUE IF NOT EXISTS 'partial'")
+            cur.execute("ALTER TYPE cheque_status_enum ADD VALUE IF NOT EXISTS 'iptal'")
             cur.close()
             raw.close()
-            print("[migrate] invoice_status_enum 'partial' eklendi.")
+            print("[migrate] enum değerleri eklendi.")
         except Exception as e:
-            print(f"[migrate] enum partial: {e}")
+            print(f"[migrate] enum: {e}")
 
     migrations = [
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date DATE",
@@ -218,6 +219,11 @@ def _migrate(engine) -> None:
         # payment_method nullable yap (talep aşamasında henüz bilinmez)
         "ALTER TABLE employee_advances ALTER COLUMN payment_method DROP NOT NULL",
         "ALTER TABLE employee_advances ALTER COLUMN advance_date DROP NOT NULL",
+        # Çek modülü yeni kolonlar
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS bank_account_id INTEGER",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS settled_date DATE",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS settled_by INTEGER",
+        "ALTER TABLE cheques ADD COLUMN IF NOT EXISTS attachment VARCHAR(300)",
         # fund_pools, fund_transfers, cash_day_closes tabloları create_all tarafından oluşturulur
         # GM haftalık ödeme listesi kararı — Invoice / Cheque / CreditCardStatement
         "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gm_decision VARCHAR(20)",
