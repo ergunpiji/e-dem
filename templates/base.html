@@ -114,6 +114,63 @@
       border-radius: 10px; font-weight: 600;
     }
 
+    /* Topbar sağ köşe */
+    .topbar-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: #6366f1; color: #fff; font-weight: 700; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .topbar-user-btn {
+      display: flex; align-items: center; gap: 8px;
+      background: transparent; border: 0; cursor: pointer;
+      padding: 4px 8px; border-radius: 8px; transition: background .12s;
+    }
+    .topbar-user-btn:hover { background: #f1f5f9; }
+    .topbar-user-name { font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.2; }
+    .topbar-user-role { font-size: 11px; color: #64748b; line-height: 1.2; }
+
+    /* Çan dropdown */
+    .bell-btn {
+      position: relative; background: transparent; border: 0; padding: 6px 8px;
+      border-radius: 8px; cursor: pointer; transition: background .12s;
+      color: #374151;
+    }
+    .bell-btn:hover { background: #f1f5f9; }
+    .bell-btn .bi-bell-fill { font-size: 18px; color: #1a3a5c; }
+    .bell-badge {
+      position: absolute; top: 2px; right: 2px;
+      background: #ef4444; color: #fff; font-size: 9px; font-weight: 700;
+      width: 16px; height: 16px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid #fff;
+    }
+    .bell-dropdown {
+      min-width: 300px; padding: 0; border: 0;
+      box-shadow: 0 8px 30px rgba(0,0,0,.14); border-radius: 12px; overflow: hidden;
+    }
+    .bell-dropdown-header {
+      background: #1a3a5c; color: #fff; padding: 12px 16px;
+      font-size: 13px; font-weight: 700; letter-spacing: .02em;
+    }
+    .bell-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 16px; font-size: 13px; color: #1e293b;
+      text-decoration: none; border-bottom: 1px solid #f1f5f9;
+      transition: background .1s;
+    }
+    .bell-item:hover { background: #f8fafc; color: #1e293b; }
+    .bell-item:last-child { border-bottom: 0; }
+    .bell-item-icon {
+      width: 34px; height: 34px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .bell-item-count {
+      margin-left: auto; background: #ef4444; color: #fff;
+      font-size: 11px; font-weight: 700; padding: 1px 7px;
+      border-radius: 10px; flex-shrink: 0;
+    }
+
     @media (max-width: 768px) {
       .sidebar { transform: translateX(-100%); transition: transform .25s; }
       .sidebar.open { transform: translateX(0); }
@@ -131,6 +188,15 @@
   {% block extra_css %}{% endblock %}
 </head>
 <body>
+{% if current_user %}
+{% set _full_name = (current_user.name or '') ~ (' ' ~ current_user.surname if current_user.surname else '') %}
+{% set _first = (current_user.name or 'U')[0] %}
+{% set _second = ((current_user.surname or '')[0] if current_user.surname else ((current_user.name or '')[1] if (current_user.name or '')|length > 1 else '')) %}
+{% set _initials = (_first ~ _second) | upper %}
+{% set _role_map = {'kullanici':'Kullanıcı','mudur':'Müdür','genel_mudur':'Genel Müdür','admin':'Admin','super_admin':'Süper Admin'} %}
+{% set _role_label = _role_map.get(current_user.role, current_user.role) %}
+{% endif %}
+
 {% if not is_popup %}
 <!-- Sidebar -->
 <nav class="sidebar" id="sidebar">
@@ -319,24 +385,7 @@
     {% endif %}
   </div>
 
-  <div class="sidebar-bottom">
-    {% if current_user %}
-    {% set _full_name = (current_user.name or '') ~ (' ' ~ current_user.surname if current_user.surname else '') %}
-    {% set _first = (current_user.name or 'U')[0] %}
-    {% set _second = ((current_user.surname or '')[0] if current_user.surname else ((current_user.name or '')[1] if (current_user.name or '')|length > 1 else '')) %}
-    {% set _initials = (_first ~ _second) | upper %}
-    {% set _role_map = {'kullanici':'Kullanıcı','mudur':'Müdür','genel_mudur':'Genel Müdür','admin':'Admin','super_admin':'Süper Admin'} %}
-    {% set _role_label = _role_map.get(current_user.role, current_user.role) %}
-    <button type="button" class="sidebar-user-btn" data-bs-toggle="modal" data-bs-target="#profileModal">
-      <div class="sidebar-user-avatar">{{ _initials }}</div>
-      <div class="sidebar-user-info">
-        <strong>{{ _full_name }}</strong>
-        <span>{{ _role_label }}</span>
-      </div>
-      <i class="bi bi-chevron-right"></i>
-    </button>
-    {% endif %}
-  </div>
+  <div style="padding-bottom:8px"></div>
 </nav>
 {% endif %}
 
@@ -355,16 +404,90 @@
     </h5>
     <div class="ms-auto d-flex align-items-center gap-2">
       {% block topbar_actions %}{% endblock %}
+
+      {% if current_user %}
       {% set _ptotal = request.state.nav_counts.get('pending_total', 0) %}
-      {% if _ptotal %}
-      <a href="#" onclick="document.getElementById('sidebar').scrollTop=999;return false;"
-         class="btn btn-sm position-relative"
-         style="padding:4px 8px;border:0;background:transparent;color:#374151;"
-         title="{{ _ptotal }} bekleyen işlem">
-        <i class="bi bi-bell-fill" style="font-size:17px;color:#1a3a5c;"></i>
-        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-              style="font-size:10px;padding:2px 5px;">{{ _ptotal }}</span>
-      </a>
+      {% set _pl    = request.state.nav_counts.get('pending_leaves', 0) %}
+      {% set _pa    = request.state.nav_counts.get('pending_advances', 0) %}
+      {% set _ph    = request.state.nav_counts.get('pending_hbf', 0) %}
+      {% set _pins  = request.state.nav_counts.get('pending_instructions', 0) %}
+
+      <!-- Çan -->
+      <div class="dropdown">
+        <button class="bell-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Bekleyen işlemler">
+          <i class="bi bi-bell-fill"></i>
+          {% if _ptotal %}<span class="bell-badge">{{ _ptotal if _ptotal < 100 else '99+' }}</span>{% endif %}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end bell-dropdown">
+          <li><div class="bell-dropdown-header"><i class="bi bi-bell me-2"></i>Bekleyen İşlemler</div></li>
+          {% if _pl %}
+          <li>
+            <a class="bell-item" href="/leaves/team/requests">
+              <div class="bell-item-icon" style="background:#eff6ff"><i class="bi bi-calendar-check" style="color:#3b82f6"></i></div>
+              <div>
+                <div class="fw-semibold">İzin Onayı</div>
+                <div class="text-muted" style="font-size:11px">Ekibinizden bekleyen talep</div>
+              </div>
+              <span class="bell-item-count">{{ _pl }}</span>
+            </a>
+          </li>
+          {% endif %}
+          {% if _pa %}
+          <li>
+            <a class="bell-item" href="/advances">
+              <div class="bell-item-icon" style="background:#f0fdf4"><i class="bi bi-cash-stack" style="color:#22c55e"></i></div>
+              <div>
+                <div class="fw-semibold">Avans Talebi</div>
+                <div class="text-muted" style="font-size:11px">Onay bekleyen avans</div>
+              </div>
+              <span class="bell-item-count">{{ _pa }}</span>
+            </a>
+          </li>
+          {% endif %}
+          {% if _ph %}
+          <li>
+            <a class="bell-item" href="/hbf">
+              <div class="bell-item-icon" style="background:#fffbeb"><i class="bi bi-receipt" style="color:#f59e0b"></i></div>
+              <div>
+                <div class="fw-semibold">Harcama Bildirimi</div>
+                <div class="text-muted" style="font-size:11px">Onay bekleyen HBF</div>
+              </div>
+              <span class="bell-item-count">{{ _ph }}</span>
+            </a>
+          </li>
+          {% endif %}
+          {% if _pins %}
+          <li>
+            <a class="bell-item" href="/payment-instructions/inbox">
+              <div class="bell-item-icon" style="background:#fdf4ff"><i class="bi bi-inbox" style="color:#a855f7"></i></div>
+              <div>
+                <div class="fw-semibold">Ödeme Talimatı</div>
+                <div class="text-muted" style="font-size:11px">Bekleyen talimat</div>
+              </div>
+              <span class="bell-item-count">{{ _pins }}</span>
+            </a>
+          </li>
+          {% endif %}
+          {% if not _ptotal and not _pins %}
+          <li>
+            <div class="bell-item text-muted" style="cursor:default">
+              <div class="bell-item-icon" style="background:#f8fafc"><i class="bi bi-check-circle" style="color:#94a3b8"></i></div>
+              Bekleyen işlem yok
+            </div>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+
+      <!-- Profil -->
+      <button type="button" class="topbar-user-btn" data-bs-toggle="modal" data-bs-target="#profileModal">
+        <div class="topbar-avatar">{{ _initials }}</div>
+        <div class="d-none d-lg-block text-start">
+          <div class="topbar-user-name">{{ _full_name }}</div>
+          <div class="topbar-user-role">{{ _role_label }}</div>
+        </div>
+        <i class="bi bi-chevron-down" style="font-size:11px;color:#94a3b8"></i>
+      </button>
       {% endif %}
     </div>
   </div>
