@@ -176,7 +176,7 @@ async def leave_new_get(
 async def leave_new_post(
     leave_type_id: int = Form(...),
     start_date: str = Form(...),
-    end_date: str = Form(""),
+    return_date: str = Form(""),
     half_day: str = Form("0"),
     half_day_period: str = Form(""),
     has_report: str = Form("0"),
@@ -198,7 +198,11 @@ async def leave_new_post(
         edate = sdate
         total = 0.5
     else:
-        edate = date.fromisoformat(end_date) if end_date else sdate
+        # return_date = işe dönüş tarihi → son izin günü = return_date - 1 gün
+        rdate = date.fromisoformat(return_date) if return_date else sdate + timedelta(days=1)
+        edate = rdate - timedelta(days=1)
+        if edate < sdate:
+            edate = sdate
         total = _working_days(sdate, edate, db)
 
     if total <= 0:

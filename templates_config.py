@@ -77,12 +77,24 @@ def tojson_filter(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def next_day_filter(value: Any) -> Any:
+    """date nesnesine 1 gün ekler — işe dönüş tarihi gösterimi için."""
+    if not value:
+        return value
+    try:
+        from datetime import timedelta
+        return value + timedelta(days=1)
+    except Exception:
+        return value
+
+
 templates.env.filters["date_tr"]      = format_date_tr
 templates.env.filters["datetime_tr"]  = format_datetime_tr
 templates.env.filters["money"]        = format_money
 templates.env.filters["role_label"]   = role_label
 templates.env.filters["fromjson"]     = fromjson_filter
 templates.env.filters["tojson"]       = tojson_filter
+templates.env.filters["next_day"]     = next_day_filter
 
 
 def module_enabled(request, module_key: str) -> bool:

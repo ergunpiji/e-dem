@@ -34,8 +34,13 @@
             {% endif %}
           </div>
           <div class="col-6">
-            <div class="text-muted">Bitiş</div>
+            <div class="text-muted">İşe Dönüş</div>
+            {% if leave.half_day %}
             <strong>{{ leave.end_date | date_tr }}</strong>
+            <small class="text-muted">(aynı gün)</small>
+            {% else %}
+            <strong>{{ leave.end_date | next_day | date_tr }}</strong>
+            {% endif %}
           </div>
           <div class="col-6">
             <div class="text-muted">Süre</div>

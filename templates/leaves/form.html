@@ -71,11 +71,11 @@
             <div class="col-md-6">
               <label class="form-label fw-semibold">Başlangıç <span class="text-danger">*</span></label>
               <input type="date" name="start_date" id="startDate" class="form-control" required
-                value="{{ today }}" min="{{ today }}" onchange="calcDays()">
+                value="{{ today }}" min="{{ today }}" onchange="onStartChange()">
             </div>
             <div class="col-md-6" id="endDateCol">
-              <label class="form-label fw-semibold">Bitiş <span class="text-danger">*</span></label>
-              <input type="date" name="end_date" id="endDate" class="form-control"
+              <label class="form-label fw-semibold">İşe Dönüş <span class="text-danger">*</span></label>
+              <input type="date" name="return_date" id="returnDate" class="form-control"
                 value="{{ today }}" min="{{ today }}" onchange="calcDays()">
             </div>
           </div>
@@ -146,11 +146,30 @@ function toggleHalfDay(checked) {
   }
 }
 
+function onStartChange() {
+  const s = document.getElementById('startDate').value;
+  const ret = document.getElementById('returnDate');
+  if (s) {
+    // Minimum dönüş tarihi = başlangıç + 1 gün
+    const next = new Date(s);
+    next.setDate(next.getDate() + 1);
+    ret.min = next.toISOString().split('T')[0];
+    if (ret.value && ret.value <= s) {
+      ret.value = next.toISOString().split('T')[0];
+    }
+  }
+  calcDays();
+}
+
 function calcDays() {
   if (isHalf || hasDefaultDays) return;
   const s = document.getElementById('startDate').value;
-  const e = document.getElementById('endDate').value;
-  if (!s || !e) return;
+  const r = document.getElementById('returnDate').value;
+  if (!s || !r) return;
+  // İşe dönüş tarihi - 1 gün = son izin günü
+  const ret = new Date(r);
+  ret.setDate(ret.getDate() - 1);
+  const e = ret.toISOString().split('T')[0];
   const badge = document.getElementById('daysBadge');
   const label = document.getElementById('daysLabel');
   badge.style.display = 'block';

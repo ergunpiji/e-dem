@@ -57,7 +57,7 @@
         <tr>
           <th class="ps-3">Tür</th>
           <th>Başlangıç</th>
-          <th>Bitiş</th>
+          <th>İşe Dönüş</th>
           <th class="text-center">Gün</th>
           <th>Durum</th>
           <th>Tarih</th>
@@ -73,7 +73,7 @@
             {{ r.leave_type.name }}
           </td>
           <td>{{ r.start_date | date_tr }}</td>
-          <td>{{ r.end_date | date_tr }}</td>
+          <td>{% if r.half_day %}{{ r.end_date | date_tr }}<small class="text-muted ms-1">(½)</small>{% else %}{{ r.end_date | next_day | date_tr }}{% endif %}</td>
           <td class="text-center fw-semibold">
             {{ r.total_days }}
             {% if r.half_day %}
