@@ -264,12 +264,18 @@
     </a>
     <a href="/hbf" class="sidebar-link {% if request.url.path.startswith('/hbf') %}active{% endif %}">
       <i class="bi bi-receipt"></i> Harcama Bildirimleri
+      {% set _ph = request.state.nav_counts.get('pending_hbf', 0) %}
+      {% if _ph %}<span class="ms-auto badge-nav">{{ _ph }}</span>{% endif %}
     </a>
     <a href="/advances" class="sidebar-link {% if request.url.path.startswith('/advances') %}active{% endif %}">
       <i class="bi bi-cash-stack"></i> Avans Talepleri
+      {% set _pa = request.state.nav_counts.get('pending_advances', 0) %}
+      {% if _pa %}<span class="ms-auto badge-nav">{{ _pa }}</span>{% endif %}
     </a>
     <a href="/leaves" class="sidebar-link {% if request.url.path == '/leaves' or request.url.path.startswith('/leaves/') and 'balances' not in request.url.path %}active{% endif %}">
       <i class="bi bi-calendar-check"></i> İzin Yönetimi
+      {% set _pl = request.state.nav_counts.get('pending_leaves', 0) %}
+      {% if _pl %}<span class="ms-auto badge-nav">{{ _pl }}</span>{% endif %}
     </a>
     {% if current_user and current_user.role in ['mudur','genel_mudur','admin','super_admin'] %}
     <a href="/leaves/balances/manage" class="sidebar-link ps-4 {% if 'balances' in request.url.path %}active{% endif %}" style="font-size:12px">
@@ -349,6 +355,17 @@
     </h5>
     <div class="ms-auto d-flex align-items-center gap-2">
       {% block topbar_actions %}{% endblock %}
+      {% set _ptotal = request.state.nav_counts.get('pending_total', 0) %}
+      {% if _ptotal %}
+      <a href="#" onclick="document.getElementById('sidebar').scrollTop=999;return false;"
+         class="btn btn-sm position-relative"
+         style="padding:4px 8px;border:0;background:transparent;color:#374151;"
+         title="{{ _ptotal }} bekleyen işlem">
+        <i class="bi bi-bell-fill" style="font-size:17px;color:#1a3a5c;"></i>
+        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+              style="font-size:10px;padding:2px 5px;">{{ _ptotal }}</span>
+      </a>
+      {% endif %}
     </div>
   </div>
   {% endif %}

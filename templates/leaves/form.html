@@ -29,7 +29,8 @@
               <div class="col-md-6 d-flex">
                 <label class="type-card w-100" id="card_{{ lt.id }}">
                   <input type="radio" name="leave_type_id" value="{{ lt.id }}"
-                    onchange="onTypeChange({{ lt.id }}, {{ lt.default_days or 'null' }}, {{ 'true' if lt.requires_report else 'false' }}, {{ 'true' if lt.requires_balance else 'false' }})">
+                    data-remaining="{{ balances[lt.id].remaining_days if balances is defined and lt.id in balances else 'null' }}"
+                    onchange="onTypeChange({{ lt.id }}, {{ lt.default_days or 'null' }}, {{ 'true' if lt.requires_report else 'false' }}, {{ 'true' if lt.requires_balance else 'false' }}, this.dataset.remaining)">
                   <div class="d-flex align-items-center gap-2">
                     <span style="width:12px;height:12px;border-radius:50%;background:{{ lt.color }};flex-shrink:0;display:inline-block"></span>
                     <span class="fw-semibold" style="font-size:13px">{{ lt.name }}</span>
@@ -101,6 +102,10 @@
           <div id="daysBadge" class="mb-3" style="display:none">
             <span class="badge bg-primary fs-6" id="daysLabel">—</span>
             <small class="text-muted ms-2">iş günü (hafta sonu ve resmi tatil hariç)</small>
+            <div id="balanceWarn" class="alert alert-danger py-2 mt-2 mb-0" style="display:none;font-size:13px">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i>
+              <span id="balanceWarnText"></span> — talep yine de gönderilebilir.
+            </div>
           </div>
 
           <!-- Rapor var mı? -->
@@ -135,19 +140,33 @@
 <script>
 let isHalf = false;
 let hasDefaultDays = false;
+let selectedRemaining = null;
 
-function onTypeChange(id, defaultDays, requiresReport, requiresBalance) {
+function onTypeChange(id, defaultDays, requiresReport, requiresBalance, remaining) {
   document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
   document.getElementById('card_' + id).classList.add('selected');
   document.getElementById('reportSection').style.display = requiresReport ? 'block' : 'none';
   hasDefaultDays = defaultDays !== null;
+  selectedRemaining = (remaining === 'null' || remaining === null || remaining === undefined) ? null : parseFloat(remaining);
   if (hasDefaultDays && !isHalf) {
     document.getElementById('endDateCol').style.display = 'none';
     document.getElementById('daysBadge').style.display = 'block';
     document.getElementById('daysLabel').textContent = defaultDays + ' iş günü';
+    checkBalanceWarn(defaultDays);
   } else {
     document.getElementById('endDateCol').style.display = '';
     calcDays();
+  }
+}
+
+function checkBalanceWarn(days) {
+  const warn = document.getElementById('balanceWarn');
+  const warnText = document.getElementById('balanceWarnText');
+  if (selectedRemaining !== null && days > selectedRemaining) {
+    warnText.textContent = 'Bakiye yetersiz: ' + days + ' gün talep edildi, ' + selectedRemaining + ' gün kaldı';
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
   }
 }
 
@@ -193,7 +212,10 @@ function calcDays() {
   label.textContent = '...';
   fetch(`/leaves/calc-days?start=${s}&end=${e}`)
     .then(r => r.json())
-    .then(d => { label.textContent = d.days + ' iş günü'; })
+    .then(d => {
+      label.textContent = d.days + ' iş günü';
+      checkBalanceWarn(d.days);
+    })
     .catch(() => { label.textContent = '?'; });
 }
 </script>

@@ -228,7 +228,8 @@
                   <a href="/leaves/{{ r.id }}" class="leave-chip"
                      style="background:{{ lt.color if lt else '#6b7280' }}"
                      title="{{ r.employee.name }} — {{ lt.name if lt else '' }}">
-                    {{ r.employee.name.split()[0] }}{% if r.half_day %} ½{% endif %}
+                    {{ r.employee.name }}{% if r.half_day %} ½{% endif %}
+                    <span style="opacity:.8;font-size:9px;display:block;margin-top:1px">{{ lt.name if lt else '' }}</span>
                   </a>
                   {% endif %}
                 {% endfor %}

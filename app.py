@@ -100,6 +100,14 @@ async def nav_counts_middleware(request: Request, call_next):
         if payload:
             db = SessionLocal()
             try:
+                from models import (
+                    Invoice, PaymentInstruction, SystemSetting,
+                    LeaveRequest, EmployeeAdvance, HBF,
+                    User as UserModel, Employee,
+                )
+                user_id_raw = payload.get("sub")
+                user_id_int = int(user_id_raw) if user_id_raw else None
+
                 if payload.get("is_admin"):
                     counts["invoices_unpaid"] = (
                         db.query(func.count(Invoice.id))
@@ -111,6 +119,69 @@ async def nav_counts_middleware(request: Request, call_next):
                     .filter(PaymentInstruction.status == "pending")
                     .scalar() or 0
                 )
+
+                # Bekleyen izin / avans / HBF sayıları (müdür+ için)
+                if user_id_int:
+                    _ROLE_ORDER = ["kullanici", "mudur", "genel_mudur", "admin", "super_admin"]
+                    user_role = (
+                        db.query(UserModel.role)
+                        .filter(UserModel.id == user_id_int)
+                        .scalar() or "kullanici"
+                    )
+                    role_idx = _ROLE_ORDER.index(user_role) if user_role in _ROLE_ORDER else 0
+
+                    p_leaves = p_adv = p_hbf = 0
+                    if role_idx >= _ROLE_ORDER.index("mudur"):
+                        if role_idx >= _ROLE_ORDER.index("genel_mudur"):
+                            p_leaves = (
+                                db.query(func.count(LeaveRequest.id))
+                                .filter(LeaveRequest.status.in_(["talep", "mudur_onayladi"]))
+                                .scalar() or 0
+                            )
+                            p_adv = (
+                                db.query(func.count(EmployeeAdvance.id))
+                                .filter(EmployeeAdvance.approval_status == "talep")
+                                .scalar() or 0
+                            )
+                            p_hbf = (
+                                db.query(func.count(HBF.id))
+                                .filter(HBF.status.in_(["beklemede", "mudur_onayladi"]))
+                                .scalar() or 0
+                            )
+                        else:
+                            # Sadece müdür: kendi ekibinin bekleyenleri
+                            team_ids = [
+                                e[0] for e in
+                                db.query(Employee.id)
+                                .join(UserModel, Employee.user_id == UserModel.id)
+                                .filter(UserModel.manager_id == user_id_int,
+                                        UserModel.active == True)  # noqa: E712
+                                .all()
+                            ]
+                            if team_ids:
+                                p_leaves = (
+                                    db.query(func.count(LeaveRequest.id))
+                                    .filter(LeaveRequest.employee_id.in_(team_ids),
+                                            LeaveRequest.status == "talep")
+                                    .scalar() or 0
+                                )
+                                p_adv = (
+                                    db.query(func.count(EmployeeAdvance.id))
+                                    .filter(EmployeeAdvance.employee_id.in_(team_ids),
+                                            EmployeeAdvance.approval_status == "talep")
+                                    .scalar() or 0
+                                )
+                                p_hbf = (
+                                    db.query(func.count(HBF.id))
+                                    .filter(HBF.employee_id.in_(team_ids),
+                                            HBF.status == "beklemede")
+                                    .scalar() or 0
+                                )
+                    counts["pending_leaves"]   = p_leaves
+                    counts["pending_advances"] = p_adv
+                    counts["pending_hbf"]      = p_hbf
+                    counts["pending_total"]    = p_leaves + p_adv + p_hbf
+
                 # Aktif modülleri oku (Yönetim → Modüller'den ayarlanır)
                 module_settings = db.query(SystemSetting).filter(
                     SystemSetting.key.like("module_%_enabled")
