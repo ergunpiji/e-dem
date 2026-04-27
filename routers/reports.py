@@ -11,7 +11,7 @@ from sqlalchemy import func, extract
 
 from fastapi import Form, HTTPException
 from fastapi.responses import RedirectResponse
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, require_gm
 from database import get_db
 from models import (
     Invoice, GeneralExpense, CashEntry, BankMovement,
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 async def report_pl(
     request: Request,
     year: int = None,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     if not year:
@@ -100,7 +100,7 @@ def _cc_due_date(card, txn_date):
 async def report_cash_flow(
     request: Request,
     weeks: int = 8,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     from datetime import timedelta
@@ -333,7 +333,7 @@ async def report_cash_flow(
 async def report_customer_ledger(
     customer_id: int,
     request: Request,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     from models import Reference
@@ -369,7 +369,7 @@ async def report_customer_ledger(
 async def report_vendor_ledger(
     vendor_id: int,
     request: Request,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     vendor = db.query(FinancialVendor).get(vendor_id)
@@ -402,7 +402,7 @@ async def report_vendor_ledger(
 async def report_payroll(
     request: Request,
     period: str = None,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     if not period:
@@ -473,7 +473,7 @@ def _fixed_expense_months(fe: FixedExpense, year: int) -> list[int]:
 async def report_activity(
     request: Request,
     year: int = None,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     if not year:
@@ -616,7 +616,7 @@ async def report_activity(
 @router.get("/activity/export", name="report_activity_export")
 async def report_activity_export(
     year: int = None,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     from io import BytesIO
@@ -855,7 +855,7 @@ async def report_activity_export(
 @router.post("/activity/budget", name="report_activity_budget_save")
 async def report_activity_budget_save(
     request: Request,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     import json as _json
@@ -925,7 +925,7 @@ async def report_activity_fixed_add(
     category_id: int = Form(None),
     notes: str = Form(""),
     year: int = Form(None),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     from datetime import date as dt_date
@@ -978,7 +978,7 @@ async def report_activity_fixed_add(
 async def report_activity_fixed_delete(
     fe_id: int,
     year: int = Form(None),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_gm),
     db: Session = Depends(get_db),
 ):
     fe = db.query(FixedExpense).get(fe_id)
