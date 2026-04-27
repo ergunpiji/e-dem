@@ -22,6 +22,11 @@ from templates_config import templates
 
 router = APIRouter(prefix="/leaves", tags=["leaves"])
 
+_TR_MONTHS = [
+    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
+]
+
 
 # ---------------------------------------------------------------------------
 # Yardımcılar
@@ -219,7 +224,236 @@ async def leave_new_post(
 
 
 # ---------------------------------------------------------------------------
-# Detay
+# Ekip görünümü (müdür +)  ← BEFORE /{leave_id} to avoid route conflict
+# ---------------------------------------------------------------------------
+
+@router.get("/team/requests", response_class=HTMLResponse, name="leave_team")
+async def leave_team(
+    request: Request,
+    status_filter: str = "pending",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.has_role_min("mudur"):
+        raise HTTPException(status_code=403)
+
+    is_gm = current_user.has_role_min("genel_mudur")
+    if is_gm:
+        q = db.query(LeaveRequest)
+    else:
+        team_ids = _team_employee_ids(db, current_user.id)
+        q = db.query(LeaveRequest).filter(LeaveRequest.employee_id.in_(team_ids))
+
+    if status_filter == "pending":
+        q = q.filter(LeaveRequest.status.in_(["talep", "mudur_onayladi"]))
+    elif status_filter != "all":
+        q = q.filter(LeaveRequest.status == status_filter)
+
+    requests_list = q.order_by(LeaveRequest.created_at.desc()).all()
+    return templates.TemplateResponse(
+        "leaves/team.html",
+        {
+            "request": request, "current_user": current_user,
+            "requests_list": requests_list, "status_filter": status_filter,
+            "status_labels": LEAVE_STATUS_LABELS,
+            "page_title": "Ekip İzin Talepleri",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Takvim  ← BEFORE /{leave_id} to avoid route conflict
+# ---------------------------------------------------------------------------
+
+@router.get("/calendar/view", response_class=HTMLResponse, name="leave_calendar")
+async def leave_calendar(
+    request: Request,
+    year: int = 0,
+    month: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    today = date.today()
+    if not year:
+        year = today.year
+    if not month:
+        month = today.month
+
+    first_day = date(year, month, 1)
+    last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+    # Onaylı izinler bu ayda
+    is_gm = current_user.has_role_min("genel_mudur")
+    is_mudur = current_user.role == "mudur"
+    employee = _get_employee(db, current_user)
+
+    q = db.query(LeaveRequest).filter(
+        LeaveRequest.status == "onaylandi",
+        LeaveRequest.start_date <= last_day,
+        LeaveRequest.end_date >= first_day,
+    )
+    if is_gm:
+        pass  # tümü
+    elif is_mudur:
+        team_ids = _team_employee_ids(db, current_user.id)
+        if employee:
+            team_ids.append(employee.id)
+        q = q.filter(LeaveRequest.employee_id.in_(team_ids))
+    else:
+        if employee:
+            q = q.filter(LeaveRequest.employee_id == employee.id)
+        else:
+            q = q.filter(False)
+
+    leaves = q.all()
+
+    # Resmi tatiller bu ay
+    holidays = db.query(PublicHoliday).filter(
+        PublicHoliday.date >= first_day, PublicHoliday.date <= last_day
+    ).all()
+    holiday_map = {h.date: h for h in holidays}
+
+    # Takvim grid — hafta satırları
+    cal = calendar.monthcalendar(year, month)
+
+    prev_month = (month - 1) or 12
+    prev_year  = year - 1 if month == 1 else year
+    next_month = (month % 12) + 1
+    next_year  = year + 1 if month == 12 else year
+
+    leave_types = db.query(LeaveType).filter(LeaveType.active == True).all()  # noqa: E712
+    lt_map = {lt.id: lt for lt in leave_types}
+
+    return templates.TemplateResponse(
+        "leaves/calendar.html",
+        {
+            "request": request, "current_user": current_user,
+            "year": year, "month": month,
+            "month_name": _TR_MONTHS[month - 1],
+            "cal": cal, "leaves": leaves,
+            "holiday_map": holiday_map, "lt_map": lt_map,
+            "today": today,
+            "prev_year": prev_year, "prev_month": prev_month,
+            "next_year": next_year, "next_month": next_month,
+            "page_title": f"İzin Takvimi — {_TR_MONTHS[month-1]} {year}",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# AJAX — gün sayısı hesabı  ← BEFORE /{leave_id} to avoid route conflict
+# ---------------------------------------------------------------------------
+
+@router.get("/calc-days")
+async def calc_days(
+    start: str,
+    end: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from fastapi.responses import JSONResponse
+    try:
+        sdate = date.fromisoformat(start)
+        edate = date.fromisoformat(end)
+        days = _working_days(sdate, edate, db)
+    except Exception:
+        days = 0.0
+    return JSONResponse({"days": days})
+
+
+# ---------------------------------------------------------------------------
+# Bakiye yönetimi (müdür +)  ← BEFORE /{leave_id} to avoid route conflict
+# ---------------------------------------------------------------------------
+
+@router.get("/balances/manage", response_class=HTMLResponse, name="leave_balances")
+async def leave_balances(
+    request: Request,
+    employee_id: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.has_role_min("mudur"):
+        raise HTTPException(status_code=403)
+
+    is_gm = current_user.has_role_min("genel_mudur")
+    if is_gm:
+        employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()  # noqa: E712
+    else:
+        team_ids = _team_employee_ids(db, current_user.id)
+        employees = db.query(Employee).filter(Employee.id.in_(team_ids), Employee.active == True).all()  # noqa: E712
+
+    selected_emp = None
+    emp_balances = []
+    if employee_id:
+        selected_emp = db.query(Employee).get(employee_id)
+        if selected_emp:
+            emp_balances = (
+                db.query(LeaveBalance)
+                .filter(LeaveBalance.employee_id == employee_id)
+                .order_by(LeaveBalance.period_start.desc())
+                .all()
+            )
+
+    leave_types = db.query(LeaveType).filter(
+        LeaveType.active == True, LeaveType.requires_balance == True  # noqa: E712
+    ).order_by(LeaveType.sort_order).all()
+
+    return templates.TemplateResponse(
+        "leaves/balances.html",
+        {
+            "request": request, "current_user": current_user,
+            "employees": employees, "selected_emp": selected_emp,
+            "emp_balances": emp_balances, "leave_types": leave_types,
+            "page_title": "İzin Bakiyeleri",
+        },
+    )
+
+
+@router.post("/balances/manage", name="leave_balance_save")
+async def leave_balance_save(
+    employee_id: int = Form(...),
+    leave_type_id: int = Form(...),
+    period_start: str = Form(...),
+    entitled_days: float = Form(...),
+    carried_over_days: float = Form(0.0),
+    notes: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.has_role_min("mudur"):
+        raise HTTPException(status_code=403)
+    pstart = date.fromisoformat(period_start)
+    pend = date(pstart.year + 1, pstart.month, pstart.day) - timedelta(days=1)
+
+    existing = db.query(LeaveBalance).filter_by(
+        employee_id=employee_id,
+        leave_type_id=leave_type_id,
+        period_start=pstart,
+    ).first()
+    if existing:
+        existing.entitled_days = entitled_days
+        existing.carried_over_days = carried_over_days
+        existing.notes = notes.strip() or None
+    else:
+        db.add(LeaveBalance(
+            employee_id=employee_id,
+            leave_type_id=leave_type_id,
+            period_start=pstart,
+            period_end=pend,
+            entitled_days=entitled_days,
+            carried_over_days=carried_over_days,
+            notes=notes.strip() or None,
+            created_by=current_user.id,
+        ))
+    db.commit()
+    return RedirectResponse(
+        url=f"/leaves/balances/manage?employee_id={employee_id}&saved=1",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Detay  ← AFTER all specific /leaves/* routes
 # ---------------------------------------------------------------------------
 
 @router.get("/{leave_id}", response_class=HTMLResponse, name="leave_detail")
@@ -360,238 +594,3 @@ async def leave_cancel(
     leave.status = "iptal"
     db.commit()
     return RedirectResponse(url="/leaves", status_code=status.HTTP_302_FOUND)
-
-
-# ---------------------------------------------------------------------------
-# Ekip görünümü (müdür +)
-# ---------------------------------------------------------------------------
-
-@router.get("/team/requests", response_class=HTMLResponse, name="leave_team")
-async def leave_team(
-    request: Request,
-    status_filter: str = "pending",
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if not current_user.has_role_min("mudur"):
-        raise HTTPException(status_code=403)
-
-    is_gm = current_user.has_role_min("genel_mudur")
-    if is_gm:
-        q = db.query(LeaveRequest)
-    else:
-        team_ids = _team_employee_ids(db, current_user.id)
-        q = db.query(LeaveRequest).filter(LeaveRequest.employee_id.in_(team_ids))
-
-    if status_filter == "pending":
-        q = q.filter(LeaveRequest.status.in_(["talep", "mudur_onayladi"]))
-    elif status_filter != "all":
-        q = q.filter(LeaveRequest.status == status_filter)
-
-    requests_list = q.order_by(LeaveRequest.created_at.desc()).all()
-    return templates.TemplateResponse(
-        "leaves/team.html",
-        {
-            "request": request, "current_user": current_user,
-            "requests_list": requests_list, "status_filter": status_filter,
-            "status_labels": LEAVE_STATUS_LABELS,
-            "page_title": "Ekip İzin Talepleri",
-        },
-    )
-
-
-# ---------------------------------------------------------------------------
-# Takvim
-# ---------------------------------------------------------------------------
-
-@router.get("/calendar/view", response_class=HTMLResponse, name="leave_calendar")
-async def leave_calendar(
-    request: Request,
-    year: int = 0,
-    month: int = 0,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    today = date.today()
-    if not year:
-        year = today.year
-    if not month:
-        month = today.month
-
-    first_day = date(year, month, 1)
-    last_day = date(year, month, calendar.monthrange(year, month)[1])
-
-    # Onaylı izinler bu ayda
-    is_gm = current_user.has_role_min("genel_mudur")
-    is_mudur = current_user.role == "mudur"
-    employee = _get_employee(db, current_user)
-
-    q = db.query(LeaveRequest).filter(
-        LeaveRequest.status == "onaylandi",
-        LeaveRequest.start_date <= last_day,
-        LeaveRequest.end_date >= first_day,
-    )
-    if is_gm:
-        pass  # tümü
-    elif is_mudur:
-        team_ids = _team_employee_ids(db, current_user.id)
-        if employee:
-            team_ids.append(employee.id)
-        q = q.filter(LeaveRequest.employee_id.in_(team_ids))
-    else:
-        if employee:
-            q = q.filter(LeaveRequest.employee_id == employee.id)
-        else:
-            q = q.filter(False)
-
-    leaves = q.all()
-
-    # Resmi tatiller bu ay
-    holidays = db.query(PublicHoliday).filter(
-        PublicHoliday.date >= first_day, PublicHoliday.date <= last_day
-    ).all()
-    holiday_map = {h.date: h for h in holidays}
-
-    # Takvim grid — hafta satırları
-    cal = calendar.monthcalendar(year, month)
-
-    prev_month = (month - 1) or 12
-    prev_year  = year - 1 if month == 1 else year
-    next_month = (month % 12) + 1
-    next_year  = year + 1 if month == 12 else year
-
-    leave_types = db.query(LeaveType).filter(LeaveType.active == True).all()  # noqa: E712
-    lt_map = {lt.id: lt for lt in leave_types}
-
-    return templates.TemplateResponse(
-        "leaves/calendar.html",
-        {
-            "request": request, "current_user": current_user,
-            "year": year, "month": month,
-            "month_name": _TR_MONTHS[month - 1],
-            "cal": cal, "leaves": leaves,
-            "holiday_map": holiday_map, "lt_map": lt_map,
-            "today": today,
-            "prev_year": prev_year, "prev_month": prev_month,
-            "next_year": next_year, "next_month": next_month,
-            "page_title": f"İzin Takvimi — {_TR_MONTHS[month-1]} {year}",
-        },
-    )
-
-
-# ---------------------------------------------------------------------------
-# AJAX — gün sayısı hesabı
-# ---------------------------------------------------------------------------
-
-@router.get("/calc-days")
-async def calc_days(
-    start: str,
-    end: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    from fastapi.responses import JSONResponse
-    try:
-        sdate = date.fromisoformat(start)
-        edate = date.fromisoformat(end)
-        days = _working_days(sdate, edate, db)
-    except Exception:
-        days = 0.0
-    return JSONResponse({"days": days})
-
-
-_TR_MONTHS = [
-    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-]
-
-
-# ---------------------------------------------------------------------------
-# Bakiye yönetimi (müdür +)
-# ---------------------------------------------------------------------------
-
-@router.get("/balances/manage", response_class=HTMLResponse, name="leave_balances")
-async def leave_balances(
-    request: Request,
-    employee_id: int = 0,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if not current_user.has_role_min("mudur"):
-        raise HTTPException(status_code=403)
-
-    is_gm = current_user.has_role_min("genel_mudur")
-    if is_gm:
-        employees = db.query(Employee).filter(Employee.active == True).order_by(Employee.name).all()  # noqa: E712
-    else:
-        team_ids = _team_employee_ids(db, current_user.id)
-        employees = db.query(Employee).filter(Employee.id.in_(team_ids), Employee.active == True).all()  # noqa: E712
-
-    selected_emp = None
-    emp_balances = []
-    if employee_id:
-        selected_emp = db.query(Employee).get(employee_id)
-        if selected_emp:
-            emp_balances = (
-                db.query(LeaveBalance)
-                .filter(LeaveBalance.employee_id == employee_id)
-                .order_by(LeaveBalance.period_start.desc())
-                .all()
-            )
-
-    leave_types = db.query(LeaveType).filter(
-        LeaveType.active == True, LeaveType.requires_balance == True  # noqa: E712
-    ).order_by(LeaveType.sort_order).all()
-
-    return templates.TemplateResponse(
-        "leaves/balances.html",
-        {
-            "request": request, "current_user": current_user,
-            "employees": employees, "selected_emp": selected_emp,
-            "emp_balances": emp_balances, "leave_types": leave_types,
-            "page_title": "İzin Bakiyeleri",
-        },
-    )
-
-
-@router.post("/balances/manage", name="leave_balance_save")
-async def leave_balance_save(
-    employee_id: int = Form(...),
-    leave_type_id: int = Form(...),
-    period_start: str = Form(...),
-    entitled_days: float = Form(...),
-    carried_over_days: float = Form(0.0),
-    notes: str = Form(""),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if not current_user.has_role_min("mudur"):
-        raise HTTPException(status_code=403)
-    pstart = date.fromisoformat(period_start)
-    pend = date(pstart.year + 1, pstart.month, pstart.day) - timedelta(days=1)
-
-    existing = db.query(LeaveBalance).filter_by(
-        employee_id=employee_id,
-        leave_type_id=leave_type_id,
-        period_start=pstart,
-    ).first()
-    if existing:
-        existing.entitled_days = entitled_days
-        existing.carried_over_days = carried_over_days
-        existing.notes = notes.strip() or None
-    else:
-        db.add(LeaveBalance(
-            employee_id=employee_id,
-            leave_type_id=leave_type_id,
-            period_start=pstart,
-            period_end=pend,
-            entitled_days=entitled_days,
-            carried_over_days=carried_over_days,
-            notes=notes.strip() or None,
-            created_by=current_user.id,
-        ))
-    db.commit()
-    return RedirectResponse(
-        url=f"/leaves/balances/manage?employee_id={employee_id}&saved=1",
-        status_code=status.HTTP_302_FOUND,
-    )
