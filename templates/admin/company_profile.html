@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block page_title %}Şirket Profili{% endblock %}
+
+{% block content %}
+<style>
+  .profile-section {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 22px; margin-bottom: 18px;
+  }
+  .profile-section h5 {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: #1A3A5C; margin: 0 0 14px;
+    padding-bottom: 10px; border-bottom: 2px solid #f1f5f9;
+  }
+  .profile-section h5 .bi { margin-right: 6px; }
+  .form-label-sm {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; margin-bottom: 4px;
+  }
+  .logo-preview-box {
+    width: 100%; min-height: 140px; border: 2px dashed #cbd5e1;
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    background: #f8fafc; padding: 14px;
+  }
+  .logo-preview-box img { max-width: 200px; max-height: 100px; }
+  .logo-preview-box .empty { color: #94a3b8; font-size: 13px; }
+</style>
+
+<div class="d-flex align-items-center mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold">Şirket Profili</h4>
+    <div class="text-muted small">Bu bilgiler tüm modüllerde (e-Fatura, Excel raporları, e-posta bildirimleri) kullanılır.</div>
+  </div>
+</div>
+
+{% if saved %}
+<div class="alert alert-success py-2 mb-3">
+  <i class="bi bi-check-circle-fill"></i> <strong>Kaydedildi.</strong> Tüm modüllerde anında geçerli.
+</div>
+{% endif %}
+
+<form method="post" action="/admin/company-profile">
+
+{# Logo bölümü ayrı (multipart upload için kendi formu) #}
+<div class="profile-section">
+  <h5><i class="bi bi-image"></i> Logo</h5>
+  <div class="row g-3 align-items-center">
+    <div class="col-md-5">
+      <div class="logo-preview-box">
+        {% if logo_path %}
+        <img src="{{ logo_path }}" alt="Şirket Logosu">
+        {% else %}
+        <div class="empty">
+          <i class="bi bi-image" style="font-size:36px;"></i>
+          <div>Logo yüklenmedi</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-md-7">
+      <p class="text-muted small mb-2">
+        Logo, e-Fatura PDF, Excel rapor başlıkları, e-posta şablonlarında kullanılır.
+        Önerilen: PNG/SVG, 400×100px civarı, şeffaf arka plan.
+      </p>
+    </div>
+  </div>
+</div>
+</form>
+
+{# Logo upload ayrı multipart form (üstteki ana form içinde olamaz) #}
+<form method="post" action="/admin/company-profile/logo" enctype="multipart/form-data" class="d-flex gap-2 mb-3">
+  <input type="file" name="file" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.webp,.svg" required>
+  <button class="btn btn-sm btn-primary"><i class="bi bi-upload"></i> Logo Yükle</button>
+  {% if logo_path %}
+  <button type="submit" class="btn btn-sm btn-outline-danger"
+          formaction="/admin/company-profile/logo/delete"
+          formenctype="application/x-www-form-urlencoded"
+          onclick="return confirm('Logoyu silmek istediğinize emin misiniz?');">
+    <i class="bi bi-trash"></i> Logoyu Sil
+  </button>
+  {% endif %}
+</form>
+
+{# Diğer alanlar — gruplar #}
+<form method="post" action="/admin/company-profile">
+{% for group_key, group in groups.items() %}
+<div class="profile-section">
+  <h5><i class="bi {{ group.icon }}"></i> {{ group.title }}</h5>
+  <div class="row g-3">
+    {% for key, label, gkey, type, placeholder in fields %}
+      {% if gkey == group_key %}
+      <div class="col-md-{% if type == 'textarea' %}12{% elif type == 'color' %}3{% else %}6{% endif %}">
+        <label class="form-label-sm" for="f-{{ key }}">{{ label }}</label>
+        {% if type == 'textarea' %}
+        <textarea id="f-{{ key }}" name="{{ key }}" class="form-control" rows="3"
+                  placeholder="{{ placeholder }}">{{ values[key] or '' }}</textarea>
+        {% elif type == 'color' %}
+        <input id="f-{{ key }}" type="color" name="{{ key }}" class="form-control form-control-color"
+               value="{{ values[key] or '#1A3A5C' }}">
+        {% else %}
+        <input id="f-{{ key }}" type="{{ type }}" name="{{ key }}" class="form-control"
+               value="{{ values[key] or '' }}" placeholder="{{ placeholder }}">
+        {% endif %}
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+<div class="d-flex gap-2 mb-4">
+  <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg"></i> Kaydet</button>
+  <a href="/dashboard" class="btn btn-outline-secondary">İptal</a>
+</div>
+</form>
+{% endblock %}

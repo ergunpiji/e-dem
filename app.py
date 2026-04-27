@@ -4,6 +4,7 @@ E-dem — Ana FastAPI uygulama girişi
 """
 
 import os
+import sys
 
 try:
     from dotenv import load_dotenv
@@ -11,13 +12,40 @@ try:
 except ImportError:
     pass
 
+# prizma-einvoice paketini sys.path'e ekle (editable install yerine)
+_pkg_path = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "packages", "prizma-einvoice", "src",
+)
+if os.path.isdir(_pkg_path) and _pkg_path not in sys.path:
+    sys.path.insert(0, _pkg_path)
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from database import init_db
+from database import init_db, engine, get_db
+from models import Base
+from auth import get_current_user, require_admin
 from templates_config import templates
+
+# E-Fatura modülünü init et — register_models Base'e tablolar ekler.
+# init_db()'den ÖNCE yapılmalı ki create_all yeni tabloları da yaratsın.
+try:
+    from prizma_einvoice import EInvoiceModule
+    einvoice_module = EInvoiceModule(
+        host_base=Base,
+        engine=engine,
+        config={"provider": "fake"},
+        get_db_dependency=get_db,
+        require_admin_dependency=require_admin,
+        get_current_user_dependency=get_current_user,
+    )
+    print("[einvoice] modül init edildi (provider: fake)", flush=True)
+except Exception as exc:  # noqa: BLE001
+    einvoice_module = None
+    print(f"[einvoice] modül init edilemedi: {exc}", flush=True)
 
 # ---------------------------------------------------------------------------
 # Veritabanı başlat
@@ -56,31 +84,49 @@ async def nav_counts_middleware(request: Request, call_next):
     path = request.url.path
     if path.startswith("/static") or "." in path.split("/")[-1]:
         request.state.nav_counts = {}
+        request.state.enabled_modules = set()
         return await call_next(request)
 
     counts = {}
+    enabled_modules = set()
     from auth import decode_token, COOKIE_NAME
     from database import SessionLocal
     from sqlalchemy import func
-    from models import Invoice
+    from models import Invoice, PaymentInstruction, SystemSetting
 
     token = request.cookies.get(COOKIE_NAME)
     if token:
         payload = decode_token(token)
-        if payload and payload.get("is_admin"):
+        if payload:
             db = SessionLocal()
             try:
-                counts["invoices_unpaid"] = (
-                    db.query(func.count(Invoice.id))
-                    .filter(Invoice.status.in_(["approved", "partial"]))
+                if payload.get("is_admin"):
+                    counts["invoices_unpaid"] = (
+                        db.query(func.count(Invoice.id))
+                        .filter(Invoice.status.in_(["approved", "partial"]))
+                        .scalar() or 0
+                    )
+                counts["pending_instructions"] = (
+                    db.query(func.count(PaymentInstruction.id))
+                    .filter(PaymentInstruction.status == "pending")
                     .scalar() or 0
                 )
+                # Aktif modülleri oku (Yönetim → Modüller'den ayarlanır)
+                module_settings = db.query(SystemSetting).filter(
+                    SystemSetting.key.like("module_%_enabled")
+                ).all()
+                for s in module_settings:
+                    if s.value == "1":
+                        # 'module_einvoice_enabled' → 'einvoice'
+                        key = s.key[len("module_"):-len("_enabled")]
+                        enabled_modules.add(key)
             except Exception:
                 pass
             finally:
                 db.close()
 
     request.state.nav_counts = counts
+    request.state.enabled_modules = enabled_modules
     return await call_next(request)
 
 
@@ -142,6 +188,14 @@ from routers import reports as reports_router
 from routers import hbf as hbf_router
 from routers import advances as advances_router
 from routers import fund_pools as fund_pools_router
+from routers import payments as payments_router
+from routers import payment_instructions as payment_instructions_router
+from routers import profile as profile_router
+from routers import admin_modules as admin_modules_router
+from routers import einvoice_host as einvoice_host_router
+from routers import tax_reports as tax_reports_router
+from routers import edefter as edefter_router
+from routers import company_profile as company_profile_router
 
 app.include_router(auth_router.router)
 app.include_router(dashboard_router.router)
@@ -160,3 +214,21 @@ app.include_router(reports_router.router)
 app.include_router(hbf_router.router)
 app.include_router(advances_router.router)
 app.include_router(fund_pools_router.router)
+app.include_router(payments_router.router)
+app.include_router(payment_instructions_router.router)
+app.include_router(profile_router.router)
+app.include_router(admin_modules_router.router)
+app.include_router(einvoice_host_router.router)
+app.include_router(tax_reports_router.router)
+app.include_router(edefter_router.router)
+app.include_router(company_profile_router.router)
+
+# E-Fatura modülünü mount et (router /einvoice/* prefix'ile eklenir).
+# Endpoint'ler her zaman erişilebilir; aktif/pasif kontrolü feature flag ile
+# (admin_modules sayfasından) yönetilir.
+if einvoice_module is not None:
+    try:
+        einvoice_module.install(app)
+        print("[einvoice] router /einvoice/* mount edildi", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[einvoice] router mount edilemedi: {exc}", flush=True)

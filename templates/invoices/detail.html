@@ -11,6 +11,32 @@
 
 {% block content %}
 {% set is_income = invoice.invoice_type in ('kesilen', 'komisyon') %}
+
+{# Flash mesajları — yeni fatura kayıt sonrası "Kaydet ve GİB'e Gönder" sonucu #}
+{% set ef_sent = request.query_params.get('ef_sent') %}
+{% set ef_warning = request.query_params.get('ef_warning') %}
+{% set ef_error = request.query_params.get('ef_error') %}
+{% if ef_sent %}
+<div class="alert alert-success py-2 mb-3">
+  <i class="bi bi-check-circle-fill"></i>
+  <strong>GİB'e gönderildi.</strong> Status: <span class="badge bg-success">{{ invoice.einvoice_status }}</span>
+  {% if invoice.einvoice_uuid %}— UUID: <code>{{ invoice.einvoice_uuid }}</code>{% endif %}
+</div>
+{% endif %}
+{% if ef_warning %}
+<div class="alert alert-warning py-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  <strong>Fatura kaydedildi ama GİB'e gönderilmedi.</strong>
+  Eksik müşteri bilgisi: <strong>{{ ef_warning | replace(',', ', ') }}</strong>.
+  Müşteriyi düzenleyip ardından detayda "GİB'e Gönder" butonunu kullanın.
+</div>
+{% endif %}
+{% if ef_error %}
+<div class="alert alert-danger py-2 mb-3">
+  <i class="bi bi-x-circle-fill"></i>
+  <strong>GİB gönderim hatası.</strong> Detayda "GİB'e Gönder" butonu ile tekrar deneyin (log'larda detay var).
+</div>
+{% endif %}
 {% set total = invoice.amount * (1 + invoice.vat_rate) %}
 {% set paid = invoice.paid_amount %}
 {% set remaining = invoice.remaining %}
@@ -49,6 +75,54 @@
         {% if invoice.notes %}<div class="mt-2 text-muted small">{{ invoice.notes }}</div>{% endif %}
       </div>
     </div>
+
+    <!-- E-Fatura Durumu (modül aktifse) -->
+    {% if module_enabled(request, 'einvoice') and is_income %}
+    <div class="card border-0 shadow-sm mb-3" style="border-left: 4px solid #1A3A5C !important;">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">
+          <i class="bi bi-receipt-cutoff" style="color:#1A3A5C;"></i> E-Fatura Durumu
+        </h6>
+        {% set ef = invoice.einvoice_status %}
+        {% if ef == 'accepted' %}
+          <div class="mb-2"><span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Kabul Edildi</span></div>
+        {% elif ef == 'sent' %}
+          <div class="mb-2"><span class="badge bg-info text-dark"><i class="bi bi-cloud-arrow-up"></i> Gönderildi (yanıt bekleniyor)</span></div>
+        {% elif ef == 'rejected' %}
+          <div class="mb-2"><span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> Reddedildi</span></div>
+        {% elif ef == 'cancelled' %}
+          <div class="mb-2"><span class="badge bg-secondary">İptal Edildi</span></div>
+        {% elif ef == 'error' %}
+          <div class="mb-2"><span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill"></i> Hata</span></div>
+        {% else %}
+          <div class="mb-2"><span class="badge bg-warning text-dark">Henüz Gönderilmedi</span></div>
+        {% endif %}
+
+        {% if invoice.einvoice_uuid %}
+        <div class="text-muted small mb-2">UUID: <code>{{ invoice.einvoice_uuid }}</code></div>
+        {% endif %}
+        {% if invoice.einvoice_sent_at %}
+        <div class="text-muted small mb-2">Gönderim: {{ invoice.einvoice_sent_at | datetime_tr }}</div>
+        {% endif %}
+
+        <div class="d-flex gap-1 flex-wrap">
+          {% if not invoice.einvoice_status or invoice.einvoice_status in ('error', 'rejected') %}
+          {% if current_user.is_admin %}
+          <form method="post" action="/invoices/{{ invoice.id }}/einvoice/send" class="d-inline"
+                onsubmit="return confirm('Bu faturayı GİB e-Fatura/e-Arşiv olarak göndermek istediğinizden emin misiniz?');">
+            <button class="btn btn-sm btn-primary"><i class="bi bi-send"></i> GİB'e Gönder</button>
+          </form>
+          {% endif %}
+          {% endif %}
+          {% if invoice.einvoice_status %}
+          <a href="/einvoice-ui/invoice/{{ invoice.id }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-file-earmark-pdf"></i> PDF
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Ödeme / Tahsilat Formu -->
     {% if invoice.status in ('approved', 'partial') %}

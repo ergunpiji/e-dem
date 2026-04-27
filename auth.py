@@ -123,3 +123,11 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Bu işlem için Admin yetkisi gereklidir.")
     return current_user
+
+
+def require_gm(current_user: User = Depends(get_current_user)) -> User:
+    """Genel Müdür veya Admin yetkisi gerektirir."""
+    if not (current_user.is_admin or current_user.is_approver):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Bu sayfa için Genel Müdür yetkisi gereklidir.")
+    return current_user

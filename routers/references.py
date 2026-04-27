@@ -53,7 +53,10 @@ async def reference_new_get(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    customers = db.query(Customer).filter(Customer.code != None).order_by(Customer.name).all()  # noqa: E711
+    customers = db.query(Customer).filter(
+        Customer.code.is_not(None),
+        Customer.active == True,  # noqa: E712
+    ).order_by(Customer.name).all()
     return templates.TemplateResponse(
         "references/form.html",
         {
@@ -81,7 +84,10 @@ async def reference_new_post(
     db: Session = Depends(get_db),
 ):
     ref_no = ref_no.strip().upper()
-    customers = db.query(Customer).filter(Customer.code != None).order_by(Customer.name).all()  # noqa: E711
+    customers = db.query(Customer).filter(
+        Customer.code.is_not(None),
+        Customer.active == True,  # noqa: E712
+    ).order_by(Customer.name).all()
 
     # Benzersizlik kontrolü
     existing = db.query(Reference).filter(Reference.ref_no == ref_no).first()

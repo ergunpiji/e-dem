@@ -2,75 +2,116 @@
 {% block page_title %}Dashboard{% endblock %}
 
 {% block content %}
+<style>
+  .kpi-link { text-decoration: none; color: inherit; display: block; height: 100%; }
+  .kpi-link .card { transition: transform .15s ease, box-shadow .15s ease; }
+  .kpi-link:hover .card { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.12) !important; }
+</style>
+
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small mb-1">Aktif Referans</div>
-        <div class="fs-2 fw-bold text-primary">{{ ref_aktif }}</div>
+    <a href="/invoices?invoice_type=kesilen" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">{{ year }} Yılı Kesilen</div>
+          <div class="fs-2 fw-bold text-success">{{ kesilen_yil | money }}</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small mb-1">Ödenmemiş Fatura</div>
-        <div class="fs-2 fw-bold text-warning">{{ odenmemis }}</div>
+    <a href="/invoices?invoice_type=gelen" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">{{ year }} Yılı Gelen</div>
+          <div class="fs-2 fw-bold text-danger">{{ gelen_yil | money }}</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small mb-1">Kasa Toplamı</div>
-        <div class="fs-2 fw-bold" style="color:{% if cash_total >= 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ cash_total | money }}</div>
+    <a href="/reports/pl" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">{{ year }} YTD Kâr</div>
+          <div class="fs-2 fw-bold" style="color:{% if ytd_kar > 0 %}#16a34a{% elif ytd_kar < 0 %}#dc2626{% else %}#64748b{% endif %}">{{ ytd_kar | money }}</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small mb-1">Banka Toplamı</div>
-        <div class="fs-2 fw-bold" style="color:{% if bank_total >= 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ bank_total | money }}</div>
+    <a href="/invoices?invoice_type=kesilen" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Tahsilat Beklenen</div>
+          <div class="fs-2 fw-bold text-success">{{ tahsilat_beklenen | money }}</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
 </div>
 
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="text-muted small mb-1">{{ year }} Yılı Kesilen</div>
-        <div class="fs-4 fw-bold" style="color:{% if kesilen_yil > 0 %}#16a34a{% elif kesilen_yil < 0 %}#dc2626{% else %}#64748b{% endif %}">{{ kesilen_yil | money }}</div>
+    <a href="/bank-accounts" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Banka Toplamı</div>
+          <div class="fs-4 fw-bold" style="color:{% if bank_total >= 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ bank_total | money }}</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="text-muted small mb-1">{{ year }} Yılı Gelen</div>
-        <div class="fs-4 fw-bold" style="color:{% if gelen_yil > 0 %}#dc2626{% elif gelen_yil < 0 %}#16a34a{% else %}#64748b{% endif %}">{{ gelen_yil | money }}</div>
+    <a href="/credit-cards" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Kredi Kartı Toplamı</div>
+          <div class="fs-4 fw-bold" style="color:{% if kk_bakiye > 0 %}#dc2626{% else %}#64748b{% endif %}">{{ kk_bakiye | money }}</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="text-muted small mb-1">Tamamlanan Ref.</div>
-        <div class="fs-4 fw-bold">{{ ref_tamamlandi }}</div>
+    <a href="/cash" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Kasa Toplamı</div>
+          <div class="fs-4 fw-bold" style="color:{% if cash_total >= 0 %}#16a34a{% else %}#dc2626{% endif %}">{{ cash_total | money }}</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="text-muted small mb-1">Aktif Çalışan</div>
-        <div class="fs-4 fw-bold">{{ aktif_calisan }}</div>
+    <a href="/invoices?invoice_type=gelen" class="kpi-link">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Ödenecek Tutar</div>
+          <div class="fs-4 fw-bold text-danger">{{ odeme_yapilacak | money }}</div>
+          <div class="text-muted small mt-1">KK dahil</div>
+        </div>
       </div>
-    </div>
+    </a>
   </div>
 </div>
+
+{% if pending_instr_count %}
+<div class="row g-3 mb-4">
+  <div class="col-md-12">
+    <a href="/payment-instructions/inbox" class="kpi-link">
+      <div class="card border-0 shadow-sm" style="border-left: 4px solid #f59e0b !important;">
+        <div class="card-body d-flex align-items-center">
+          <div>
+            <div class="text-muted small mb-1"><i class="bi bi-inbox"></i> Bekleyen Ödeme Talimatları</div>
+            <div class="fs-4 fw-bold">{{ pending_instr_count }} kalem · {{ pending_instr_total | money }}</div>
+          </div>
+          <span class="ms-auto badge bg-warning text-dark">İnfaz bekliyor</span>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+{% endif %}
 
 <div class="row g-3">
   <div class="col-md-6">

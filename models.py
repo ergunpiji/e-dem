@@ -26,6 +26,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(120), nullable=False)
+    surname = Column(String(120), nullable=True)
+    title = Column(String(150), nullable=True)
+    phone = Column(String(40), nullable=True)
     email = Column(String(200), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
@@ -52,6 +55,10 @@ class Customer(Base):
     phone = Column(String(50))
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # E-Fatura mükellef sorgu cache'i
+    is_efatura_user = Column(Boolean, nullable=True)
+    efatura_alias = Column(String(100), nullable=True)
+    efatura_checked_at = Column(DateTime, nullable=True)
 
     references = relationship("Reference", back_populates="customer")
     cheques = relationship("Cheque", back_populates="customer")
@@ -77,6 +84,10 @@ class FinancialVendor(Base):
     notes = Column(Text)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # E-Fatura mükellef sorgu cache'i
+    is_efatura_user = Column(Boolean, nullable=True)
+    efatura_alias = Column(String(100), nullable=True)
+    efatura_checked_at = Column(DateTime, nullable=True)
 
     invoices = relationship("Invoice", back_populates="vendor")
     cheques = relationship("Cheque", back_populates="vendor")
@@ -163,6 +174,15 @@ class CreditCardStatement(Base):
     total_amount = Column(Float, default=0.0, nullable=False)
     status = Column(Enum("unpaid", "paid", name="cc_statement_status"), default="unpaid", nullable=False)
     paid_at = Column(DateTime)
+    # GM haftalık ödeme listesi kararı
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
+    preparer_note = Column(Text, nullable=True)
 
     card = relationship("CreditCard", back_populates="statements")
     txns = relationship("CreditCardTxn", back_populates="statement")
@@ -180,6 +200,7 @@ class CreditCardTxn(Base):
     is_refund = Column(Boolean, default=False, nullable=False)
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     card = relationship("CreditCard", back_populates="txns")
     statement = relationship("CreditCardStatement", back_populates="txns")
@@ -209,6 +230,16 @@ class Cheque(Base):
     )
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # GM haftalık ödeme listesi kararı
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
+    preparer_note = Column(Text, nullable=True)
+    created_by_instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     vendor = relationship("FinancialVendor", back_populates="cheques")
     customer = relationship("Customer", back_populates="cheques")
@@ -281,10 +312,26 @@ class Invoice(Base):
     notes = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # E-Fatura entegrasyonu (prizma-einvoice paketi tarafından kullanılır)
+    einvoice_status = Column(String(20), nullable=True)
+    einvoice_uuid = Column(String(64), nullable=True)
+    einvoice_pdf_url = Column(Text, nullable=True)
+    einvoice_sent_at = Column(DateTime, nullable=True)
+    einvoice_inbox_id = Column(Integer, nullable=True)        # gelen invoice ise
+    einvoice_external_uuid = Column(String(64), nullable=True)
+    # GM (Genel Müdür) haftalık ödeme listesi kararı
+    gm_decision = Column(String(20), nullable=True)  # approved | rejected | postponed | NULL
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)  # nakit|banka|kredi_karti|cek|acik_hesap
+    gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)  # kısmi onay için: bu kadar onaylandı, kalan ertelendi
+    preparer_note = Column(Text, nullable=True)  # listeyi hazırlayan kullanıcının GM'e yönelik notu
 
     reference = relationship("Reference", back_populates="invoices")
     vendor = relationship("FinancialVendor", back_populates="invoices")
-    creator = relationship("User")
+    creator = relationship("User", foreign_keys=[created_by])
     bank_account = relationship("BankAccount")
     credit_card = relationship("CreditCard")
     cash_book = relationship("CashBook")
@@ -324,6 +371,7 @@ class CashEntry(Base):
     related_party = Column(String(150), nullable=True)
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     book = relationship("CashBook", back_populates="entries")
     reference = relationship("Reference", back_populates="cash_entries")
@@ -341,6 +389,7 @@ class BankMovement(Base):
     description = Column(String(300))
     ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     account = relationship("BankAccount", back_populates="movements")
     reference = relationship("Reference", back_populates="bank_movements")
@@ -366,6 +415,7 @@ class InvoicePayment(Base):
     notes = Column(String(300))
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     invoice = relationship("Invoice", back_populates="payments")
     bank_account = relationship("BankAccount")
@@ -492,6 +542,7 @@ class SalaryPayment(Base):
     paid_at = Column(DateTime, nullable=False)
     general_expense_id = Column(Integer, ForeignKey("general_expenses.id"), nullable=True)
     notes = Column(Text)
+    instruction_id = Column(Integer, ForeignKey("payment_instructions.id"), nullable=True)
 
     employee = relationship("Employee", back_populates="salary_payments")
     bank_account = relationship("BankAccount", back_populates="salary_payments")
@@ -763,3 +814,105 @@ PAYMENT_METHODS = [
 ]
 
 VAT_RATES = [0.0, 0.01, 0.08, 0.10, 0.18, 0.20]
+
+
+# ---------------------------------------------------------------------------
+# Maaş kararı (PayrollDecision) — bir ay için GM toplu maaş kararını saklar
+# ---------------------------------------------------------------------------
+
+class PayrollDecision(Base):
+    __tablename__ = "payroll_decisions"
+
+    id = Column(Integer, primary_key=True)
+    period = Column(String(7), nullable=False, unique=True)  # YYYY-MM
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
+    preparer_note = Column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# SystemSetting — basit key-value config (örn. ödeme günü)
+# ---------------------------------------------------------------------------
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(String(500))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# ManualPaymentLine — haftalık listeye manuel olarak eklenen ödeme kalemi
+# (sistemde fatura/çek/ekstre olarak kayıtlı olmayan ödemeler için)
+# ---------------------------------------------------------------------------
+
+class ManualPaymentLine(Base):
+    __tablename__ = "manual_payment_lines"
+
+    id = Column(Integer, primary_key=True)
+    description = Column(String(300), nullable=False)
+    party = Column(String(200))          # serbest metin tedarikçi/karşı taraf
+    amount = Column(Float, nullable=False)
+    payment_method = Column(String(20), default="banka", nullable=False)
+    due_date = Column(Date, nullable=True)
+    ref_id = Column(Integer, ForeignKey("references.id"), nullable=True)
+    notes = Column(Text)
+    status = Column(String(20), default="open", nullable=False)  # open | paid | cancelled
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    paid_at = Column(DateTime, nullable=True)
+    # GM ödeme listesi alanları (Invoice/Cheque ile aynı)
+    gm_decision = Column(String(20), nullable=True)
+    gm_decision_at = Column(DateTime, nullable=True)
+    gm_decision_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gm_postpone_until = Column(Date, nullable=True)
+    gm_method_override = Column(String(20), nullable=True)
+    gm_decision_note = Column(Text, nullable=True)
+    gm_approved_amount = Column(Float, nullable=True)
+    preparer_note = Column(Text, nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+# ---------------------------------------------------------------------------
+# PaymentInstruction — GM onay → operatör infaz arasındaki bekleyen talimat
+# ---------------------------------------------------------------------------
+
+class PaymentInstruction(Base):
+    __tablename__ = "payment_instructions"
+
+    id = Column(Integer, primary_key=True)
+    # Kaynak: hangi kalem türü için bu talimat
+    source_type = Column(String(20), nullable=False)  # invoice|cheque|cc_statement|payroll
+    source_id = Column(Integer, nullable=True)        # invoice.id / cheque.id / cc_statement.id
+    source_period = Column(String(7), nullable=True)  # payroll için 'YYYY-MM'
+    # GM onay verisi
+    amount = Column(Float, nullable=False)
+    payment_method = Column(String(20), nullable=False)  # nakit|banka|kredi_karti|cek
+    note = Column(Text, nullable=True)
+    # Operatör infaz hedefi (execution'da seçilir)
+    target_bank_account_id = Column(Integer, ForeignKey("bank_accounts.id"), nullable=True)
+    target_cash_book_id = Column(Integer, ForeignKey("cash_books.id"), nullable=True)
+    target_credit_card_id = Column(Integer, ForeignKey("credit_cards.id"), nullable=True)
+    # Durum
+    status = Column(String(20), default="pending", nullable=False)  # pending|executed|cancelled
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)  # GM
+    executed_at = Column(DateTime, nullable=True)
+    executed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancelled_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    cancel_reason = Column(Text, nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    executor = relationship("User", foreign_keys=[executed_by])
+    canceller = relationship("User", foreign_keys=[cancelled_by])
+    target_bank_account = relationship("BankAccount")
+    target_cash_book = relationship("CashBook")
+    target_credit_card = relationship("CreditCard")
