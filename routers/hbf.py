@@ -171,7 +171,16 @@ async def hbf_list(
     db: Session = Depends(get_db),
 ):
     q = db.query(HBF)
-    if not (current_user.is_admin or current_user.is_approver):
+    if current_user.has_role_min("genel_mudur"):
+        pass  # tüm HBF'leri görür
+    elif current_user.has_role_min("mudur"):
+        # Müdür: kendi ekibinin HBF'lerini + kendi oluşturduklarını görür
+        team_ids = [
+            u.id for u in db.query(User).filter(User.manager_id == current_user.id).all()
+        ]
+        team_ids.append(current_user.id)
+        q = q.filter(HBF.created_by.in_(team_ids))
+    else:
         q = q.filter(HBF.created_by == current_user.id)
     if status_filter != "all":
         q = q.filter(HBF.status == status_filter)
@@ -274,7 +283,16 @@ async def hbf_detail(
     hbf = db.query(HBF).get(hbf_id)
     if not hbf:
         raise HTTPException(status_code=404)
-    if not (current_user.is_admin or current_user.is_approver or hbf.created_by == current_user.id):
+
+    # Erişim: GM/Admin, oluşturan, veya ekibinden biri ise müdür
+    hbf_creator = db.query(User).get(hbf.created_by)
+    is_team_manager = (
+        current_user.has_role_min("mudur")
+        and hbf_creator
+        and hbf_creator.manager_id == current_user.id
+    )
+    if not (current_user.has_role_min("genel_mudur") or
+            hbf.created_by == current_user.id or is_team_manager):
         raise HTTPException(status_code=403)
 
     items, _ = _parse_items(hbf.items_json)
@@ -303,6 +321,7 @@ async def hbf_detail(
         {
             "request": request, "current_user": current_user,
             "hbf": hbf, "items": items, "refs": refs,
+            "hbf_creator": hbf_creator,
             "kdv_haric": kdv_haric, "kdv_toplam": kdv_toplam,
             "status_labels": HBF_STATUS_LABELS,
             "cash_books": cash_books, "bank_accounts": bank_accounts,
@@ -417,7 +436,7 @@ async def hbf_submit(
 
 
 # ---------------------------------------------------------------------------
-# Onayla / Reddet (is_approver veya admin)
+# Onayla / Reddet — iki aşamalı onay akışı
 # ---------------------------------------------------------------------------
 
 @router.post("/{hbf_id}/approve", name="hbf_approve")
@@ -427,15 +446,46 @@ async def hbf_approve(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not (current_user.is_admin or current_user.is_approver):
-        raise HTTPException(status_code=403)
     hbf = db.query(HBF).get(hbf_id)
-    if not hbf or hbf.status != "beklemede":
+    if not hbf:
         raise HTTPException(status_code=404)
-    hbf.status = "onaylandi"
-    hbf.approved_by = current_user.id
-    hbf.approved_at = datetime.utcnow()
-    hbf.approval_note = approval_note.strip() or None
+
+    is_mudur = current_user.has_role_min("mudur")
+    is_gm = current_user.has_role_min("genel_mudur")
+
+    # HBF oluşturanın müdürü var mı?
+    creator = db.query(User).get(hbf.created_by)
+    has_manager = bool(creator and creator.manager_id)
+
+    if hbf.status == "beklemede":
+        if is_gm:
+            # GM/Admin: has_manager yoksa doğrudan onayla, varsa da GM atlayarak onaylayabilir
+            hbf.status = "onaylandi"
+            hbf.approved_by = current_user.id
+            hbf.approved_at = datetime.utcnow()
+            hbf.approval_note = approval_note.strip() or None
+        elif is_mudur:
+            # Müdür: sadece kendi ekibini onaylayabilir (creator.manager_id == current_user.id)
+            if not creator or creator.manager_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Bu HBF sizin ekibinize ait değil.")
+            hbf.status = "mudur_onayladi"
+            hbf.manager_approved_by = current_user.id
+            hbf.manager_approved_at = datetime.utcnow()
+            if approval_note.strip():
+                hbf.approval_note = approval_note.strip()
+        else:
+            raise HTTPException(status_code=403)
+
+    elif hbf.status == "mudur_onayladi":
+        if not is_gm:
+            raise HTTPException(status_code=403, detail="Bu aşamada sadece Genel Müdür onaylayabilir.")
+        hbf.status = "onaylandi"
+        hbf.approved_by = current_user.id
+        hbf.approved_at = datetime.utcnow()
+        hbf.approval_note = approval_note.strip() or None
+    else:
+        raise HTTPException(status_code=400, detail="Bu HBF onaylanamaz.")
+
     db.commit()
     return RedirectResponse(url=f"/hbf/{hbf_id}", status_code=status.HTTP_302_FOUND)
 
@@ -447,11 +497,22 @@ async def hbf_reject(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not (current_user.is_admin or current_user.is_approver):
-        raise HTTPException(status_code=403)
     hbf = db.query(HBF).get(hbf_id)
-    if not hbf or hbf.status != "beklemede":
+    if not hbf or hbf.status not in ("beklemede", "mudur_onayladi"):
         raise HTTPException(status_code=404)
+
+    creator = db.query(User).get(hbf.created_by)
+    is_gm = current_user.has_role_min("genel_mudur")
+    is_mudur = current_user.has_role_min("mudur")
+
+    if is_gm:
+        pass  # her durumda reddedebilir
+    elif is_mudur and hbf.status == "beklemede":
+        if not creator or creator.manager_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Bu HBF sizin ekibinize ait değil.")
+    else:
+        raise HTTPException(status_code=403)
+
     hbf.status = "reddedildi"
     hbf.approved_by = current_user.id
     hbf.approved_at = datetime.utcnow()

@@ -13,7 +13,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User
+from models import User, RolePermission, ROLE_ORDER
 
 # ---------------------------------------------------------------------------
 # Yapılandırma
@@ -127,7 +127,67 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 def require_gm(current_user: User = Depends(get_current_user)) -> User:
     """Genel Müdür veya Admin yetkisi gerektirir."""
-    if not (current_user.is_admin or current_user.is_approver):
+    if not current_user.has_role_min("genel_mudur"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Bu sayfa için Genel Müdür yetkisi gereklidir.")
     return current_user
+
+
+# ---------------------------------------------------------------------------
+# İzin sistemi
+# ---------------------------------------------------------------------------
+
+DEFAULT_PERMISSIONS: dict[str, str] = {
+    "advance_create":          "kullanici",
+    "advance_approve_first":   "mudur",
+    "advance_approve_final":   "genel_mudur",
+    "hbf_create":              "kullanici",
+    "hbf_approve_first":       "mudur",
+    "hbf_approve_final":       "genel_mudur",
+    "invoice_create":          "kullanici",
+    "invoice_delete":          "admin",
+    "payment_list_prepare":    "kullanici",
+    "payment_list_approve":    "genel_mudur",
+    "fund_pool_manage":        "admin",
+    "cash_close":              "mudur",
+    "report_view":             "kullanici",
+    "report_view_financial":   "mudur",
+    "report_view_all":         "genel_mudur",
+    "customer_manage":         "admin",
+    "employee_manage":         "admin",
+    "vendor_manage":           "mudur",
+    "user_manage":             "admin",
+    "role_permission_manage":  "admin",
+    "module_config":           "admin",
+    "super_admin_panel":       "super_admin",
+}
+
+
+def check_permission(user: User, permission: str, db: Session) -> bool:
+    """DB'de override varsa onu kullan, yoksa DEFAULT_PERMISSIONS'a bak."""
+    row = db.query(RolePermission).filter_by(
+        role=user.role, permission=permission
+    ).first()
+    if row is not None:
+        return row.enabled
+    min_role = DEFAULT_PERMISSIONS.get(permission, "super_admin")
+    try:
+        return ROLE_ORDER.index(user.role) >= ROLE_ORDER.index(min_role)
+    except ValueError:
+        return False
+
+
+def require_permission(permission: str):
+    """FastAPI dependency factory — belirtilen izin için rol kontrolü yapar."""
+    def _dep(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        if not check_permission(current_user, permission, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bu işlem için yetkiniz yok.",
+            )
+        return current_user
+    return Depends(_dep)

@@ -61,7 +61,7 @@ def seed_data() -> None:
                 name="Admin",
                 email="admin@edem.com",
                 password_hash=_pwd_ctx.hash("Admin123"),
-                is_admin=True,
+                role="admin",
                 active=True,
             ))
             db.flush()
@@ -173,6 +173,7 @@ def _migrate(engine) -> None:
             cur = raw.cursor()
             cur.execute("ALTER TYPE invoice_status_enum ADD VALUE IF NOT EXISTS 'partial'")
             cur.execute("ALTER TYPE cheque_status_enum ADD VALUE IF NOT EXISTS 'iptal'")
+            cur.execute("ALTER TYPE hbf_status_enum ADD VALUE IF NOT EXISTS 'mudur_onayladi'")
             cur.close()
             raw.close()
             print("[migrate] enum değerleri eklendi.")
@@ -279,6 +280,16 @@ def _migrate(engine) -> None:
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS is_efatura_user BOOLEAN",
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS efatura_alias VARCHAR(100)",
         "ALTER TABLE financial_vendors ADD COLUMN IF NOT EXISTS efatura_checked_at TIMESTAMP",
+        # Rol sistemi — 5 katmanlı hiyerarşi
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'kullanici'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS manager_id INTEGER",
+        # Mevcut admin/approver verilerini role sütununa taşı
+        "UPDATE users SET role = 'admin' WHERE is_admin = true AND (role IS NULL OR role = 'kullanici')",
+        "UPDATE users SET role = 'genel_mudur' WHERE is_approver = true AND is_admin = false AND (role IS NULL OR role = 'kullanici')",
+        "UPDATE users SET role = 'kullanici' WHERE role IS NULL",
+        # HBF iki aşamalı onay kolonları
+        "ALTER TABLE hbf_forms ADD COLUMN IF NOT EXISTS manager_approved_by INTEGER",
+        "ALTER TABLE hbf_forms ADD COLUMN IF NOT EXISTS manager_approved_at TIMESTAMP",
     ]
     with engine.begin() as conn:
         for sql in migrations:

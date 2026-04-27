@@ -58,7 +58,7 @@
         <div class="meta-item">
           <strong>Durum</strong>
           {% set s = hbf.status %}
-          <span class="badge {% if s=='taslak' %}bg-secondary{% elif s=='beklemede' %}bg-warning text-dark{% elif s=='onaylandi' %}bg-info text-dark{% elif s=='reddedildi' %}bg-danger{% elif s=='odendi' %}bg-success{% endif %}">
+          <span class="badge {% if s=='taslak' %}bg-secondary{% elif s=='beklemede' %}bg-warning text-dark{% elif s=='mudur_onayladi' %}bg-primary{% elif s=='onaylandi' %}bg-info text-dark{% elif s=='reddedildi' %}bg-danger{% elif s=='odendi' %}bg-success{% endif %}">
             {{ status_labels[s] }}
           </span>
         </div>
@@ -287,10 +287,39 @@
     </div>
     {% endif %}
 
-    {% if hbf.status == 'beklemede' and (current_user.is_admin or current_user.is_approver) %}
+    {# Müdür birinci kademe onayı #}
+    {% if hbf.status == 'beklemede' and current_user.role == 'mudur' and hbf_creator and hbf_creator.manager_id == current_user.id %}
+    <div class="card border-warning shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="mb-3"><i class="bi bi-person-check me-1 text-warning"></i>Müdür Onayı</h6>
+        <form method="post" action="/hbf/{{ hbf.id }}/approve" class="mb-2">
+          <div class="mb-2">
+            <textarea name="approval_note" class="form-control form-control-sm" rows="2" placeholder="Onay notu (isteğe bağlı)"></textarea>
+          </div>
+          <button class="btn btn-warning w-100 text-dark">
+            <i class="bi bi-check-lg me-1"></i>Müdür Onayı Ver
+          </button>
+        </form>
+        <form method="post" action="/hbf/{{ hbf.id }}/reject">
+          <div class="mb-2">
+            <textarea name="approval_note" class="form-control form-control-sm" rows="2" placeholder="Red gerekçesi"></textarea>
+          </div>
+          <button class="btn btn-outline-danger w-100">
+            <i class="bi bi-x-lg me-1"></i>Reddet
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {# GM / Admin nihai onayı #}
+    {% if hbf.status in ('beklemede', 'mudur_onayladi') and current_user.role in ('genel_mudur', 'admin', 'super_admin') %}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body">
-        <h6 class="mb-3">Onay</h6>
+        <h6 class="mb-3">
+          <i class="bi bi-shield-check me-1"></i>
+          {% if hbf.status == 'mudur_onayladi' %}Nihai Onay (GM){% else %}Onay{% endif %}
+        </h6>
         <form method="post" action="/hbf/{{ hbf.id }}/approve" class="mb-2">
           <div class="mb-2">
             <textarea name="approval_note" class="form-control form-control-sm" rows="2" placeholder="Onay notu (isteğe bağlı)"></textarea>

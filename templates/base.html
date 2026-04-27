@@ -287,8 +287,11 @@
     <a href="/customers" class="sidebar-link {% if '/customers' in request.url.path %}active{% endif %}">
       <i class="bi bi-briefcase"></i> Müşteriler
     </a>
-    <a href="/users" class="sidebar-link {% if '/users' in request.url.path %}active{% endif %}">
+    <a href="/users" class="sidebar-link {% if '/users' in request.url.path and '/admin' not in request.url.path %}active{% endif %}">
       <i class="bi bi-shield-person"></i> Kullanıcılar
+    </a>
+    <a href="/admin/roles" class="sidebar-link {% if '/admin/roles' in request.url.path %}active{% endif %}">
+      <i class="bi bi-shield-lock"></i> Rol & İzinler
     </a>
     <a href="/admin/modules" class="sidebar-link {% if '/admin/modules' in request.url.path %}active{% endif %}">
       <i class="bi bi-puzzle"></i> Modüller
@@ -305,7 +308,8 @@
     {% set _first = (current_user.name or 'U')[0] %}
     {% set _second = ((current_user.surname or '')[0] if current_user.surname else ((current_user.name or '')[1] if (current_user.name or '')|length > 1 else '')) %}
     {% set _initials = (_first ~ _second) | upper %}
-    {% set _role_label = "Sistem Yöneticisi" if current_user.is_admin else ("Genel Müdür" if current_user.is_approver else "Kullanıcı") %}
+    {% set _role_map = {'kullanici':'Kullanıcı','mudur':'Müdür','genel_mudur':'Genel Müdür','admin':'Admin','super_admin':'Süper Admin'} %}
+    {% set _role_label = _role_map.get(current_user.role, current_user.role) %}
     <button type="button" class="sidebar-user-btn" data-bs-toggle="modal" data-bs-target="#profileModal">
       <div class="sidebar-user-avatar">{{ _initials }}</div>
       <div class="sidebar-user-info">

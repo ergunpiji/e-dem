@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum, Float, ForeignKey,
     Integer, String, Text, UniqueConstraint
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
@@ -20,6 +21,17 @@ Base = declarative_base()
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+
+ROLE_ORDER = ["kullanici", "mudur", "genel_mudur", "admin", "super_admin"]
+
+ROLE_LABELS = {
+    "kullanici":   "Kullanıcı",
+    "mudur":       "Müdür",
+    "genel_mudur": "Genel Müdür",
+    "admin":       "Admin",
+    "super_admin": "Süper Admin",
+}
+
 
 class User(Base):
     __tablename__ = "users"
@@ -31,10 +43,64 @@ class User(Base):
     phone = Column(String(40), nullable=True)
     email = Column(String(200), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
-    is_admin = Column(Boolean, default=False, nullable=False)
-    is_approver = Column(Boolean, default=False, nullable=False)
+    role = Column(String(20), default="kullanici", nullable=False)
+    manager_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    manager = relationship("User", remote_side="User.id", foreign_keys=[manager_id])
+
+    @hybrid_property
+    def is_admin(self) -> bool:
+        return self.role in ("admin", "super_admin")
+
+    @is_admin.expression
+    def is_admin(cls):
+        return cls.role.in_(("admin", "super_admin"))
+
+    @is_admin.setter
+    def is_admin(self, value: bool):
+        if value and self.role not in ("admin", "super_admin"):
+            self.role = "admin"
+        elif not value and self.role in ("admin", "super_admin"):
+            self.role = "kullanici"
+
+    @hybrid_property
+    def is_approver(self) -> bool:
+        return self.role in ("genel_mudur", "admin", "super_admin")
+
+    @is_approver.expression
+    def is_approver(cls):
+        return cls.role.in_(("genel_mudur", "admin", "super_admin"))
+
+    @is_approver.setter
+    def is_approver(self, value: bool):
+        if value and self.role not in ("genel_mudur", "admin", "super_admin"):
+            self.role = "genel_mudur"
+        elif not value and self.role == "genel_mudur":
+            self.role = "kullanici"
+
+    def has_role_min(self, min_role: str) -> bool:
+        """Kullanıcının rolü min_role veya daha yüksek mi?"""
+        try:
+            return ROLE_ORDER.index(self.role) >= ROLE_ORDER.index(min_role)
+        except ValueError:
+            return False
+
+
+class RolePermission(Base):
+    """Rol-izin matrisi — DB'de override edilmiş izinler burada tutulur.
+    Kaydı olmayan izinler DEFAULT_PERMISSIONS'a göre değerlendirilir."""
+    __tablename__ = "role_permissions"
+
+    id = Column(Integer, primary_key=True)
+    role = Column(String(30), nullable=False)
+    permission = Column(String(60), nullable=False)
+    enabled = Column(Boolean, default=True, nullable=False)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("role", "permission"),)
 
 
 # ---------------------------------------------------------------------------
@@ -696,10 +762,13 @@ class HBF(Base):
     items_json = Column(Text)
     total_amount = Column(Float, default=0.0, nullable=False)   # KDV dahil genel toplam
     status = Column(
-        Enum("taslak", "beklemede", "onaylandi", "reddedildi", "odendi",
+        Enum("taslak", "beklemede", "mudur_onayladi", "onaylandi", "reddedildi", "odendi",
              name="hbf_status_enum"),
         default="taslak", nullable=False,
     )
+    # İki aşamalı onay
+    manager_approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    manager_approved_at = Column(DateTime, nullable=True)
     notes = Column(Text)
     approval_note = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -774,11 +843,12 @@ class FundTransfer(Base):
 
 
 HBF_STATUS_LABELS = {
-    "taslak":     "Taslak",
-    "beklemede":  "Beklemede",
-    "onaylandi":  "Onaylandı",
-    "reddedildi": "Reddedildi",
-    "odendi":     "Ödendi",
+    "taslak":          "Taslak",
+    "beklemede":       "Beklemede",
+    "mudur_onayladi":  "Müdür Onayladı",
+    "onaylandi":       "Onaylandı",
+    "reddedildi":      "Reddedildi",
+    "odendi":          "Ödendi",
 }
 
 

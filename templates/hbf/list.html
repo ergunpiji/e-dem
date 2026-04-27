@@ -47,7 +47,7 @@
           <td class="text-end fw-semibold">{{ hbf.total_amount | money }}</td>
           <td>
             {% set s = hbf.status %}
-            <span class="badge {% if s=='taslak' %}bg-secondary{% elif s=='beklemede' %}bg-warning text-dark{% elif s=='onaylandi' %}bg-info text-dark{% elif s=='reddedildi' %}bg-danger{% elif s=='odendi' %}bg-success{% endif %}">
+            <span class="badge {% if s=='taslak' %}bg-secondary{% elif s=='beklemede' %}bg-warning text-dark{% elif s=='mudur_onayladi' %}bg-primary{% elif s=='onaylandi' %}bg-info text-dark{% elif s=='reddedildi' %}bg-danger{% elif s=='odendi' %}bg-success{% endif %}">
               {{ status_labels[s] }}
             </span>
           </td>
