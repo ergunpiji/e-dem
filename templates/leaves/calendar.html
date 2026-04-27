@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .cal-grid { border-collapse:collapse; width:100%; table-layout:fixed; }
+  .cal-grid th { background:#1a3a5c; color:#fff; text-align:center; padding:8px 4px; font-size:12px; font-weight:700; letter-spacing:.05em; }
+  .cal-grid td { border:1px solid #e2e8f0; vertical-align:top; padding:4px; min-height:80px; width:14.28%; }
+  .cal-grid td.other-month { background:#fafafa; }
+  .cal-grid td.today-cell { background:#fffbeb; }
+  .cal-grid td.holiday-cell { background:#fef2f2; }
+  .day-num { font-size:12px; font-weight:700; color:#374151; margin-bottom:3px; }
+  .day-num.weekend { color:#9ca3af; }
+  .holiday-label { font-size:10px; color:#dc2626; font-style:italic; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .leave-chip { font-size:10px; border-radius:4px; padding:1px 5px; color:#fff; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+  .cal-legend { display:flex; flex-wrap:wrap; gap:10px; font-size:12px; }
+  .cal-nav { font-size:14px; font-weight:600; }
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+<a href="/leaves/team/requests" class="btn btn-outline-secondary btn-sm"><i class="bi bi-people me-1"></i>Ekip Liste</a>
+<a href="/leaves" class="btn btn-outline-secondary btn-sm ms-1"><i class="bi bi-person me-1"></i>İzinlerim</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Navigasyon -->
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <a href="/leaves/calendar/view?year={{ prev_year }}&month={{ prev_month }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-left"></i></a>
+  <h5 class="mb-0 cal-nav">{{ month_name }} {{ year }}</h5>
+  <a href="/leaves/calendar/view?year={{ next_year }}&month={{ next_month }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-right"></i></a>
+</div>
+
+<!-- Legend -->
+{% if lt_map %}
+<div class="cal-legend mb-3">
+  {% for lt in lt_map.values() %}
+  <div><span style="display:inline-block;width:12px;height:12px;background:{{ lt.color }};border-radius:3px;margin-right:4px"></span>{{ lt.name }}</div>
+  {% endfor %}
+  <div><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:3px;margin-right:4px"></span>Resmi Tatil</div>
+</div>
+{% endif %}
+
+<!-- Takvim -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="cal-grid">
+      <thead>
+        <tr>
+          {% for d in ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'] %}
+          <th>{{ d }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for week in cal %}
+        <tr>
+          {% for day_num in week %}
+          {% if day_num == 0 %}
+          <td class="other-month"></td>
+          {% else %}
+            {% set cur_date = [year, month, day_num] | make_date %}
+            {% set is_holiday = cur_date in holiday_map %}
+            {% set is_today = cur_date == today %}
+            {% set is_weekend = cur_date.weekday() >= 5 %}
+            <td class="{% if is_today %}today-cell{% elif is_holiday %}holiday-cell{% endif %}">
+              <div class="day-num {% if is_weekend %}weekend{% endif %}">{{ day_num }}</div>
+              {% if is_holiday %}
+              <div class="holiday-label" title="{{ holiday_map[cur_date].name }}">
+                {{ holiday_map[cur_date].name }}
+                {% if holiday_map[cur_date].is_half %}(½){% endif %}
+              </div>
+              {% endif %}
+              {% for r in leaves %}
+                {% if r.start_date <= cur_date <= r.end_date %}
+                {% set lt = lt_map.get(r.leave_type_id) %}
+                <a href="/leaves/{{ r.id }}" class="leave-chip d-block text-decoration-none"
+                   style="background:{{ lt.color if lt else '#6b7280' }}"
+                   title="{{ r.employee.name }} — {{ lt.name if lt else '' }}">
+                  {{ r.employee.name.split()[0] }}
+                  {% if r.half_day %}½{% endif %}
+                </a>
+                {% endif %}
+              {% endfor %}
+            </td>
+          {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+
+    <!-- Başlık kartı -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <span class="rounded-circle" style="width:16px;height:16px;background:{{ leave.leave_type.color }};flex-shrink:0;display:inline-block"></span>
+          <h5 class="mb-0 fw-bold">{{ leave.leave_type.name }}</h5>
+          {% set sl = status_labels.get(leave.status, ('secondary', leave.status)) %}
+          <span class="badge bg-{{ sl[0] }} ms-auto">{{ sl[1] }}</span>
+        </div>
+
+        <div class="row g-2" style="font-size:13px">
+          <div class="col-6">
+            <div class="text-muted">Çalışan</div>
+            <strong>{{ employee.name if employee else '—' }}</strong>
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Talep Tarihi</div>
+            <strong>{{ leave.created_at.strftime('%d.%m.%Y') }}</strong>
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Başlangıç</div>
+            <strong>{{ leave.start_date | date_tr }}</strong>
+            {% if leave.half_day and leave.half_day_period == 'sabah' %}
+            <small class="text-muted">(09:00–13:00)</small>
+            {% elif leave.half_day and leave.half_day_period == 'ogleden_sonra' %}
+            <small class="text-muted">(13:00–18:00)</small>
+            {% endif %}
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Bitiş</div>
+            <strong>{{ leave.end_date | date_tr }}</strong>
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Süre</div>
+            <strong>{{ leave.total_days }} iş günü{% if leave.half_day %} (yarım){% endif %}</strong>
+          </div>
+          {% if leave.leave_type.is_paid == false %}
+          <div class="col-6">
+            <div class="text-muted">Ücret</div>
+            <span class="badge bg-warning text-dark">Ücretsiz</span>
+          </div>
+          {% endif %}
+          {% if leave.has_report %}
+          <div class="col-6">
+            <div class="text-muted">Rapor</div>
+            <span class="text-success"><i class="bi bi-check-circle me-1"></i>Mevcut</span>
+          </div>
+          {% endif %}
+          {% if leave.reason %}
+          <div class="col-12">
+            <div class="text-muted">Açıklama</div>
+            <span>{{ leave.reason }}</span>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if balance %}
+        <div class="mt-3 p-2 bg-light rounded" style="font-size:12px">
+          <strong>Bakiye:</strong>
+          {{ balance.entitled_days + balance.carried_over_days }} gün
+          → kullanılan {{ balance.used_days }} → kalan <strong>{{ balance.remaining_days }}</strong> gün
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Onay zinciri -->
+    {% if leave.manager_approved_by or leave.final_approved_by or leave.status == 'reddedildi' %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body" style="font-size:13px">
+        <h6 class="mb-3">Onay Geçmişi</h6>
+        {% if leave.manager_approver %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-person-check text-primary"></i>
+          <div>
+            <strong>Müdür Onayı</strong> — {{ leave.manager_approver.name }}
+            {% if leave.manager_approved_at %}<span class="text-muted">({{ leave.manager_approved_at.strftime('%d.%m.%Y %H:%M') }})</span>{% endif %}
+          </div>
+        </div>
+        {% endif %}
+        {% if leave.final_approver %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-shield-check text-success"></i>
+          <div>
+            <strong>{{ 'Nihai Onay' if leave.status == 'onaylandi' else 'Red' }}</strong> — {{ leave.final_approver.name }}
+            {% if leave.final_approved_at %}<span class="text-muted">({{ leave.final_approved_at.strftime('%d.%m.%Y %H:%M') }})</span>{% endif %}
+          </div>
+        </div>
+        {% endif %}
+        {% if leave.rejection_note %}
+        <div class="alert alert-danger py-2 mb-0 mt-2" style="font-size:12px">
+          <i class="bi bi-x-circle me-1"></i>{{ leave.rejection_note }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Müdür birinci kademe onay -->
+    {% if can_approve_first %}
+    <div class="card border-warning shadow-sm mb-3">
+      <div class="card-body">
+        <h6><i class="bi bi-person-check text-warning me-1"></i>Müdür Onayı</h6>
+        <form method="post" action="/leaves/{{ leave.id }}/approve-first" class="d-inline me-2">
+          <button class="btn btn-warning text-dark"><i class="bi bi-check-lg me-1"></i>Onayla</button>
+        </form>
+        <button class="btn btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#rejectForm">Reddet</button>
+        <div class="collapse mt-3" id="rejectForm">
+          <form method="post" action="/leaves/{{ leave.id }}/reject">
+            <textarea name="rejection_note" class="form-control form-control-sm mb-2" rows="2" placeholder="Red gerekçesi"></textarea>
+            <button class="btn btn-danger btn-sm">Reddet</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- GM nihai onay -->
+    {% if can_approve_final %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h6><i class="bi bi-shield-check text-success me-1"></i>
+          {% if leave.status == 'mudur_onayladi' %}Nihai Onay (GM){% else %}Onay{% endif %}
+        </h6>
+        <form method="post" action="/leaves/{{ leave.id }}/approve" class="d-inline me-2">
+          <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Onayla</button>
+        </form>
+        {% if can_reject %}
+        <button class="btn btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#rejectFormGM">Reddet</button>
+        <div class="collapse mt-3" id="rejectFormGM">
+          <form method="post" action="/leaves/{{ leave.id }}/reject">
+            <textarea name="rejection_note" class="form-control form-control-sm mb-2" rows="2" placeholder="Red gerekçesi"></textarea>
+            <button class="btn btn-danger btn-sm">Reddet</button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <a href="/leaves" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Geri
+    </a>
+  </div>
+</div>
+{% endblock %}

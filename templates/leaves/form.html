@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block page_title %}Yeni İzin Talebi{% endblock %}
+
+{% block extra_css %}
+<style>
+  .type-card { border:2px solid #e2e8f0; border-radius:10px; padding:12px 16px; cursor:pointer; transition:.15s; }
+  .type-card:hover { border-color:#1e5f8c; background:#f0f7ff; }
+  .type-card.selected { border-color:#1a3a5c; background:#e8f0fe; }
+  .type-card input[type=radio] { display:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header" style="background:linear-gradient(135deg,#1a3a5c,#1e5f8c);color:#fff;border-radius:8px 8px 0 0">
+        <h6 class="mb-0"><i class="bi bi-calendar-plus me-2"></i>Yeni İzin Talebi</h6>
+      </div>
+      <div class="card-body p-4">
+        <form method="post" id="leaveForm">
+
+          <!-- İzin Türü -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">İzin Türü <span class="text-danger">*</span></label>
+            <div class="row g-2">
+              {% for lt in leave_types %}
+              <div class="col-md-6">
+                <label class="type-card d-block" id="card_{{ lt.id }}">
+                  <input type="radio" name="leave_type_id" value="{{ lt.id }}"
+                    onchange="onTypeChange({{ lt.id }}, {{ lt.default_days or 'null' }}, {{ 'true' if lt.requires_report else 'false' }}, {{ 'true' if lt.requires_balance else 'false' }})">
+                  <div class="d-flex align-items-center gap-2">
+                    <span style="width:12px;height:12px;border-radius:50%;background:{{ lt.color }};flex-shrink:0;display:inline-block"></span>
+                    <span class="fw-semibold" style="font-size:13px">{{ lt.name }}</span>
+                    {% if not lt.is_paid %}<span class="badge bg-warning text-dark ms-auto" style="font-size:10px">Ücretsiz</span>{% endif %}
+                  </div>
+                  {% if lt.default_days %}<div class="text-muted mt-1" style="font-size:11px;padding-left:20px">{{ lt.default_days }} iş günü</div>{% endif %}
+                  {% if lt.requires_report %}<div class="text-danger mt-1" style="font-size:11px;padding-left:20px"><i class="bi bi-file-medical"></i> Rapor gerekli</div>{% endif %}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Yarım Gün -->
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="halfDaySwitch" name="half_day" value="1"
+                onchange="toggleHalfDay(this.checked)">
+              <label class="form-check-label fw-semibold" for="halfDaySwitch">Yarım Gün</label>
+            </div>
+          </div>
+
+          <!-- Yarım gün periyot -->
+          <div id="halfDayPeriod" class="mb-3" style="display:none">
+            <label class="form-label fw-semibold">Periyot <span class="text-danger">*</span></label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="half_day_period" id="hd_sabah" value="sabah" checked>
+                <label class="form-check-label" for="hd_sabah">Sabah (09:00 – 13:00)</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="half_day_period" id="hd_ogleden" value="ogleden_sonra">
+                <label class="form-check-label" for="hd_ogleden">Öğleden Sonra (13:00 – 18:00)</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tarih(ler) -->
+          <div class="row g-3 mb-3" id="dateSection">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Başlangıç <span class="text-danger">*</span></label>
+              <input type="date" name="start_date" id="startDate" class="form-control" required
+                value="{{ today }}" min="{{ today }}" onchange="calcDays()">
+            </div>
+            <div class="col-md-6" id="endDateCol">
+              <label class="form-label fw-semibold">Bitiş <span class="text-danger">*</span></label>
+              <input type="date" name="end_date" id="endDate" class="form-control"
+                value="{{ today }}" min="{{ today }}" onchange="calcDays()">
+            </div>
+          </div>
+
+          <!-- Gün sayısı göstergesi -->
+          <div id="daysBadge" class="mb-3" style="display:none">
+            <span class="badge bg-primary fs-6" id="daysLabel">—</span>
+            <small class="text-muted ms-2">iş günü (hafta sonu ve resmi tatil hariç)</small>
+          </div>
+
+          <!-- Rapor var mı? -->
+          <div class="mb-3" id="reportSection" style="display:none">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="hasReport" name="has_report" value="1">
+              <label class="form-check-label" for="hasReport">
+                <i class="bi bi-file-medical text-danger me-1"></i>
+                Doktor raporu/belgesi mevcut
+              </label>
+            </div>
+          </div>
+
+          <!-- Açıklama -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Açıklama</label>
+            <textarea name="reason" class="form-control" rows="2" placeholder="İsteğe bağlı..."></textarea>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary px-4">
+              <i class="bi bi-send me-1"></i>Talebi Gönder
+            </button>
+            <a href="/leaves" class="btn btn-outline-secondary">İptal</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let isHalf = false;
+let hasDefaultDays = false;
+
+function onTypeChange(id, defaultDays, requiresReport, requiresBalance) {
+  document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('card_' + id).classList.add('selected');
+  document.getElementById('reportSection').style.display = requiresReport ? 'block' : 'none';
+  hasDefaultDays = defaultDays !== null;
+  if (hasDefaultDays && !isHalf) {
+    document.getElementById('endDateCol').style.display = 'none';
+    document.getElementById('daysBadge').style.display = 'block';
+    document.getElementById('daysLabel').textContent = defaultDays + ' iş günü';
+  } else {
+    document.getElementById('endDateCol').style.display = '';
+    calcDays();
+  }
+}
+
+function toggleHalfDay(checked) {
+  isHalf = checked;
+  document.getElementById('halfDayPeriod').style.display = checked ? 'block' : 'none';
+  document.getElementById('endDateCol').style.display = (checked || hasDefaultDays) ? 'none' : '';
+  if (checked) {
+    document.getElementById('daysBadge').style.display = 'block';
+    document.getElementById('daysLabel').textContent = '0.5 iş günü';
+  } else if (!hasDefaultDays) {
+    calcDays();
+  }
+}
+
+function calcDays() {
+  if (isHalf || hasDefaultDays) return;
+  const s = document.getElementById('startDate').value;
+  const e = document.getElementById('endDate').value;
+  if (!s || !e) return;
+  const badge = document.getElementById('daysBadge');
+  const label = document.getElementById('daysLabel');
+  badge.style.display = 'block';
+  label.textContent = '...';
+  fetch(`/leaves/calc-days?start=${s}&end=${e}`)
+    .then(r => r.json())
+    .then(d => { label.textContent = d.days + ' iş günü'; })
+    .catch(() => { label.textContent = '?'; });
+}
+</script>
+{% endblock %}

@@ -11,7 +11,8 @@ from sqlalchemy.orm import sessionmaker
 
 from models import (
     Base, User, Customer, CashBook,
-    GeneralExpenseCategory,
+    GeneralExpenseCategory, LeaveType, PublicHoliday,
+    LEAVE_TYPE_DEFAULTS,
 )
 
 # ---------------------------------------------------------------------------
@@ -290,6 +291,8 @@ def _migrate(engine) -> None:
         # HBF iki aşamalı onay kolonları
         "ALTER TABLE hbf_forms ADD COLUMN IF NOT EXISTS manager_approved_by INTEGER",
         "ALTER TABLE hbf_forms ADD COLUMN IF NOT EXISTS manager_approved_at TIMESTAMP",
+        # İzin yönetimi — leave_types, leave_balances, leave_requests, public_holidays
+        # tabloları create_all tarafından oluşturulur; ek kolon migration'ları buraya gelir
     ]
     with engine.begin() as conn:
         for sql in migrations:
@@ -350,6 +353,69 @@ def _seed_extra_categories() -> None:
         db.close()
 
 
+def _seed_leave_types() -> None:
+    """Varsayılan izin türlerini idempotent olarak ekler."""
+    db = SessionLocal()
+    try:
+        changed = False
+        for code, name, is_paid, req_bal, req_rep, def_days, color, sort in LEAVE_TYPE_DEFAULTS:
+            existing = db.query(LeaveType).filter_by(code=code).first()
+            if not existing:
+                db.add(LeaveType(
+                    code=code, name=name, is_paid=is_paid,
+                    requires_balance=req_bal, requires_report=req_rep,
+                    default_days=def_days, color=color, sort_order=sort,
+                ))
+                changed = True
+        if changed:
+            db.commit()
+            print("[seed] İzin türleri eklendi.")
+    except Exception as exc:
+        db.rollback()
+        print(f"[seed] İzin türleri HATA: {exc}")
+    finally:
+        db.close()
+
+
+def _seed_public_holidays_2026() -> None:
+    """2026 Türkiye resmi tatillerini idempotent olarak ekler."""
+    from datetime import date as _date
+    holidays = [
+        (_date(2026, 1, 1),   "Yılbaşı",                                    False),
+        (_date(2026, 3, 19),  "Ramazan Bayramı Arife",                       True),
+        (_date(2026, 3, 20),  "Ramazan Bayramı 1. Günü",                     False),
+        (_date(2026, 3, 21),  "Ramazan Bayramı 2. Günü",                     False),
+        (_date(2026, 3, 22),  "Ramazan Bayramı 3. Günü",                     False),
+        (_date(2026, 4, 23),  "Ulusal Egemenlik ve Çocuk Bayramı",           False),
+        (_date(2026, 5, 1),   "Emek ve Dayanışma Bayramı",                   False),
+        (_date(2026, 5, 19),  "Atatürk'ü Anma, Gençlik ve Spor Bayramı",    False),
+        (_date(2026, 5, 25),  "Kurban Bayramı Arife",                        True),
+        (_date(2026, 5, 26),  "Kurban Bayramı 1. Günü",                      False),
+        (_date(2026, 5, 27),  "Kurban Bayramı 2. Günü",                      False),
+        (_date(2026, 5, 28),  "Kurban Bayramı 3. Günü",                      False),
+        (_date(2026, 5, 29),  "Kurban Bayramı 4. Günü",                      False),
+        (_date(2026, 7, 15),  "Demokrasi ve Milli Birlik Günü",              False),
+        (_date(2026, 8, 30),  "Zafer Bayramı",                               False),
+        (_date(2026, 10, 28), "Cumhuriyet Bayramı Arife",                    True),
+        (_date(2026, 10, 29), "Cumhuriyet Bayramı",                          False),
+    ]
+    db = SessionLocal()
+    try:
+        changed = False
+        for hdate, hname, is_half in holidays:
+            if not db.query(PublicHoliday).filter_by(date=hdate).first():
+                db.add(PublicHoliday(date=hdate, name=hname, is_half=is_half))
+                changed = True
+        if changed:
+            db.commit()
+            print("[seed] 2026 resmi tatilleri eklendi.")
+    except Exception as exc:
+        db.rollback()
+        print(f"[seed] Resmi tatiller HATA: {exc}")
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     if os.environ.get("RESET_DB") == "1":
         print("[db] RESET_DB=1 — tablolar siliniyor...")
@@ -360,6 +426,8 @@ def init_db() -> None:
     print("[db] Tablolar hazır.")
     seed_data()
     _seed_extra_categories()
+    _seed_leave_types()
+    _seed_public_holidays_2026()
 
 
 if __name__ == "__main__":

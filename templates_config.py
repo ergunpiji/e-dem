@@ -159,3 +159,12 @@ def company(key: str, default: str = "") -> str:
 
 
 templates.env.globals["company"] = company
+
+
+def make_date_filter(parts):
+    """[year, month, day] listesinden date nesnesi üretir — takvim şablonu için."""
+    from datetime import date as _date
+    return _date(parts[0], parts[1], parts[2])
+
+
+templates.env.filters["make_date"] = make_date_filter

@@ -600,6 +600,8 @@ class Employee(Base):
     advances = relationship("EmployeeAdvance", back_populates="employee", cascade="all, delete-orphan")
     general_expenses = relationship("GeneralExpense", back_populates="employee")
     user = relationship("User", foreign_keys=[user_id])
+    leave_balances = relationship("LeaveBalance", back_populates="employee", cascade="all, delete-orphan")
+    leave_requests = relationship("LeaveRequest", back_populates="employee", cascade="all, delete-orphan")
 
 
 class SalaryPayment(Base):
@@ -993,3 +995,132 @@ class PaymentInstruction(Base):
     target_bank_account = relationship("BankAccount")
     target_cash_book = relationship("CashBook")
     target_credit_card = relationship("CreditCard")
+
+
+# ---------------------------------------------------------------------------
+# İzin Yönetimi
+# ---------------------------------------------------------------------------
+
+class LeaveType(Base):
+    """İzin türü tanımları — admin tarafından yönetilir."""
+    __tablename__ = "leave_types"
+
+    id               = Column(Integer, primary_key=True)
+    code             = Column(String(40), nullable=False, unique=True)
+    name             = Column(String(100), nullable=False)
+    is_paid          = Column(Boolean, default=True, nullable=False)
+    requires_balance = Column(Boolean, default=True, nullable=False)  # False: bakiyeden düşme
+    requires_report  = Column(Boolean, default=False, nullable=False)  # Hastalık: rapor zorunlu
+    default_days     = Column(Float, nullable=True)   # Mazeret/dogum_gunu için sabit süre
+    color            = Column(String(7), default="#3b82f6", nullable=False)  # takvim rengi
+    active           = Column(Boolean, default=True, nullable=False)
+    sort_order       = Column(Integer, default=0, nullable=False)
+
+    balances  = relationship("LeaveBalance", back_populates="leave_type")
+    requests  = relationship("LeaveRequest", back_populates="leave_type")
+
+
+class LeaveBalance(Base):
+    """Çalışan bazlı yıllık izin bakiyesi — dönem = işe giriş yıl dönümü."""
+    __tablename__ = "leave_balances"
+
+    id                = Column(Integer, primary_key=True)
+    employee_id       = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    leave_type_id     = Column(Integer, ForeignKey("leave_types.id"), nullable=False)
+    period_start      = Column(Date, nullable=False)   # işe giriş yıl dönümü
+    period_end        = Column(Date, nullable=False)   # period_start + 1 yıl - 1 gün
+    entitled_days     = Column(Float, default=0.0, nullable=False)   # müdürün girdiği hak
+    carried_over_days = Column(Float, default=0.0, nullable=False)   # önceki dönemden devir
+    notes             = Column(String(300), nullable=True)
+    created_by        = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    employee   = relationship("Employee", back_populates="leave_balances")
+    leave_type = relationship("LeaveType", back_populates="balances")
+    creator    = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (UniqueConstraint("employee_id", "leave_type_id", "period_start"),)
+
+    @property
+    def used_days(self) -> float:
+        """Dönem içindeki onaylı izin günleri (relationship üzerinden hesaplanır)."""
+        return round(sum(
+            r.total_days for r in self.employee.leave_requests
+            if r.leave_type_id == self.leave_type_id
+            and r.status == "onaylandi"
+            and self.period_start <= r.start_date <= self.period_end
+        ), 1)
+
+    @property
+    def remaining_days(self) -> float:
+        return round(self.entitled_days + self.carried_over_days - self.used_days, 1)
+
+
+class LeaveRequest(Base):
+    """İzin talebi."""
+    __tablename__ = "leave_requests"
+
+    id            = Column(Integer, primary_key=True)
+    employee_id   = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    leave_type_id = Column(Integer, ForeignKey("leave_types.id"), nullable=False)
+    start_date    = Column(Date, nullable=False)
+    end_date      = Column(Date, nullable=False)
+    total_days    = Column(Float, nullable=False)          # hafta sonu + tatil hariç
+    half_day      = Column(Boolean, default=False, nullable=False)
+    half_day_period = Column(
+        Enum("sabah", "ogleden_sonra", name="half_day_period_enum"),
+        nullable=True
+    )  # sabah=09:00-13:00, ogleden_sonra=13:00-18:00
+    has_report    = Column(Boolean, default=False, nullable=False)  # hastalık raporu var mı?
+    reason        = Column(Text, nullable=True)
+    status        = Column(
+        Enum("talep", "mudur_onayladi", "onaylandi", "reddedildi", "iptal",
+             name="leave_status_enum"),
+        default="talep", nullable=False,
+    )
+    rejection_note          = Column(Text, nullable=True)
+    requested_by            = Column(Integer, ForeignKey("users.id"), nullable=False)
+    manager_approved_by     = Column(Integer, ForeignKey("users.id"), nullable=True)
+    manager_approved_at     = Column(DateTime, nullable=True)
+    final_approved_by       = Column(Integer, ForeignKey("users.id"), nullable=True)
+    final_approved_at       = Column(DateTime, nullable=True)
+    created_at              = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Bordro entegrasyon hazırlığı
+    payroll_period          = Column(String(7), nullable=True)   # YYYY-MM
+    payroll_processed       = Column(Boolean, default=False, nullable=False)
+
+    employee      = relationship("Employee", back_populates="leave_requests")
+    leave_type    = relationship("LeaveType", back_populates="requests")
+    requester     = relationship("User", foreign_keys=[requested_by])
+    manager_approver = relationship("User", foreign_keys=[manager_approved_by])
+    final_approver   = relationship("User", foreign_keys=[final_approved_by])
+
+
+class PublicHoliday(Base):
+    """Resmi tatiller — gün sayısı hesabında hafta içi resmi tatiller çıkarılır."""
+    __tablename__ = "public_holidays"
+
+    id      = Column(Integer, primary_key=True)
+    date    = Column(Date, nullable=False, unique=True)
+    name    = Column(String(100), nullable=False)
+    is_half = Column(Boolean, default=False, nullable=False)  # yarım gün tatil
+
+
+LEAVE_STATUS_LABELS = {
+    "talep":           ("warning",   "Talep Edildi"),
+    "mudur_onayladi":  ("primary",   "Müdür Onayladı"),
+    "onaylandi":       ("success",   "Onaylandı"),
+    "reddedildi":      ("danger",    "Reddedildi"),
+    "iptal":           ("secondary", "İptal"),
+}
+
+LEAVE_TYPE_DEFAULTS = [
+    # (code, name, is_paid, requires_balance, requires_report, default_days, color, sort_order)
+    ("yillik",          "Yıllık İzin",              True,  True,  False, None, "#3b82f6", 1),
+    ("hastalik",        "Hastalık İzni",             True,  False, True,  None, "#ef4444", 2),
+    ("mazeret_evlilik", "Mazeret İzni — Evlilik",    True,  False, False, 3.0,  "#8b5cf6", 3),
+    ("mazeret_olum",    "Mazeret İzni — Ölüm",       True,  False, False, 3.0,  "#6b7280", 4),
+    ("mazeret_dogum",   "Mazeret İzni — Doğum",      True,  False, False, 5.0,  "#ec4899", 5),
+    ("ucretsiz",        "Ücretsiz İzin",             False, False, False, None, "#f59e0b", 6),
+    ("dogum_gunu",      "Doğum Günü İzni",           True,  False, False, 1.0,  "#10b981", 7),
+]
