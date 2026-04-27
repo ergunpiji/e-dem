@@ -19,6 +19,11 @@
         <h6 class="mb-0"><i class="bi bi-calendar-plus me-2"></i>Yeni İzin Talebi</h6>
       </div>
       <div class="card-body p-4">
+        {% if error %}
+        <div class="alert alert-danger py-2 mb-3" style="font-size:13px">
+          <i class="bi bi-x-circle me-1"></i>{{ error }}
+        </div>
+        {% endif %}
         <form method="post" id="leaveForm">
 
           <!-- İzin Türü -->

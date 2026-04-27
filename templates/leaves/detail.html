@@ -5,6 +5,14 @@
 <div class="row justify-content-center">
   <div class="col-md-7">
 
+    {% if overlap_warn %}
+    <div class="alert alert-danger mb-3" style="font-size:13px">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>
+      <strong>Çakışma uyarısı:</strong> Bu çalışanın aynı tarihlerde başka bir aktif izin talebi mevcut.
+      Onaylamak için önce çakışan talebi iptal edin ya da reddedin.
+    </div>
+    {% endif %}
+
     <!-- Başlık kartı -->
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body">

@@ -88,6 +88,22 @@ def _team_employee_ids(db: Session, manager_user_id: int) -> list[int]:
     return ids
 
 
+def _check_overlap(
+    db: Session, employee_id: int, start: date, end: date,
+    exclude_id: int | None = None,
+) -> LeaveRequest | None:
+    """Çakışan aktif izin talebi varsa döndürür, yoksa None."""
+    q = db.query(LeaveRequest).filter(
+        LeaveRequest.employee_id == employee_id,
+        LeaveRequest.status.in_(["talep", "mudur_onayladi", "onaylandi"]),
+        LeaveRequest.start_date <= end,
+        LeaveRequest.end_date >= start,
+    )
+    if exclude_id:
+        q = q.filter(LeaveRequest.id != exclude_id)
+    return q.first()
+
+
 def _approval_context(user: User, leave: LeaveRequest, db: Session) -> dict:
     """Şablon için onay yetkisi bilgileri."""
     creator_user = db.query(User).get(leave.requested_by)
@@ -181,6 +197,7 @@ async def leave_new_get(
 
 @router.post("/new", name="leave_new_post")
 async def leave_new_post(
+    request: Request,
     leave_type_id: int = Form(...),
     start_date: str = Form(...),
     return_date: str = Form(""),
@@ -214,6 +231,34 @@ async def leave_new_post(
 
     if total <= 0:
         raise HTTPException(status_code=400, detail="Geçerli iş günü bulunamadı.")
+
+    # Çakışma kontrolü
+    conflict = _check_overlap(db, employee.id, sdate, edate)
+    if conflict:
+        leave_types = db.query(LeaveType).filter(LeaveType.active == True).order_by(LeaveType.sort_order).all()  # noqa: E712
+        today = date.today()
+        balances = {}
+        for lt in leave_types:
+            if lt.requires_balance:
+                bal = _active_balance(db, employee.id, lt.id, today)
+                if bal:
+                    balances[lt.id] = bal
+        from templates_config import templates as _tpl
+        return _tpl.TemplateResponse(
+            "leaves/form.html",
+            {
+                "request": request, "current_user": current_user,
+                "employee": employee, "leave_types": leave_types,
+                "balances": balances, "today": today.isoformat(), "leave": None,
+                "page_title": "Yeni İzin Talebi",
+                "error": (
+                    f"Bu tarihler {conflict.start_date.strftime('%d.%m.%Y')}–"
+                    f"{conflict.end_date.strftime('%d.%m.%Y')} arasındaki mevcut "
+                    f"izin talebinizle çakışıyor."
+                ),
+            },
+            status_code=400,
+        )
 
     leave = LeaveRequest(
         employee_id=employee.id,
@@ -471,6 +516,7 @@ async def leave_balance_save(
 async def leave_detail(
     leave_id: int,
     request: Request,
+    overlap_warn: int = 0,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -501,6 +547,7 @@ async def leave_detail(
             "leave": leave, "employee": employee,
             "balance": balance, "status_labels": LEAVE_STATUS_LABELS,
             "page_title": f"İzin Talebi — {leave.leave_type.name}",
+            "overlap_warn": bool(overlap_warn),
             **ctx,
         },
     )
@@ -522,6 +569,12 @@ async def leave_approve_first(
     creator_user = db.query(User).get(leave.requested_by)
     if not (current_user.role == "mudur" and creator_user and creator_user.manager_id == current_user.id):
         raise HTTPException(status_code=403)
+    conflict = _check_overlap(db, leave.employee_id, leave.start_date, leave.end_date, exclude_id=leave_id)
+    if conflict:
+        return RedirectResponse(
+            url=f"/leaves/{leave_id}?overlap_warn=1",
+            status_code=status.HTTP_302_FOUND,
+        )
     leave.status = "mudur_onayladi"
     leave.manager_approved_by = current_user.id
     leave.manager_approved_at = datetime.utcnow()
@@ -544,6 +597,12 @@ async def leave_approve(
     leave = db.query(LeaveRequest).get(leave_id)
     if not leave or leave.status not in ("talep", "mudur_onayladi"):
         raise HTTPException(status_code=400)
+    conflict = _check_overlap(db, leave.employee_id, leave.start_date, leave.end_date, exclude_id=leave_id)
+    if conflict:
+        return RedirectResponse(
+            url=f"/leaves/{leave_id}?overlap_warn=1",
+            status_code=status.HTTP_302_FOUND,
+        )
     leave.status = "onaylandi"
     leave.final_approved_by = current_user.id
     leave.final_approved_at = datetime.utcnow()
