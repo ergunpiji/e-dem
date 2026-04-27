@@ -3,10 +3,11 @@
 
 {% block extra_css %}
 <style>
-  .type-card { border:2px solid #e2e8f0; border-radius:10px; padding:12px 16px; cursor:pointer; transition:.15s; }
+  .type-card { border:2px solid #e2e8f0; border-radius:10px; padding:12px 16px; cursor:pointer; transition:.15s; height:100%; display:flex; flex-direction:column; justify-content:space-between; }
   .type-card:hover { border-color:#1e5f8c; background:#f0f7ff; }
   .type-card.selected { border-color:#1a3a5c; background:#e8f0fe; }
   .type-card input[type=radio] { display:none; }
+  .type-card-meta { display:flex; flex-direction:column; gap:2px; margin-top:6px; padding-left:20px; }
 </style>
 {% endblock %}
 
@@ -25,8 +26,8 @@
             <label class="form-label fw-semibold">İzin Türü <span class="text-danger">*</span></label>
             <div class="row g-2">
               {% for lt in leave_types %}
-              <div class="col-md-6">
-                <label class="type-card d-block" id="card_{{ lt.id }}">
+              <div class="col-md-6 d-flex">
+                <label class="type-card w-100" id="card_{{ lt.id }}">
                   <input type="radio" name="leave_type_id" value="{{ lt.id }}"
                     onchange="onTypeChange({{ lt.id }}, {{ lt.default_days or 'null' }}, {{ 'true' if lt.requires_report else 'false' }}, {{ 'true' if lt.requires_balance else 'false' }})">
                   <div class="d-flex align-items-center gap-2">
@@ -34,8 +35,24 @@
                     <span class="fw-semibold" style="font-size:13px">{{ lt.name }}</span>
                     {% if not lt.is_paid %}<span class="badge bg-warning text-dark ms-auto" style="font-size:10px">Ücretsiz</span>{% endif %}
                   </div>
-                  {% if lt.default_days %}<div class="text-muted mt-1" style="font-size:11px;padding-left:20px">{{ lt.default_days }} iş günü</div>{% endif %}
-                  {% if lt.requires_report %}<div class="text-danger mt-1" style="font-size:11px;padding-left:20px"><i class="bi bi-file-medical"></i> Rapor gerekli</div>{% endif %}
+                  <div class="type-card-meta">
+                    {% set bal = balances.get(lt.id) if balances is defined else none %}
+                    {% if bal %}
+                    <div style="font-size:11px">
+                      <span class="fw-semibold text-primary">{{ bal.remaining_days }} gün</span>
+                      <span class="text-muted"> kalan / {{ bal.entitled_days + bal.carried_over_days }} gün hak</span>
+                    </div>
+                    {% elif lt.default_days %}
+                    <div class="text-muted" style="font-size:11px">{{ lt.default_days }} iş günü</div>
+                    {% else %}
+                    <div style="font-size:11px">&nbsp;</div>
+                    {% endif %}
+                    {% if lt.requires_report %}
+                    <div class="text-danger" style="font-size:11px"><i class="bi bi-file-medical"></i> Rapor gerekli</div>
+                    {% else %}
+                    <div style="font-size:11px">&nbsp;</div>
+                    {% endif %}
+                  </div>
                 </label>
               </div>
               {% endfor %}

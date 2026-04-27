@@ -377,6 +377,29 @@ def _seed_leave_types() -> None:
         db.close()
 
 
+def _fix_kurban_2026() -> None:
+    """Yanlış tarihe (25-29 Mayıs) kaydedilmiş Kurban Bayramı kayıtlarını siler."""
+    from datetime import date as _date
+    wrong_dates = [_date(2026, 5, 25), _date(2026, 5, 26), _date(2026, 5, 27),
+                   _date(2026, 5, 28), _date(2026, 5, 29)]
+    db = SessionLocal()
+    try:
+        rows = db.query(PublicHoliday).filter(
+            PublicHoliday.date.in_(wrong_dates),
+            PublicHoliday.name.like("Kurban Bayramı%"),
+        ).all()
+        if rows:
+            for r in rows:
+                db.delete(r)
+            db.commit()
+            print(f"[migrate] {len(rows)} yanlış Kurban Bayramı kaydı silindi.")
+    except Exception as exc:
+        db.rollback()
+        print(f"[migrate] Kurban Bayramı düzeltme HATA: {exc}")
+    finally:
+        db.close()
+
+
 def _seed_public_holidays_2026() -> None:
     """2026 Türkiye resmi tatillerini idempotent olarak ekler."""
     from datetime import date as _date
@@ -389,11 +412,11 @@ def _seed_public_holidays_2026() -> None:
         (_date(2026, 4, 23),  "Ulusal Egemenlik ve Çocuk Bayramı",           False),
         (_date(2026, 5, 1),   "Emek ve Dayanışma Bayramı",                   False),
         (_date(2026, 5, 19),  "Atatürk'ü Anma, Gençlik ve Spor Bayramı",    False),
-        (_date(2026, 5, 25),  "Kurban Bayramı Arife",                        True),
-        (_date(2026, 5, 26),  "Kurban Bayramı 1. Günü",                      False),
-        (_date(2026, 5, 27),  "Kurban Bayramı 2. Günü",                      False),
-        (_date(2026, 5, 28),  "Kurban Bayramı 3. Günü",                      False),
-        (_date(2026, 5, 29),  "Kurban Bayramı 4. Günü",                      False),
+        (_date(2026, 5, 26),  "Kurban Bayramı Arife",                        True),
+        (_date(2026, 5, 27),  "Kurban Bayramı 1. Günü",                      False),
+        (_date(2026, 5, 28),  "Kurban Bayramı 2. Günü",                      False),
+        (_date(2026, 5, 29),  "Kurban Bayramı 3. Günü",                      False),
+        (_date(2026, 5, 30),  "Kurban Bayramı 4. Günü",                      False),
         (_date(2026, 7, 15),  "Demokrasi ve Milli Birlik Günü",              False),
         (_date(2026, 8, 30),  "Zafer Bayramı",                               False),
         (_date(2026, 10, 28), "Cumhuriyet Bayramı Arife",                    True),
@@ -427,6 +450,7 @@ def init_db() -> None:
     seed_data()
     _seed_extra_categories()
     _seed_leave_types()
+    _fix_kurban_2026()
     _seed_public_holidays_2026()
 
 

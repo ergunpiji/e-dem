@@ -161,11 +161,18 @@ async def leave_new_get(
         return RedirectResponse(url="/leaves?error=no_employee", status_code=302)
     leave_types = db.query(LeaveType).filter(LeaveType.active == True).order_by(LeaveType.sort_order).all()  # noqa: E712
     today = date.today()
+    balances = {}
+    for lt in leave_types:
+        if lt.requires_balance:
+            bal = _active_balance(db, employee.id, lt.id, today)
+            if bal:
+                balances[lt.id] = bal
     return templates.TemplateResponse(
         "leaves/form.html",
         {
             "request": request, "current_user": current_user,
             "employee": employee, "leave_types": leave_types,
+            "balances": balances,
             "today": today.isoformat(), "leave": None,
             "page_title": "Yeni İzin Talebi",
         },
