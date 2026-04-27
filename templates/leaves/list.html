@@ -8,6 +8,7 @@
 <a href="/leaves/calendar/view" class="btn btn-outline-secondary btn-sm ms-1"><i class="bi bi-calendar3 me-1"></i>Takvim</a>
 {% if current_user.role in ['mudur','genel_mudur','admin','super_admin'] %}
 <a href="/leaves/team/requests" class="btn btn-outline-secondary btn-sm ms-1"><i class="bi bi-people me-1"></i>Ekip</a>
+<a href="/leaves/balances/manage" class="btn btn-outline-secondary btn-sm ms-1"><i class="bi bi-sliders me-1"></i>Bakiye Tanımla</a>
 {% endif %}
 {% endblock %}
 

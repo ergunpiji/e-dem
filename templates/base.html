@@ -268,9 +268,14 @@
     <a href="/advances" class="sidebar-link {% if request.url.path.startswith('/advances') %}active{% endif %}">
       <i class="bi bi-cash-stack"></i> Avans Talepleri
     </a>
-    <a href="/leaves" class="sidebar-link {% if request.url.path.startswith('/leaves') %}active{% endif %}">
+    <a href="/leaves" class="sidebar-link {% if request.url.path == '/leaves' or request.url.path.startswith('/leaves/') and 'balances' not in request.url.path %}active{% endif %}">
       <i class="bi bi-calendar-check"></i> İzin Yönetimi
     </a>
+    {% if current_user and current_user.role in ['mudur','genel_mudur','admin','super_admin'] %}
+    <a href="/leaves/balances/manage" class="sidebar-link ps-4 {% if 'balances' in request.url.path %}active{% endif %}" style="font-size:12px">
+      <i class="bi bi-sliders"></i> Bakiye Tanımla
+    </a>
+    {% endif %}
 
     <!-- Fon Havuzları -->
     <div class="nav-section-label">Fon Havuzları</div>
