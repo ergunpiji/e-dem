@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Invoice, Request as ReqModel, Service, Team, User, Venue, ClosureRequest
+from models import Budget, Customer, Invoice, Request as ReqModel, Service, Team, User, Vendor, ClosureRequest
 
 router = APIRouter()
 from templates_config import templates
@@ -521,7 +521,7 @@ async def dashboard(
         base_q = db.query(ReqModel)
 
         stats = {
-            "total_venues":    db.query(Venue).filter(Venue.active == True).count(),
+            "total_venues":    db.query(Vendor).filter(Vendor.active == True).count(),
             "total_requests":  base_q.count(),
             "total_users":     db.query(User).filter(User.active == True).count(),
             "total_customers": db.query(Customer).count(),

@@ -234,12 +234,12 @@ async def budgets_new(
             initial_rows = _items_to_budget_rows(items, req)
         # Tercih edilen mekanları getir (mekan adı seçimi için)
         if req.preferred_venues:
-            from models import Venue as VenueModel
+            from models import Vendor as VendorModel
             preferred_venues = (
-                db.query(VenueModel)
-                  .filter(VenueModel.id.in_(req.preferred_venues))
-                  .filter(VenueModel.supplier_type.in_(["otel", "etkinlik"]))
-                  .order_by(VenueModel.name)
+                db.query(VendorModel)
+                  .filter(VendorModel.id.in_(req.preferred_venues))
+                  .filter(VendorModel.supplier_type.in_(["otel", "etkinlik"]))
+                  .order_by(VendorModel.name)
                   .all()
             )
 
@@ -422,12 +422,12 @@ async def budgets_edit(
     )
     preferred_venues = []
     if req and req.preferred_venues:
-        from models import Venue as VenueModel
+        from models import Vendor as VendorModel
         preferred_venues = (
-            db.query(VenueModel)
-            .filter(VenueModel.id.in_(req.preferred_venues))
-            .filter(VenueModel.supplier_type.in_(["otel", "etkinlik"]))
-            .order_by(VenueModel.name)
+            db.query(VendorModel)
+            .filter(VendorModel.id.in_(req.preferred_venues))
+            .filter(VendorModel.supplier_type.in_(["otel", "etkinlik"]))
+            .order_by(VendorModel.name)
             .all()
         )
     return templates.TemplateResponse("budgets/editor.html", {
@@ -608,12 +608,12 @@ async def budgets_price(
     # Talepteki tercih edilen mekanlar (dropdown için)
     preferred_venues = []
     if req and req.preferred_venues:
-        from models import Venue as VenueModel
+        from models import Vendor as VendorModel
         preferred_venues = (
-            db.query(VenueModel)
-            .filter(VenueModel.id.in_(req.preferred_venues))
-            .filter(VenueModel.supplier_type.in_(["otel", "etkinlik"]))
-            .order_by(VenueModel.name)
+            db.query(VendorModel)
+            .filter(VendorModel.id.in_(req.preferred_venues))
+            .filter(VendorModel.supplier_type.in_(["otel", "etkinlik"]))
+            .order_by(VendorModel.name)
             .all()
         )
     return templates.TemplateResponse("budgets/manager_editor.html", {

@@ -1,5 +1,5 @@
 """
-E-dem — Finansal Tedarikçi Yönetimi (FinancialVendor)
+E-dem — Finansal Tedarikçi Yönetimi (Vendor)
 Erişim: admin, muhasebe_muduru, muhasebe  (liste/düzenle)
 Görüntüleme: mudur (GM), muhasebe ekibi
 """
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from auth import get_current_user
 from database import get_db
-from models import FinancialVendor, Invoice, InvoiceLog, VendorPrepayment, PREPAYMENT_STATUSES, User, _uuid, _now
+from models import Vendor, Invoice, InvoiceLog, VendorPrepayment, PREPAYMENT_STATUSES, User, _uuid, _now
 from templates_config import templates
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
@@ -88,9 +88,9 @@ async def vendors_autocomplete(
         return JSONResponse([])
     term = f"%{q.strip()}%"
     vendors = (
-        db.query(FinancialVendor)
-        .filter(FinancialVendor.is_active == True, FinancialVendor.name.ilike(term))
-        .order_by(FinancialVendor.name)
+        db.query(Vendor)
+        .filter(Vendor.active == True, Vendor.name.ilike(term))
+        .order_by(Vendor.name)
         .limit(20)
         .all()
     )
@@ -119,11 +119,11 @@ async def vendors_list(
 ):
     _require_view(current_user)
 
-    query = db.query(FinancialVendor).filter(FinancialVendor.is_active == True)
+    query = db.query(Vendor).filter(Vendor.active == True)
     if q.strip():
         term = f"%{q.strip()}%"
-        query = query.filter(FinancialVendor.name.ilike(term))
-    vendors = query.order_by(FinancialVendor.name).all()
+        query = query.filter(Vendor.name.ilike(term))
+    vendors = query.order_by(Vendor.name).all()
 
     # Her tedarikçi için ödenmemiş toplam hesapla
     unpaid_map = {}
@@ -221,17 +221,17 @@ async def vendors_create(
     notes:        str = Form(""),
 ):
     _require_finance(current_user)
-    vendor = FinancialVendor(
+    vendor = Vendor(
         id           = _uuid(),
         name         = name.strip(),
-        tax_number   = tax_number.strip(),
+        tax_no       = tax_number.strip(),
         tax_office   = tax_office.strip(),
         address      = address.strip(),
         email        = email.strip(),
         phone        = phone.strip(),
         payment_term = int(payment_term or 30),
         notes        = notes.strip(),
-        is_active    = True,
+        active       = True,
         created_by   = current_user.id,
         created_at   = _now(),
         updated_at   = _now(),
@@ -254,7 +254,7 @@ async def vendors_card(
     db: Session = Depends(get_db),
 ):
     _require_view(current_user)
-    vendor = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id).first()
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(status_code=404, detail="Tedarikçi bulunamadı.")
 
@@ -342,7 +342,7 @@ async def vendors_edit(
     db: Session = Depends(get_db),
 ):
     _require_finance(current_user)
-    vendor = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id).first()
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(status_code=404, detail="Tedarikçi bulunamadı.")
     return templates.TemplateResponse("vendors/form.html", {
@@ -374,11 +374,11 @@ async def vendors_update(
     notes:        str = Form(""),
 ):
     _require_finance(current_user)
-    vendor = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id).first()
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(status_code=404, detail="Tedarikçi bulunamadı.")
     vendor.name         = name.strip()
-    vendor.tax_number   = tax_number.strip()
+    vendor.tax_no       = tax_number.strip()
     vendor.tax_office   = tax_office.strip()
     vendor.address      = address.strip()
     vendor.email        = email.strip()
@@ -401,11 +401,11 @@ async def vendors_delete(
     db: Session = Depends(get_db),
 ):
     _require_finance(current_user)
-    vendor = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id).first()
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(status_code=404, detail="Tedarikçi bulunamadı.")
     # Soft delete
-    vendor.is_active  = False
+    vendor.active  = False
     vendor.updated_at = _now()
     db.commit()
     return RedirectResponse(url="/vendors", status_code=303)
@@ -496,7 +496,7 @@ async def vendors_prepayment_add(
     notes:          str   = Form(""),
 ):
     _require_finance(current_user)
-    vendor = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id).first()
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(status_code=404)
 

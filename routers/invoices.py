@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db
-from models import Budget, Customer, Invoice, InvoiceLog, VendorPrepayment, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, FinancialVendor, User, _uuid, _now
+from models import Budget, Customer, Invoice, InvoiceLog, VendorPrepayment, INVOICE_TYPES, INVOICE_TYPE_LABELS, BELGESIZ_TYPES, Request as ReqModel, UndocumentedEntry, Vendor, User, _uuid, _now
 from routers.library import log_activity
 from templates_config import templates
 
@@ -426,7 +426,7 @@ async def invoices_create(
     due_date:            str = Form(""),
     vendor_id:           str = Form(""),
     vendor_name:         str = Form(""),
-    define_vendor:       str = Form("no"),   # "yes" → yeni FinancialVendor oluştur
+    define_vendor:       str = Form("no"),   # "yes" → yeni Vendor oluştur
     vendor_payment_term: str = Form("60"),   # gün
     customer_id:         str = Form(""),     # kesilen fatura → müşteri FK
     define_customer:     str = Form("no"),   # "yes" → yeni Customer oluştur
@@ -496,7 +496,7 @@ async def invoices_create(
             _pt = int(vendor_payment_term or 60)
             # Mevcut vendor'un payment_term'i öncelikli
             if vendor_id.strip():
-                _fv = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id.strip()).first()
+                _fv = db.query(Vendor).filter(Vendor.id == vendor_id.strip()).first()
                 if _fv and _fv.payment_term:
                     _pt = _fv.payment_term
             _base = _date.fromisoformat(invoice_date)
@@ -538,18 +538,18 @@ async def invoices_create(
     _resolved_vendor_id = vendor_id.strip() or None
     if define_vendor == "yes" and not _resolved_vendor_id and vendor_name.strip():
         # Aynı isimde zaten var mı kontrol et (case-insensitive)
-        existing_fv = db.query(FinancialVendor).filter(
-            FinancialVendor.name.ilike(vendor_name.strip())
+        existing_fv = db.query(Vendor).filter(
+            Vendor.name.ilike(vendor_name.strip())
         ).first()
         if existing_fv:
             _resolved_vendor_id = existing_fv.id
         else:
             _pt = max(1, int(vendor_payment_term or 60))
-            new_fv = FinancialVendor(
+            new_fv = Vendor(
                 id           = _uuid(),
                 name         = vendor_name.strip(),
                 payment_term = _pt,
-                is_active    = True,
+                active       = True,
                 created_by   = current_user.id,
                 created_at   = _now(),
                 updated_at   = _now(),

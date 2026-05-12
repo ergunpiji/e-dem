@@ -354,26 +354,45 @@ class User(Base):
         }
 
 
-class Venue(Base):
-    """Tedarikçi / Mekan modeli"""
-    __tablename__ = "venues"
+class Vendor(Base):
+    """Tedarikçi / Mekan modeli (Venue + FinancialVendor birleşimi)"""
+    __tablename__ = "vendors"
 
-    id            = Column(String(36), primary_key=True, default=_uuid)
-    name          = Column(String(255), nullable=False)
-    city          = Column(String(100), default="")        # birincil şehir
-    cities_json   = Column(Text, default="[]")             # list[str] JSON
-    supplier_type = Column(String(32), default="otel")
-    address       = Column(Text, default="")
-    stars         = Column(Integer, nullable=True)
-    total_rooms   = Column(Integer, default=0)
-    website       = Column(String(255), default="")
-    notes         = Column(Text, default="")
-    halls_json    = Column(Text, default="[]")             # list[Hall] JSON
-    contacts_json = Column(Text, default="[]")             # list[Contact] JSON
-    payment_term  = Column(String(100), default="")        # ödeme vadesi
-    docs_json     = Column(Text, default="[]")             # list[{name, path}] yüklü belgeler
-    active        = Column(Boolean, default=True, nullable=False)
-    created_at    = Column(DateTime, default=_now, nullable=False)
+    id           = Column(String(36), primary_key=True, default=_uuid)
+    company_id   = Column(String(36), nullable=True, index=True)  # miceapp'te companies tablosu yok; sadece referans
+    name         = Column(String(255), nullable=False, index=True)
+    active       = Column(Boolean, default=True, nullable=False)
+    supplier_type = Column(String(50), default="diger")
+    city         = Column(String(100), default="")
+    cities_json  = Column(Text, default="[]")
+    location_type = Column(String(20), default="turkiye")
+    address      = Column(Text, default="")
+    phone        = Column(String(50), default="")
+    email        = Column(String(255), default="")
+    contact      = Column(String(200), default="")
+    contacts_json = Column(Text, default="[]")
+    website      = Column(String(255), default="")
+    stars        = Column(Integer, nullable=True)
+    total_rooms  = Column(Integer, default=0)
+    halls_json   = Column(Text, default="[]")
+    docs_json    = Column(Text, default="[]")
+    tax_no       = Column(String(30), default="")
+    tax_office   = Column(String(100), default="")
+    iban         = Column(String(40), default="")
+    bank_accounts_json = Column(Text, nullable=True)
+    payment_term = Column(Integer, default=30)
+    is_efatura_user  = Column(Boolean, nullable=True)
+    efatura_alias    = Column(String(100), nullable=True)
+    efatura_checked_at = Column(DateTime, nullable=True)
+    notes        = Column(Text, default="")
+    created_by   = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at   = Column(DateTime, default=_now, nullable=False)
+    updated_at   = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    invoices     = relationship("Invoice", back_populates="vendor",
+                               foreign_keys="Invoice.vendor_id")
+    prepayments  = relationship("VendorPrepayment", back_populates="vendor",
+                                order_by="VendorPrepayment.payment_date")
 
     @property
     def docs_list(self) -> list:
@@ -420,10 +439,10 @@ class Venue(Base):
         for st in SUPPLIER_TYPES:
             if st["value"] == self.supplier_type:
                 return st["label"]
-        return self.supplier_type
+        return self.supplier_type or ""
 
     @property
-    def primary_contact(self) -> Optional[dict]:
+    def primary_contact(self):
         contacts = self.contacts
         return contacts[0] if contacts else None
 
@@ -434,17 +453,24 @@ class Venue(Base):
             "city":           self.city,
             "cities":         self.cities,
             "supplier_type":  self.supplier_type,
-            "supplier_type_label": self.supplier_type_label,
             "address":        self.address,
+            "phone":          self.phone,
+            "email":          self.email,
             "stars":          self.stars,
             "total_rooms":    self.total_rooms,
-            "website":        self.website,
-            "notes":          self.notes,
             "halls":          self.halls,
             "contacts":       self.contacts,
+            "payment_term":   self.payment_term,
+            "website":        self.website,
+            "tax_no":         self.tax_no,
+            "tax_office":     self.tax_office,
+            "iban":           self.iban,
             "active":         self.active,
-            "created_at":     self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# Backward-compat aliases
+Venue = Vendor
 
 
 class Customer(Base):
@@ -1096,51 +1122,8 @@ _EMAIL_TEMPLATE_DEFAULTS = [
 ]
 
 
-class FinancialVendor(Base):
-    """Mali Tedarikçi — faturalardan bağımsız kayıt, ödeme takibi için"""
-    __tablename__ = "financial_vendors"
-
-    id           = Column(String(36), primary_key=True, default=_uuid)
-    name         = Column(String(255), nullable=False, index=True)
-    tax_number   = Column(String(30), default="")
-    tax_office   = Column(String(100), default="")
-    address      = Column(Text, default="")
-    email        = Column(String(255), default="")
-    phone        = Column(String(30), default="")
-    payment_term = Column(Integer, default=30)   # vade (gün)
-    notes        = Column(Text, default="")
-    is_active    = Column(Boolean, default=True)
-    created_by   = Column(String(36), ForeignKey("users.id"), nullable=True)
-    created_at   = Column(DateTime, default=_now, nullable=False)
-    updated_at   = Column(DateTime, default=_now, onupdate=_now, nullable=False)
-
-    invoices     = relationship("Invoice", back_populates="vendor",
-                               foreign_keys="Invoice.vendor_id")
-    prepayments  = relationship("VendorPrepayment", back_populates="vendor",
-                                order_by="VendorPrepayment.payment_date")
-    creator      = relationship("User", foreign_keys=[created_by])
-
-    @property
-    def total_invoiced(self) -> float:
-        return sum(inv.total_amount or 0 for inv in self.invoices
-                   if inv.status not in ("rejected", "cancelled"))
-
-    @property
-    def total_unpaid(self) -> float:
-        return sum(inv.total_amount or 0 for inv in self.invoices
-                   if inv.payment_status == "unpaid"
-                   and inv.status not in ("rejected", "cancelled"))
-
-    def to_dict(self) -> dict:
-        return {
-            "id":           self.id,
-            "name":         self.name,
-            "tax_number":   self.tax_number,
-            "tax_office":   self.tax_office,
-            "payment_term": self.payment_term,
-            "email":        self.email,
-            "phone":        self.phone,
-        }
+# FinancialVendor is merged into Vendor above — alias for backward compatibility
+FinancialVendor = Vendor
 
 
 PREPAYMENT_STATUSES = {
@@ -1156,7 +1139,7 @@ class VendorPrepayment(Base):
     __tablename__ = "vendor_prepayments"
 
     id             = Column(String(36), primary_key=True, default=_uuid)
-    vendor_id      = Column(String(36), ForeignKey("financial_vendors.id"), nullable=False, index=True)
+    vendor_id      = Column(String(36), ForeignKey("vendors.id"), nullable=False, index=True)
     request_id     = Column(String(36), ForeignKey("requests.id"), nullable=True, index=True)
     amount         = Column(Float, default=0.0)           # ön ödeme tutarı
     applied_amount = Column(Float, default=0.0)           # faturaya uygulanan kısım
@@ -1168,7 +1151,7 @@ class VendorPrepayment(Base):
     created_at     = Column(DateTime, default=_now, nullable=False)
     updated_at     = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
-    vendor  = relationship("FinancialVendor", back_populates="prepayments")
+    vendor  = relationship("Vendor", back_populates="prepayments")
     request = relationship("Request", foreign_keys=[request_id])
     creator = relationship("User",   foreign_keys=[created_by])
 
@@ -1183,7 +1166,7 @@ class Invoice(Base):
 
     id            = Column(String(36), primary_key=True, default=_uuid)
     request_id    = Column(String(36), ForeignKey("requests.id"), nullable=True, index=True)
-    vendor_id     = Column(String(36), ForeignKey("financial_vendors.id"), nullable=True, index=True)
+    vendor_id     = Column(String(36), ForeignKey("vendors.id"), nullable=True, index=True)
     invoice_type  = Column(String(32), nullable=False)   # kesilen|gelen|komisyon|iade_kesilen|iade_gelen
     invoice_no    = Column(String(100), default="")
     invoice_date  = Column(String(10), nullable=True)    # YYYY-MM-DD string
@@ -1222,7 +1205,7 @@ class Invoice(Base):
     coordinator_reviewed_by = Column(String(36), nullable=True)
 
     request          = relationship("Request", back_populates="invoices")
-    vendor           = relationship("FinancialVendor", back_populates="invoices", foreign_keys=[vendor_id])
+    vendor           = relationship("Vendor", back_populates="invoices", foreign_keys=[vendor_id])
     creator          = relationship("User", foreign_keys=[created_by])
     approver         = relationship("User", foreign_keys=[approved_by])
     current_approver = relationship("User", foreign_keys=[current_approver_id])
@@ -1317,7 +1300,7 @@ class PrepaymentRequest(Base):
     __tablename__ = "prepayment_requests"
 
     id             = Column(String(36), primary_key=True, default=_uuid)
-    vendor_id      = Column(String(36), ForeignKey("financial_vendors.id"), nullable=False, index=True)
+    vendor_id      = Column(String(36), ForeignKey("vendors.id"), nullable=False, index=True)
     request_id     = Column(String(36), ForeignKey("requests.id"), nullable=True, index=True)
     amount         = Column(Float, nullable=False)
     description    = Column(Text, default="")
@@ -1345,7 +1328,7 @@ class PrepaymentRequest(Base):
     created_at     = Column(DateTime, default=_now, nullable=False)
     updated_at     = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
-    vendor            = relationship("FinancialVendor", foreign_keys=[vendor_id])
+    vendor            = relationship("Vendor", foreign_keys=[vendor_id])
     request           = relationship("Request", foreign_keys=[request_id])
     requester         = relationship("User", foreign_keys=[requested_by])
     approver          = relationship("User", foreign_keys=[approved_by])

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db
 from models import (
-    FinancialVendor,
+    Vendor,
     PrepaymentRequest,
     PrepaymentRequestLog,
     VendorPrepayment,
@@ -87,9 +87,9 @@ async def prepayment_requests_new_form(
     _require_can_request(current_user)
 
     vendors = (
-        db.query(FinancialVendor)
-        .filter(FinancialVendor.is_active == True)
-        .order_by(FinancialVendor.name)
+        db.query(Vendor)
+        .filter(Vendor.active == True)  # noqa: E712
+        .order_by(Vendor.name)
         .all()
     )
 
@@ -113,8 +113,8 @@ async def prepayment_requests_new_form(
 
     selected_vendor = None
     if vendor_id:
-        selected_vendor = db.query(FinancialVendor).filter(
-            FinancialVendor.id == vendor_id
+        selected_vendor = db.query(Vendor).filter(
+            Vendor.id == vendor_id
         ).first()
 
     return templates.TemplateResponse("prepayment_requests/new.html", {
@@ -145,7 +145,7 @@ async def prepayment_requests_create(
 ):
     _require_can_request(current_user)
 
-    vendor = db.query(FinancialVendor).filter(FinancialVendor.id == vendor_id).first()
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
     if not vendor:
         raise HTTPException(404, "Tedarikçi bulunamadı.")
 

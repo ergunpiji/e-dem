@@ -1082,7 +1082,87 @@ def migrate_db():
                 conn.rollback()
                 print(f"[DB] invoices.request_id migration hatası: {e}", flush=True)
 
-        # ── FinancialVendor tablosu — yoksa oluştur ──
+        # ── Vendor tablosu (birleşik: eski Venue + FinancialVendor) — yoksa oluştur ──
+        if _is_sqlite:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS vendors (
+                    id              TEXT PRIMARY KEY,
+                    company_id      TEXT,
+                    name            TEXT NOT NULL,
+                    active          INTEGER DEFAULT 1,
+                    supplier_type   TEXT DEFAULT 'diger',
+                    city            TEXT DEFAULT '',
+                    cities_json     TEXT DEFAULT '[]',
+                    location_type   TEXT DEFAULT 'turkiye',
+                    address         TEXT DEFAULT '',
+                    phone           TEXT DEFAULT '',
+                    email           TEXT DEFAULT '',
+                    contact         TEXT DEFAULT '',
+                    contacts_json   TEXT DEFAULT '[]',
+                    website         TEXT DEFAULT '',
+                    stars           INTEGER,
+                    total_rooms     INTEGER DEFAULT 0,
+                    halls_json      TEXT DEFAULT '[]',
+                    docs_json       TEXT DEFAULT '[]',
+                    tax_no          TEXT DEFAULT '',
+                    tax_office      TEXT DEFAULT '',
+                    iban            TEXT DEFAULT '',
+                    bank_accounts_json TEXT,
+                    payment_term    INTEGER DEFAULT 30,
+                    is_efatura_user INTEGER,
+                    efatura_alias   TEXT,
+                    efatura_checked_at TIMESTAMP,
+                    notes           TEXT DEFAULT '',
+                    created_by      TEXT REFERENCES users(id),
+                    created_at      TIMESTAMP,
+                    updated_at      TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_vendors_name ON vendors(name)"
+            ))
+        else:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS vendors (
+                    id              VARCHAR(36) PRIMARY KEY,
+                    company_id      VARCHAR(36),
+                    name            VARCHAR(255) NOT NULL,
+                    active          BOOLEAN DEFAULT TRUE,
+                    supplier_type   VARCHAR(50) DEFAULT 'diger',
+                    city            VARCHAR(100) DEFAULT '',
+                    cities_json     TEXT DEFAULT '[]',
+                    location_type   VARCHAR(20) DEFAULT 'turkiye',
+                    address         TEXT DEFAULT '',
+                    phone           VARCHAR(50) DEFAULT '',
+                    email           VARCHAR(255) DEFAULT '',
+                    contact         VARCHAR(200) DEFAULT '',
+                    contacts_json   TEXT DEFAULT '[]',
+                    website         VARCHAR(255) DEFAULT '',
+                    stars           INTEGER,
+                    total_rooms     INTEGER DEFAULT 0,
+                    halls_json      TEXT DEFAULT '[]',
+                    docs_json       TEXT DEFAULT '[]',
+                    tax_no          VARCHAR(30) DEFAULT '',
+                    tax_office      VARCHAR(100) DEFAULT '',
+                    iban            VARCHAR(40) DEFAULT '',
+                    bank_accounts_json TEXT,
+                    payment_term    INTEGER DEFAULT 30,
+                    is_efatura_user BOOLEAN,
+                    efatura_alias   VARCHAR(100),
+                    efatura_checked_at TIMESTAMP,
+                    notes           TEXT DEFAULT '',
+                    created_by      VARCHAR(36) REFERENCES users(id),
+                    created_at      TIMESTAMP,
+                    updated_at      TIMESTAMP
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_vendors_name ON vendors(name)"
+            ))
+        conn.commit()
+
+        # ── Eski financial_vendors tablosunu koru (geriye uyumluluk, varsa) ──
+        # Yeni kayıtlar vendors tablosuna gider; eski veriler migrate edilene kadar burada kalır
         if _is_sqlite:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS financial_vendors (
@@ -1101,9 +1181,6 @@ def migrate_db():
                     updated_at   TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_financial_vendors_name ON financial_vendors(name)"
-            ))
         else:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS financial_vendors (
@@ -1122,9 +1199,6 @@ def migrate_db():
                     updated_at   TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_financial_vendors_name ON financial_vendors(name)"
-            ))
         conn.commit()
 
         # ── Invoice — yeni sütunlar (vendor_id, payment_status, paid_at) ──
@@ -1142,7 +1216,7 @@ def migrate_db():
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS vendor_prepayments (
                     id             TEXT PRIMARY KEY,
-                    vendor_id      TEXT NOT NULL REFERENCES financial_vendors(id),
+                    vendor_id      TEXT NOT NULL REFERENCES vendors(id),
                     request_id     TEXT REFERENCES requests(id),
                     amount         REAL DEFAULT 0,
                     applied_amount REAL DEFAULT 0,
@@ -1159,7 +1233,7 @@ def migrate_db():
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS vendor_prepayments (
                     id             VARCHAR(36) PRIMARY KEY,
-                    vendor_id      VARCHAR(36) NOT NULL REFERENCES financial_vendors(id),
+                    vendor_id      VARCHAR(36) NOT NULL REFERENCES vendors(id),
                     request_id     VARCHAR(36) REFERENCES requests(id),
                     amount         FLOAT DEFAULT 0,
                     applied_amount FLOAT DEFAULT 0,
@@ -1210,7 +1284,7 @@ def migrate_db():
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS prepayment_requests (
                     id                   TEXT PRIMARY KEY,
-                    vendor_id            TEXT NOT NULL REFERENCES financial_vendors(id),
+                    vendor_id            TEXT NOT NULL REFERENCES vendors(id),
                     request_id           TEXT REFERENCES requests(id),
                     amount               REAL NOT NULL,
                     description          TEXT DEFAULT '',
@@ -1244,7 +1318,7 @@ def migrate_db():
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS prepayment_requests (
                     id                   VARCHAR(36) PRIMARY KEY,
-                    vendor_id            VARCHAR(36) NOT NULL REFERENCES financial_vendors(id),
+                    vendor_id            VARCHAR(36) NOT NULL REFERENCES vendors(id),
                     request_id           VARCHAR(36) REFERENCES requests(id),
                     amount               FLOAT NOT NULL,
                     description          TEXT DEFAULT '',

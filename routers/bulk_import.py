@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_admin
 from database import get_db
-from models import Customer, Venue, User, _uuid, _now, SUPPLIER_TYPES
+from models import Customer, Vendor, User, _uuid, _now, SUPPLIER_TYPES
 
 router = APIRouter(prefix="/bulk-import", tags=["bulk_import"])
 from templates_config import templates
@@ -170,7 +170,7 @@ def _validate_customers(rows: list[dict], db: Session) -> list[dict]:
 
 def _validate_venues(rows: list[dict], db: Session) -> list[dict]:
     # Mevcut isimler — sadece bilgi amaçlı (hata değil, güncelleme yapılır)
-    existing_names = {v.name.lower() for v in db.query(Venue.name).all()}
+    existing_names = {v.name.lower() for v in db.query(Vendor.name).all()}
     out = []
     for i, r in enumerate(rows):
         errors = []
@@ -256,7 +256,7 @@ def _save_venues(rows: list[dict], db: Session) -> tuple[int, int]:
             pass
 
         # Upsert: aynı isimli kayıt varsa (aktif/pasif) güncelle, yoksa ekle
-        existing = db.query(Venue).filter(Venue.name == r["name"]).first()
+        existing = db.query(Vendor).filter(Vendor.name == r["name"]).first()
         if existing:
             existing.city          = r["city"]
             existing.cities_json   = json.dumps(all_cities)
@@ -266,12 +266,13 @@ def _save_venues(rows: list[dict], db: Session) -> tuple[int, int]:
             existing.total_rooms   = total_rooms
             existing.website       = r.get("website", "")
             existing.notes         = r.get("notes", "")
-            existing.payment_term  = r.get("payment_term", "")
+            _pt_val = r.get("payment_term", "")
+            existing.payment_term  = int(_pt_val) if str(_pt_val).strip().isdigit() else 30
             existing.contacts_json = json.dumps([contact])
             existing.halls_json    = "[]"
             existing.active        = True
         else:
-            db.add(Venue(
+            db.add(Vendor(
                 id            = _uuid(),
                 name          = r["name"],
                 city          = r["city"],
@@ -282,7 +283,7 @@ def _save_venues(rows: list[dict], db: Session) -> tuple[int, int]:
                 total_rooms   = total_rooms,
                 website       = r.get("website", ""),
                 notes         = r.get("notes", ""),
-                payment_term  = r.get("payment_term", ""),
+                payment_term  = int(r["payment_term"]) if str(r.get("payment_term","")).strip().isdigit() else 30,
                 contacts_json = json.dumps([contact]),
                 halls_json    = "[]",
                 active        = True,

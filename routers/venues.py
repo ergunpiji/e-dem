@@ -1,5 +1,5 @@
 """
-E-dem — Tedarikçi (Venue) yönetimi router'ı
+E-dem — Tedarikçi (Vendor) yönetimi router'ı
 GET    /venues           → Liste (tüm roller)
 GET    /venues/new       → Form (Admin + E-dem)
 POST   /venues/new       → Oluştur
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin_or_edem
 from database import get_db
-from models import TR_CITIES, SUPPLIER_TYPES, User, Venue, _uuid, _now
+from models import TR_CITIES, SUPPLIER_TYPES, User, Vendor, _uuid, _now
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 from templates_config import templates
@@ -36,16 +36,16 @@ async def venues_list(
     stype: str = "",
     q: str = "",
 ):
-    query = db.query(Venue).filter(Venue.active == True)
+    query = db.query(Vendor).filter(Vendor.active == True)
 
     if q:
-        query = query.filter(Venue.name.ilike(f"%{q}%"))
+        query = query.filter(Vendor.name.ilike(f"%{q}%"))
     if stype:
-        query = query.filter(Venue.supplier_type == stype)
+        query = query.filter(Vendor.supplier_type == stype)
     if city:
-        query = query.filter(Venue.city == city)
+        query = query.filter(Vendor.city == city)
 
-    venues = query.order_by(Venue.name).all()
+    venues = query.order_by(Vendor.name).all()
 
     can_edit = current_user.role in ("admin", "e_dem", "muhasebe_muduru")
 
@@ -103,7 +103,8 @@ async def venues_create(
     current_user:  User = Depends(require_admin_or_edem),
     db: Session = Depends(get_db),
 ):
-    venue = Venue(
+    _pt = payment_term.strip()
+    venue = Vendor(
         id=_uuid(),
         name=name.strip(),
         city=city.strip(),
@@ -116,7 +117,7 @@ async def venues_create(
         notes=notes.strip(),
         halls_json=halls_json,
         contacts_json=contacts_json,
-        payment_term=payment_term.strip(),
+        payment_term=int(_pt) if _pt and _pt.isdigit() else 30,
         active=True,
         created_at=_now(),
     )
@@ -132,7 +133,7 @@ async def venues_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    venue = db.query(Venue).filter(Venue.id == venue_id).first()
+    venue = db.query(Vendor).filter(Vendor.id == venue_id).first()
     if not venue:
         return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)
 
@@ -157,7 +158,7 @@ async def venues_edit(
     current_user: User = Depends(require_admin_or_edem),
     db: Session = Depends(get_db),
 ):
-    venue = db.query(Venue).filter(Venue.id == venue_id).first()
+    venue = db.query(Vendor).filter(Vendor.id == venue_id).first()
     if not venue:
         return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)
 
@@ -195,7 +196,7 @@ async def venues_update(
     current_user:  User = Depends(require_admin_or_edem),
     db: Session = Depends(get_db),
 ):
-    venue = db.query(Venue).filter(Venue.id == venue_id).first()
+    venue = db.query(Vendor).filter(Vendor.id == venue_id).first()
     if not venue:
         return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)
 
@@ -210,7 +211,8 @@ async def venues_update(
     venue.notes         = notes.strip()
     venue.halls_json    = halls_json
     venue.contacts_json = contacts_json
-    venue.payment_term  = payment_term.strip()
+    _pt2 = payment_term.strip()
+    venue.payment_term  = int(_pt2) if _pt2 and _pt2.isdigit() else 30
     venue.active        = (active == "on")
 
     db.commit()
@@ -224,7 +226,7 @@ async def venues_upload_doc(
     current_user: User = Depends(require_admin_or_edem),
     db: Session = Depends(get_db),
 ):
-    venue = db.query(Venue).filter(Venue.id == venue_id).first()
+    venue = db.query(Vendor).filter(Vendor.id == venue_id).first()
     if not venue:
         return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)
 
@@ -248,7 +250,7 @@ async def venues_delete_doc(
     current_user: User = Depends(require_admin_or_edem),
     db: Session = Depends(get_db),
 ):
-    venue = db.query(Venue).filter(Venue.id == venue_id).first()
+    venue = db.query(Vendor).filter(Vendor.id == venue_id).first()
     if not venue:
         return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)
 
@@ -286,7 +288,7 @@ async def venues_bulk_delete(
     failed_ids = []
     for vid in ids:
         try:
-            venue = db.query(Venue).filter(Venue.id == str(vid)).first()
+            venue = db.query(Vendor).filter(Vendor.id == str(vid)).first()
             if venue:
                 db.delete(venue)
                 db.flush()   # FK hatası varsa burada patlar, commit öncesinde
@@ -310,7 +312,7 @@ async def venues_delete(
     current_user: User = Depends(require_admin_or_edem),
     db: Session = Depends(get_db),
 ):
-    venue = db.query(Venue).filter(Venue.id == venue_id).first()
+    venue = db.query(Vendor).filter(Vendor.id == venue_id).first()
     if venue:
         try:
             db.delete(venue)

@@ -20,7 +20,7 @@ from auth import get_current_user, has_permission
 from database import generate_ref_no, get_db
 from models import (
     Budget, Customer, CustomCategory, EmailTemplate, EventType, REQUEST_STATUSES, REQUEST_TABS,
-    TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, RequestModule, User, Venue,
+    TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, RequestModule, User, Vendor,
     _uuid, _now, REQUEST_STATUS_LABELS,
 )
 from routers.library import log_activity
@@ -515,7 +515,7 @@ async def requests_new(
 ):
     _check_pm_or_admin(current_user, db)
     customers   = db.query(Customer).order_by(Customer.name).all()
-    venues      = db.query(Venue).filter(Venue.active == True).order_by(Venue.name).all()
+    venues      = db.query(Vendor).filter(Vendor.active == True).order_by(Vendor.name).all()
     event_types = db.query(EventType).filter(EventType.active == True).order_by(EventType.sort_order).all()
     services    = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     # Group services by category
@@ -742,7 +742,7 @@ async def requests_detail(
             },
         )
 
-    venues      = db.query(Venue).filter(Venue.active == True).all()
+    venues      = db.query(Vendor).filter(Vendor.active == True).all()
     event_types = db.query(EventType).order_by(EventType.sort_order).all()
     et_map      = {et.code: et.label for et in event_types}
     can_edit_status = current_user.role in ("admin", "e_dem")
@@ -1210,7 +1210,7 @@ async def requests_edit(
         return RedirectResponse(url=f"/requests/{req_id}", status_code=status.HTTP_302_FOUND)
 
     customers   = db.query(Customer).order_by(Customer.name).all()
-    venues      = db.query(Venue).filter(Venue.active == True).order_by(Venue.name).all()
+    venues      = db.query(Vendor).filter(Vendor.active == True).order_by(Vendor.name).all()
     event_types = db.query(EventType).filter(EventType.active == True).order_by(EventType.sort_order).all()
     services    = db.query(Service).filter(Service.active == True).order_by(Service.category, Service.sort_order, Service.name).all()
     services_by_cat: dict = {}
@@ -1780,7 +1780,7 @@ async def requests_export(
 
     entries = []
     for b in budgets:
-        venue_obj = (db.query(Venue).filter(Venue.id == b.venue_id).first()
+        venue_obj = (db.query(Vendor).filter(Vendor.id == b.venue_id).first()
                      if b.venue_id else None)
         entries.append({
             "budget":   b,
