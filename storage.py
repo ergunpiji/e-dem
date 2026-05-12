@@ -28,6 +28,9 @@ if _USE_R2:
     )
     _BUCKET = os.environ["R2_BUCKET_NAME"]
     _PUB = os.environ.get("R2_PUBLIC_URL", "").rstrip("/")
+    print(f"[STORAGE] Cloudflare R2 aktif — bucket: {_BUCKET}", flush=True)
+else:
+    print("[STORAGE] ⚠️  R2 env var yok — local disk kullanılıyor", flush=True)
 
 
 def save_upload(data: bytes, folder: str, filename: str) -> str:
