@@ -15,6 +15,8 @@ import shutil
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+
+from storage import save_upload, delete_upload
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin_or_edem
@@ -226,19 +228,14 @@ async def venues_upload_doc(
     if not venue:
         return RedirectResponse(url="/venues", status_code=status.HTTP_302_FOUND)
 
-    upload_dir = f"static/uploads/venue_docs/{venue_id}"
-    os.makedirs(upload_dir, exist_ok=True)
-
     filename = os.path.basename(doc_file.filename or "dosya")
-    save_path = os.path.join(upload_dir, filename)
-    with open(save_path, "wb") as f:
-        shutil.copyfileobj(doc_file.file, f)
+    key = save_upload(doc_file.file.read(), f"venue_docs/{venue_id}", filename)
 
     try:
         doc_list = json.loads(venue.docs_json or "[]")
     except Exception:
         doc_list = []
-    doc_list.append({"name": filename, "path": save_path})
+    doc_list.append({"name": filename, "path": key})
     venue.docs_json = json.dumps(doc_list, ensure_ascii=False)
     db.commit()
     return RedirectResponse(url=f"/venues/{venue_id}/edit", status_code=status.HTTP_302_FOUND)
@@ -260,17 +257,10 @@ async def venues_delete_doc(
     except Exception:
         doc_list = []
 
-    upload_dir = os.path.abspath(f"static/uploads/venue_docs/{venue_id}")
     remaining = []
     for d in doc_list:
         if d["name"] == filename:
-            try:
-                # Path traversal koruması: dosya yolu upload dizini içinde olmalı
-                safe_path = os.path.abspath(d.get("path", ""))
-                if safe_path.startswith(upload_dir):
-                    os.remove(safe_path)
-            except Exception:
-                pass
+            delete_upload(d.get("path", ""))
         else:
             remaining.append(d)
 

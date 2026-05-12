@@ -3,6 +3,8 @@ E-dem — HBF (Harcama Bildirim Formu) & Belgesiz Gelir/Gider
 """
 import os
 import shutil
+
+from storage import save_upload, serve_upload as _serve_upload
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -446,13 +448,8 @@ async def expenses_upload_doc(
     if len(content) > MAX_FILE_SIZE:
         return JSONResponse({"ok": False, "error": "Dosya 10 MB sınırını aşıyor."}, status_code=400)
 
-    _ensure_upload_dir()
     safe_name = f"{item_id}{ext}"
-    dest = os.path.join(UPLOAD_DIR, safe_name)
-    with open(dest, "wb") as f:
-        f.write(content)
-
-    item.document_path = f"expenses/{safe_name}"
+    item.document_path = save_upload(content, "expenses", safe_name)
     item.document_name = file.filename
     db.commit()
     return JSONResponse({"ok": True, "name": file.filename, "path": item.document_path})
@@ -467,10 +464,7 @@ async def expenses_doc_download(
     item = db.query(ExpenseItem).filter(ExpenseItem.id == item_id).first()
     if not item or not item.document_path:
         raise HTTPException(404)
-    path = os.path.join(os.path.dirname(__file__), "..", "static", "uploads", item.document_path)
-    if not os.path.exists(path):
-        raise HTTPException(404)
-    return FileResponse(path, filename=item.document_name or "belge")
+    return _serve_upload(item.document_path, item.document_name or "belge")
 
 
 # ---------------------------------------------------------------------------

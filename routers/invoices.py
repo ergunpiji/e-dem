@@ -9,6 +9,8 @@ from datetime import datetime, date as _date, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+
+from storage import save_upload, delete_upload, serve_upload as _serve_upload
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
@@ -143,15 +145,12 @@ def _save_document(file: UploadFile, invoice_id: str) -> tuple[str, str]:
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status_code=400, detail="Desteklenmeyen dosya türü. PDF veya resim yükleyin.")
-    dest_filename = f"{invoice_id}{ext}"
-    dest_path = os.path.join(UPLOAD_DIR, dest_filename)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(dest_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    if os.path.getsize(dest_path) > MAX_FILE_SIZE:
-        os.remove(dest_path)
+    data = file.file.read()
+    if len(data) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="Dosya boyutu 10 MB'ı aşamaz.")
-    return f"uploads/invoices/{dest_filename}", file.filename or dest_filename
+    dest_filename = f"{invoice_id}{ext}"
+    key = save_upload(data, "invoices", dest_filename)
+    return key, file.filename or dest_filename
 
 
 def _compute_totals(lines: list) -> tuple[float, float, float]:
@@ -740,9 +739,7 @@ async def invoices_update(
 
     if document and document.filename:
         if inv.document_path:
-            old_path = os.path.join(os.path.dirname(__file__), "..", "static", inv.document_path)
-            if os.path.exists(old_path):
-                os.remove(old_path)
+            delete_upload(inv.document_path)
         doc_path, doc_name = _save_document(document, inv.id)
         inv.document_path = doc_path
         inv.document_name = doc_name
@@ -1271,11 +1268,4 @@ async def invoices_document(
     inv = _get_invoice_or_404(db, invoice_id)
     if not inv.document_path:
         raise HTTPException(status_code=404, detail="Belge bulunamadı.")
-    file_path = os.path.join(os.path.dirname(__file__), "..", "static", inv.document_path)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Belge dosyası bulunamadı.")
-    return FileResponse(
-        path=file_path,
-        filename=inv.document_name or os.path.basename(file_path),
-        media_type="application/octet-stream",
-    )
+    return _serve_upload(inv.document_path, inv.document_name or "belge")

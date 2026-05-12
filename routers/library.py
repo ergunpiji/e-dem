@@ -11,6 +11,8 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+
+from storage import save_upload, serve_upload as _serve_upload
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
@@ -79,17 +81,12 @@ def save_document(
     )
     version = existing + 1
 
-    dest_dir = os.path.join(UPLOAD_DIR, request_id)
-    os.makedirs(dest_dir, exist_ok=True)
-
     safe_name = f"{doc_type}_v{version}_{file_name}"
-    dest_path = os.path.join(dest_dir, safe_name)
-
     buf.seek(0)
     content = buf.read()
-    with open(dest_path, "wb") as f:
-        f.write(content)
     buf.seek(0)   # caller hâlâ stream edebilir
+
+    key = save_upload(content, f"library/{request_id}", safe_name)
 
     type_label = REQUEST_DOCUMENT_TYPE_LABELS.get(doc_type, doc_type)
     doc_name   = f"{type_label} v{version}" if version > 1 else type_label
@@ -99,7 +96,7 @@ def save_document(
         uploaded_by=user_id or "",
         doc_type=doc_type,
         doc_name=doc_name,
-        file_path=f"uploads/library/{request_id}/{safe_name}",
+        file_path=key,
         file_name=file_name,
         file_size=len(content),
     )
@@ -126,12 +123,4 @@ async def download_document(
     if not doc:
         raise HTTPException(404)
 
-    disk_path = os.path.join(os.path.dirname(__file__), "..", "static", doc.file_path)
-    if not os.path.isfile(disk_path):
-        raise HTTPException(404, "Dosya bulunamadı")
-
-    return FileResponse(
-        disk_path,
-        filename=doc.file_name,
-        media_type="application/octet-stream",
-    )
+    return _serve_upload(doc.file_path, doc.file_name or "belge")

@@ -8,6 +8,8 @@ import shutil
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+
+from storage import save_upload, delete_upload
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_admin
@@ -220,9 +222,6 @@ async def customers_upload_template(
     if not customer:
         return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
 
-    upload_dir = "static/uploads/customer_templates"
-    os.makedirs(upload_dir, exist_ok=True)
-
     ext = os.path.splitext(template_file.filename or "")[1].lower()
     if ext not in (".xlsx", ".xls"):
         return RedirectResponse(
@@ -230,22 +229,14 @@ async def customers_upload_template(
             status_code=status.HTTP_302_FOUND,
         )
 
-    # Eski template'i sil
-    if customer.excel_template_path and os.path.exists(customer.excel_template_path):
-        try:
-            os.remove(customer.excel_template_path)
-        except Exception:
-            pass
+    if customer.excel_template_path:
+        delete_upload(customer.excel_template_path)
 
     contents = await template_file.read()
+    key = save_upload(contents, "customer_templates", f"{customer_id}{ext}")
 
-    save_path = os.path.join(upload_dir, f"{customer_id}{ext}")
-    with open(save_path, "wb") as f:
-        f.write(contents)
-
-    # DB'ye de kaydet (Railway filesystem ephemeral — kalıcılık için)
     import base64
-    customer.excel_template_path = save_path
+    customer.excel_template_path = key
     customer.excel_template_b64  = base64.b64encode(contents).decode("ascii")
     db.commit()
     return RedirectResponse(
@@ -305,22 +296,17 @@ async def customers_analyze_template(
     if not customer:
         return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
 
-    template_path = customer.excel_template_path or ""
-    b64_data = (getattr(customer, "excel_template_b64", None) or "") or ""
+    b64_data = (getattr(customer, "excel_template_b64", None) or "")
 
-    # Railway'de dosya uçmuş olabilir — b64'ten restore et
-    if b64_data and (not template_path or not os.path.exists(template_path)):
-        import base64 as _b64
-        _upload_dir = "static/uploads/customer_templates"
-        os.makedirs(_upload_dir, exist_ok=True)
-        template_path = os.path.join(_upload_dir, f"{customer_id}.xlsx")
-        with open(template_path, "wb") as _f:
-            _f.write(_b64.b64decode(b64_data))
-        customer.excel_template_path = template_path
-        db.commit()
-
-    if not template_path or not os.path.exists(template_path):
+    # Analiz için temp local dosya gerekli — b64'ten restore et
+    import base64 as _b64, tempfile
+    if not b64_data:
         return JSONResponse({"error": "Template dosyası yüklenmemiş veya bulunamadı"}, status_code=400)
+
+    _tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    _tmp.write(_b64.b64decode(b64_data))
+    _tmp.close()
+    template_path = _tmp.name
 
     try:
         from excel_export import analyze_template
@@ -328,11 +314,15 @@ async def customers_analyze_template(
     except Exception as exc:
         print(f"[TEMPLATE ANALYZE] error: {exc}", flush=True)
         return JSONResponse({"error": "Template analizi başarısız."}, status_code=500)
+    finally:
+        try:
+            os.unlink(template_path)
+        except Exception:
+            pass
 
     if result.get("error"):
         return JSONResponse(result, status_code=422)
 
-    # Başarılıysa config'e kaydet
     existing = customer.excel_config
     existing["cell_map"] = result["cell_map"]
     if "vat_mode" in result["cell_map"]:
@@ -390,20 +380,14 @@ async def customers_upload_doc(
     if not customer:
         return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
 
-    upload_dir = f"static/uploads/customer_docs/{customer_id}"
-    os.makedirs(upload_dir, exist_ok=True)
-
     filename = os.path.basename(doc_file.filename or "dosya")
-    save_path = os.path.join(upload_dir, filename)
-    with open(save_path, "wb") as f:
-        shutil.copyfileobj(doc_file.file, f)
+    key = save_upload(doc_file.file.read(), f"customer_docs/{customer_id}", filename)
 
-    # Mevcut dosya listesine ekle
     try:
         doc_list = json.loads(customer.docs_json or "[]")
     except Exception:
         doc_list = []
-    doc_list.append({"name": filename, "path": save_path})
+    doc_list.append({"name": filename, "path": key})
     customer.docs_json = json.dumps(doc_list, ensure_ascii=False)
     db.commit()
     return RedirectResponse(url=f"/customers/{customer_id}/edit", status_code=status.HTTP_302_FOUND)
@@ -425,16 +409,10 @@ async def customers_delete_doc(
     except Exception:
         doc_list = []
 
-    upload_dir = os.path.abspath(f"static/uploads/customer_docs/{customer_id}")
     remaining = []
     for d in doc_list:
         if d["name"] == filename:
-            try:
-                safe_path = os.path.abspath(d.get("path", ""))
-                if safe_path.startswith(upload_dir):
-                    os.remove(safe_path)
-            except Exception:
-                pass
+            delete_upload(d.get("path", ""))
         else:
             remaining.append(d)
 
@@ -552,26 +530,26 @@ async def customers_template_editor(
     if not customer:
         return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
 
-    tpl_path = customer.excel_template_path or ""
     b64 = getattr(customer, "excel_template_b64", "") or ""
-
-    if b64 and (not tpl_path or not os.path.exists(tpl_path)):
-        import base64 as _b64
-        _dir = "static/uploads/customer_templates"
-        os.makedirs(_dir, exist_ok=True)
-        tpl_path = os.path.join(_dir, f"{customer_id}.xlsx")
-        with open(tpl_path, "wb") as f:
-            f.write(_b64.b64decode(b64))
-        customer.excel_template_path = tpl_path
-        db.commit()
-
-    if not tpl_path or not os.path.exists(tpl_path):
+    if not b64:
         return RedirectResponse(
             url=f"/customers/{customer_id}/edit?error=Template+dosyası+yüklenmemiş",
             status_code=status.HTTP_302_FOUND,
         )
 
-    excel_data = _read_excel_for_editor(tpl_path)
+    import base64 as _b64, tempfile
+    _tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    _tmp.write(_b64.b64decode(b64))
+    _tmp.close()
+    tpl_path = _tmp.name
+
+    try:
+        excel_data = _read_excel_for_editor(tpl_path)
+    finally:
+        try:
+            os.unlink(tpl_path)
+        except Exception:
+            pass
     cfg = customer.excel_config
 
     return templates.TemplateResponse("customers/template_editor.html", {
@@ -598,23 +576,21 @@ async def customers_template_sheet_data(
     if not customer:
         return JSONResponse({"error": "Müşteri bulunamadı"}, status_code=404)
 
-    tpl_path = customer.excel_template_path or ""
     b64 = getattr(customer, "excel_template_b64", "") or ""
-
-    if b64 and (not tpl_path or not os.path.exists(tpl_path)):
-        import base64 as _b64
-        _dir = "static/uploads/customer_templates"
-        os.makedirs(_dir, exist_ok=True)
-        tpl_path = os.path.join(_dir, f"{customer_id}.xlsx")
-        with open(tpl_path, "wb") as f:
-            f.write(_b64.b64decode(b64))
-        customer.excel_template_path = tpl_path
-        db.commit()
-
-    if not tpl_path or not os.path.exists(tpl_path):
+    if not b64:
         return JSONResponse({"error": "Template dosyası bulunamadı"}, status_code=404)
 
-    data = _read_excel_for_editor(tpl_path, sheet_name=sheet or None)
+    import base64 as _b64, tempfile
+    _tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    _tmp.write(_b64.b64decode(b64))
+    _tmp.close()
+    try:
+        data = _read_excel_for_editor(_tmp.name, sheet_name=sheet or None)
+    finally:
+        try:
+            os.unlink(_tmp.name)
+        except Exception:
+            pass
     return JSONResponse(data)
 
 
