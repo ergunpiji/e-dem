@@ -283,9 +283,6 @@ async def expenses_edit_post(
         report.request_ids_json = _json.dumps(refs, ensure_ascii=False)
 
     # Edit modunda sadece bu raporun kalemlerini güncelle (split yok)
-    for item in list(report.items):
-        db.delete(item)
-    db.flush()
     _save_items_from_json(db, report.id, items_json)
 
     if next_action == "submit":
@@ -406,9 +403,6 @@ async def expenses_sync_rows(
     if not _can_edit(report, current_user):
         raise HTTPException(403)
 
-    for item in list(report.items):
-        db.delete(item)
-    db.flush()
     _save_items_from_json(db, report_id, items_json)
     db.commit()
     db.refresh(report)
@@ -624,44 +618,85 @@ async def undocumented_delete(
 # Yardımcı
 # ---------------------------------------------------------------------------
 
-def _save_items_from_json(db: Session, report_id: str, items_json: str):
+def _save_items_from_json(db: Session, report_id: str, items_json: str) -> None:
+    """
+    Kalemleri JSON'dan günceller.
+    Mevcut ID ile eşleşen satırlarda belge eki (document_path) korunur;
+    JSON'da path gönderilmemişse DB değeri bozulmaz.
+    """
     import json
     try:
-        items = json.loads(items_json or "[]")
+        new_items = json.loads(items_json or "[]")
     except Exception:
-        items = []
-    for idx, it in enumerate(items):
+        new_items = []
+
+    # Mevcut kalemleri ID'ye göre indeksle (belge yollarını korumak için)
+    existing: dict = {
+        item.id: item
+        for item in db.query(ExpenseItem).filter(ExpenseItem.report_id == report_id).all()
+    }
+
+    seen_ids: set = set()
+
+    for idx, it in enumerate(new_items):
         doc_type = it.get("document_type", "fis")
-        # Yeni format: kullanıcı KDV dahil tutar + KDV tutarı giriyor
-        # Eski format (geriye uyumluluk): amount (KDV hariç) + vat_rate → dönüştür
         if "total_amount" in it:
             total_amount = float(it.get("total_amount", 0) or 0)
             vat_amount   = 0.0 if doc_type == "belgesiz" else float(it.get("vat_amount", 0) or 0)
             amount       = round(total_amount - vat_amount, 2)
             vat_rate     = round(vat_amount / amount * 100, 2) if amount > 0 else 0.0
         else:
-            # Eski format geriye uyumluluk
-            amount     = float(it.get("amount", 0) or 0)
-            vat_rate   = float(it.get("vat_rate", 0) or 0)
-            vat_amount = round(amount * vat_rate / 100, 2)
+            amount       = float(it.get("amount", 0) or 0)
+            vat_rate     = float(it.get("vat_rate", 0) or 0)
+            vat_amount   = round(amount * vat_rate / 100, 2)
             total_amount = round(amount + vat_amount, 2)
 
-        item = ExpenseItem(
-            id=_uuid(),
-            report_id=report_id,
-            assigned_request_id=it.get("assigned_request_id") or None,
-            item_date=it.get("item_date", "") or "",
-            description=it.get("description", "") or "",
-            payment_method=it.get("payment_method", "nakit"),
-            document_type=doc_type,
-            amount=round(amount, 2),
-            vat_rate=round(vat_rate, 2),
-            vat_amount=round(vat_amount, 2),
-            total_amount=round(total_amount, 2),
-            sort_order=idx,
-            # Daha önce yüklenen belgeyi koru
-            document_path=it.get("document_path") or None,
-            document_name=it.get("document_name") or None,
-            created_at=_now(),
-        )
-        db.add(item)
+        json_id   = (it.get("id") or "").strip()
+        json_path = it.get("document_path") or None
+        json_name = it.get("document_name") or None
+
+        if json_id and json_id in existing:
+            # Mevcut kalemi yerinde güncelle
+            item = existing[json_id]
+            item.assigned_request_id = it.get("assigned_request_id") or None
+            item.item_date           = it.get("item_date", "") or ""
+            item.description         = it.get("description", "") or ""
+            item.payment_method      = it.get("payment_method", "nakit")
+            item.document_type       = doc_type
+            item.amount              = round(amount, 2)
+            item.vat_rate            = round(vat_rate, 2)
+            item.vat_amount          = round(vat_amount, 2)
+            item.total_amount        = round(total_amount, 2)
+            item.sort_order          = idx
+            # Belge yolu: JSON'da varsa güncelle, yoksa DB değerini koru
+            if json_path:
+                item.document_path = json_path
+                item.document_name = json_name
+            seen_ids.add(json_id)
+        else:
+            # Yeni kalem oluştur
+            item = ExpenseItem(
+                id=_uuid(),
+                report_id=report_id,
+                assigned_request_id=it.get("assigned_request_id") or None,
+                item_date=it.get("item_date", "") or "",
+                description=it.get("description", "") or "",
+                payment_method=it.get("payment_method", "nakit"),
+                document_type=doc_type,
+                amount=round(amount, 2),
+                vat_rate=round(vat_rate, 2),
+                vat_amount=round(vat_amount, 2),
+                total_amount=round(total_amount, 2),
+                sort_order=idx,
+                document_path=json_path,
+                document_name=json_name,
+                created_at=_now(),
+            )
+            db.add(item)
+
+    # Kullanıcının sildiği kalemleri DB'den de temizle
+    for item_id, item in existing.items():
+        if item_id not in seen_ids:
+            db.delete(item)
+
+    db.flush()
