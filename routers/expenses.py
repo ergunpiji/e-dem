@@ -483,10 +483,16 @@ async def expenses_upload_doc(
         return JSONResponse({"ok": False, "error": "Dosya 10 MB sınırını aşıyor."}, status_code=400)
 
     safe_name = f"{item_id}{ext}"
-    item.document_path = save_upload(content, "expenses", safe_name)
+    try:
+        key = save_upload(content, "expenses", safe_name)
+    except Exception as exc:
+        print(f"[UPLOAD ERROR] expenses/{safe_name}: {exc}", flush=True)
+        return JSONResponse({"ok": False, "error": f"Dosya yüklenemedi: {exc}"}, status_code=500)
+
+    item.document_path = key
     item.document_name = file.filename
     db.commit()
-    return JSONResponse({"ok": True, "name": file.filename, "path": item.document_path})
+    return JSONResponse({"ok": True, "name": file.filename, "path": key})
 
 
 @router.get("/doc/{item_id}", name="expenses_doc_download")

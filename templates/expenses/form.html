@@ -741,8 +741,14 @@ async function uploadDoc(rowIdx, input) {
 
   const fd = new FormData();
   fd.append('file', file);
-  const res = await fetch(`/expenses/${rid}/upload/${itemId}`, { method: 'POST', body: fd });
-  const data = await res.json();
+  let data;
+  try {
+    const res = await fetch(`/expenses/${rid}/upload/${itemId}`, { method: 'POST', body: fd });
+    data = await res.json();
+  } catch (e) {
+    alert('Yükleme hatası — sunucu yanıt vermedi. Lütfen tekrar deneyin.');
+    return;
+  }
   if (data.ok) {
     rows[rowIdx].document_path = data.path;
     rows[rowIdx].document_name = data.name;
