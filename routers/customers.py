@@ -79,7 +79,7 @@ async def customers_create(
     sector:        str = Form(""),
     address:       str = Form(""),
     tax_office:    str = Form(""),
-    tax_number:    str = Form(""),
+    tax_no:    str = Form(""),
     email:         str = Form(""),
     phone:         str = Form(""),
     notes:         str = Form(""),
@@ -115,7 +115,7 @@ async def customers_create(
         sector=sector.strip(),
         address=address.strip(),
         tax_office=tax_office.strip(),
-        tax_number=tax_number.strip(),
+        tax_no=tax_no.strip(),
         email=email.strip(),
         phone=phone.strip(),
         notes=notes.strip(),
@@ -162,7 +162,7 @@ async def customers_update(
     sector:        str = Form(""),
     address:       str = Form(""),
     tax_office:    str = Form(""),
-    tax_number:    str = Form(""),
+    tax_no:    str = Form(""),
     email:         str = Form(""),
     phone:         str = Form(""),
     notes:         str = Form(""),
@@ -200,7 +200,7 @@ async def customers_update(
     customer.sector        = sector.strip()
     customer.address       = address.strip()
     customer.tax_office    = tax_office.strip()
-    customer.tax_number    = tax_number.strip()
+    customer.tax_no    = tax_no.strip()
     customer.email         = email.strip()
     customer.phone         = phone.strip()
     customer.notes         = notes.strip()

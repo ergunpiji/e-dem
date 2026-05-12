@@ -478,23 +478,30 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id                  = Column(String(36), primary_key=True, default=_uuid)
+    company_id          = Column(String(36), nullable=True, index=True)
+    owner_id            = Column(String(36), nullable=True, index=True)
     name                = Column(String(255), nullable=False)
-    code                = Column(String(10), unique=True, nullable=False)   # 3 harfli küçük
+    code                = Column(String(10), unique=True, nullable=False)
     sector              = Column(String(100), default="")
     address             = Column(Text, default="")
     tax_office          = Column(String(100), default="")
-    tax_number          = Column(String(30), default="")
+    tax_no              = Column(String(30), default="")
     email               = Column(String(255), default="")
     phone               = Column(String(30), default="")
     notes               = Column(Text, default="")
-    contacts_json       = Column(Text, default="[]")         # list[Contact] JSON
-    payment_term        = Column(String(100), default="")    # ödeme vadesi
-    docs_json           = Column(Text, default="[]")         # list[{name, path}] yüklü belgeler
+    contacts_json       = Column(Text, default="[]")
+    payment_term        = Column(String(100), default="")
+    payment_dow         = Column(Integer, nullable=True)
+    docs_json           = Column(Text, default="[]")
     team_id             = Column(String(36), ForeignKey("teams.id"), nullable=True)
     created_at          = Column(DateTime, default=_now, nullable=False)
-    excel_template_path = Column(String(500), default="")   # yüklenen template dosya yolu
-    excel_template_b64  = Column(Text, default="")          # template içeriği base64 (Railway kalıcılığı)
-    excel_config_json   = Column(Text, default="{}")        # sütun mapping JSON
+    excel_template_path = Column(String(500), default="")
+    excel_template_b64  = Column(Text, default="")
+    excel_config_json   = Column(Text, default="{}")
+    active              = Column(Boolean, default=True, nullable=False)
+    is_efatura_user     = Column(Boolean, nullable=True)
+    efatura_alias       = Column(String(100), nullable=True)
+    efatura_checked_at  = Column(DateTime, nullable=True)
 
     # İlişkiler
     requests = relationship("Request", back_populates="customer")
