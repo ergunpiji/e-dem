@@ -1091,6 +1091,10 @@ def migrate_db():
             except Exception as e:
                 conn.rollback()
 
+        # invoices tablosu micedesk tarafından oluşturulmuş olabilir (paylaşımlı DB).
+        # request_id kolonu micedesk'te yok — yoksa ekle.
+        _safe_add_column(conn, "invoices", "request_id", "VARCHAR(36)")
+
         # invoices.request_id → nullable (referanssız fatura desteği)
         # information_schema'dan kontrol edip sadece gerektiğinde ALTER çalıştır
         if not _is_sqlite:
