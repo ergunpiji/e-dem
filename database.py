@@ -441,9 +441,14 @@ def _seed_public_holidays_2026() -> None:
 
 def init_db() -> None:
     if os.environ.get("RESET_DB") == "1":
-        print("[db] RESET_DB=1 — tablolar siliniyor...")
-        Base.metadata.drop_all(bind=engine)
-        print("[db] Tablolar silindi.")
+        print("[db] RESET_DB=1 — schema sıfırlanıyor (CASCADE)...")
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+            conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+            conn.commit()
+        print("[db] Schema sıfırlandı.")
     Base.metadata.create_all(bind=engine)
     _migrate(engine)
     print("[db] Tablolar hazır.")
