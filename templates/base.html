@@ -58,7 +58,7 @@
     body.sidebar-collapsed .sidebar-toggle { left: 8px; }
     body.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
     .sidebar-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,.08); }
-    .sidebar-logo img { max-width: 140px; height: auto; display: block; }
+    .sidebar-logo img { max-width: 200px; height: auto; display: block; }
     .sidebar-subtitle { font-size: 10px; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: 1.5px; }
     .sidebar-user { padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 12px; }
     .user-avatar {
@@ -253,14 +253,6 @@
   <div class="sidebar-header">
     <div class="sidebar-logo">
       <img src="/static/miceapp-logo-white-transparent.png" alt="miceapp.net">
-    </div>
-  </div>
-
-  <div class="sidebar-user">
-    <div class="user-avatar">{{ current_user.initials }}</div>
-    <div class="user-info">
-      <div class="user-name">{{ current_user.full_name }}</div>
-      <div class="user-role">{{ current_user.role | role_label }}</div>
     </div>
   </div>
 
