@@ -1214,6 +1214,12 @@ class Invoice(Base):
     created_by           = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at           = Column(DateTime, default=_now, nullable=False)
     updated_at           = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    # micedesk köprü alanları (micedesk'in yazdığı faturalar için)
+    ref_id               = Column(String(36), nullable=True)   # micedesk references.id
+    coordinator_status   = Column(String(20), nullable=True)   # beklemede | onaylandi | reddedildi
+    coordinator_note     = Column(Text, nullable=True)
+    coordinator_reviewed_at = Column(DateTime, nullable=True)
+    coordinator_reviewed_by = Column(String(36), nullable=True)
 
     request          = relationship("Request", back_populates="invoices")
     vendor           = relationship("FinancialVendor", back_populates="invoices", foreign_keys=[vendor_id])
@@ -1823,3 +1829,15 @@ class RolePermission(Base):
     __table_args__ = (
         __import__("sqlalchemy").UniqueConstraint("role", "permission", name="uq_role_permission"),
     )
+
+
+class DeskReference(Base):
+    """micedesk'in references tablosunu okumak için hafif model (read-only bridge)."""
+    __tablename__ = "references"
+    __table_args__ = {"extend_existing": True}
+
+    id         = Column(String(36), primary_key=True)
+    ref_no     = Column(String(30))
+    title      = Column(String(300))
+    customer_id = Column(String(36))
+    owner_id   = Column(String(36))

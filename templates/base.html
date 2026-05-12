@@ -410,6 +410,15 @@
         </div>
       </div>
 
+      {# ── Koordinatör Fatura Onayları ── #}
+      {% if current_user.is_gm %}
+      <a href="/coordinator/invoices"
+         class="sidebar-link {% if '/coordinator/invoices' in cp %}active{% endif %}">
+        <i class="bi bi-clipboard2-check nav-icon"></i> Koordinatör Onayları
+        {{ nb(nc.coordinator_pending) }}
+      </a>
+      {% endif %}
+
       {# Yönetim + Ayarlar: admin ve GM #}
       {% if current_user.role == 'admin' or current_user.is_gm %}
       <div class="tree-group" id="grp-yonetim">
