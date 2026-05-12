@@ -421,6 +421,46 @@ async def expenses_sync_rows(
     })
 
 
+@router.post("/new-draft", name="expenses_new_draft")
+async def expenses_new_draft(
+    request_ids_json: str = Form("[]"),
+    title: str = Form(""),
+    items_json: str = Form("[]"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Yeni HBF'i taslak olarak AJAX ile oluşturur; report_id döndürür."""
+    import json as _json
+    try:
+        refs = _json.loads(request_ids_json or "[]")
+    except Exception:
+        refs = []
+    if not refs:
+        return JSONResponse({"ok": False, "error": "En az bir referans seçmelisiniz."}, status_code=400)
+
+    primary_id = refs[0]["id"]
+    req_obj = db.query(ReqModel).filter(ReqModel.id == primary_id).first()
+    if not req_obj:
+        return JSONResponse({"ok": False, "error": "Referans bulunamadı."}, status_code=404)
+
+    report_title = title.strip() or f"HBF — {req_obj.request_no}"
+    report = ExpenseReport(
+        id=_uuid(),
+        request_id=primary_id,
+        request_ids_json=_json.dumps(refs, ensure_ascii=False),
+        title=report_title,
+        status="draft",
+        submitted_by=current_user.id,
+        created_at=_now(),
+        updated_at=_now(),
+    )
+    db.add(report)
+    db.flush()
+    _save_items_from_json(db, report.id, items_json)
+    db.commit()
+    return JSONResponse({"ok": True, "report_id": report.id})
+
+
 @router.post("/{report_id}/upload/{item_id}", name="expenses_upload_doc")
 async def expenses_upload_doc(
     report_id: str,

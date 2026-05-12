@@ -414,7 +414,7 @@
 
 {% block extra_scripts %}
 <script>
-const REPORT_ID = '{{ report.id if report else "" }}';
+let REPORT_ID = '{{ report.id if report else "" }}';
 const READONLY  = {{ 'true' if readonly else 'false' }};
 
 // ─── Referans listesi ───────────────────────────────────────────
@@ -700,11 +700,30 @@ function submitForm(action) {
 async function uploadDoc(rowIdx, input) {
   const file = input.files[0];
   if (!file) return;
-  const rid = REPORT_ID;
-  if (!rid) {
-    alert('Önce "Taslak Kaydet" ile formu kaydedin, sonra belge yükleyin.');
-    return;
+
+  // REPORT_ID yoksa → taslak olarak otomatik kaydet
+  if (!REPORT_ID) {
+    if (selectedRefs.length === 0) {
+      alert('Belge yüklemeden önce en az bir referans numarası seçmelisiniz.');
+      input.value = '';
+      return;
+    }
+    saveItems();
+    syncRefHidden();
+    const draftFd = new FormData();
+    draftFd.append('request_ids_json', document.getElementById('requestIdsJson').value);
+    draftFd.append('title', document.getElementById('reportTitle')?.value || '');
+    draftFd.append('items_json', JSON.stringify(rows));
+    const draftRes = await fetch('/expenses/new-draft', { method: 'POST', body: draftFd });
+    const draftData = await draftRes.json();
+    if (!draftData.ok) { alert(draftData.error || 'Taslak kaydedilemedi.'); return; }
+    // REPORT_ID ve form action'ı güncelle
+    window.REPORT_ID = draftData.report_id;
+    document.getElementById('hbfForm').action = `/expenses/${draftData.report_id}/edit`;
+    history.replaceState(null, '', `/expenses/${draftData.report_id}/edit`);
   }
+
+  const rid = REPORT_ID;
 
   // Satır henüz kaydedilmemişse önce sync-rows ile kaydet
   if (!rows[rowIdx].id) {
