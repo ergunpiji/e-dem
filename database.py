@@ -593,9 +593,12 @@ def migrate_db():
         _safe_add_column(conn, "invoices",  "approved_by",         "TEXT")
         _safe_add_column(conn, "invoices",  "approved_at",         "TEXT")
         _safe_add_column(conn, "invoices",  "rejection_note",      "TEXT", "''")
-        # Mevcut "active" faturalar → "approved" (geriye uyumluluk)
-        conn.execute(text("UPDATE invoices SET status='approved' WHERE status='active'"))
-        conn.commit()
+        # Mevcut "active" faturalar → "approved" (geriye uyumluluk — paylaşımlı DB'de enum olabilir, hata görmezden gel)
+        try:
+            conn.execute(text("UPDATE invoices SET status='approved' WHERE status='active'"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         # Budgets
         _safe_add_column(conn, "budgets", "budget_status",       "TEXT",  "'draft_edem'")
