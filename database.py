@@ -1378,11 +1378,15 @@ def migrate_db():
         conn.commit()
 
         # Mevcut bekleyen faturaları backfill: request sahibini current_approver_id yap
-        conn.execute(text(
-            "UPDATE invoices SET current_approver_id = ("
-            "  SELECT created_by FROM requests WHERE requests.id = invoices.request_id"
-            ") WHERE status = 'pending' AND request_id IS NOT NULL AND current_approver_id IS NULL"
-        ))
+        try:
+            with engine.begin() as _ic:
+                _ic.execute(text(
+                    "UPDATE invoices SET current_approver_id = ("
+                    "  SELECT created_by FROM requests WHERE requests.id = invoices.request_id"
+                    ") WHERE status = 'pending' AND request_id IS NOT NULL AND current_approver_id IS NULL"
+                ))
+        except Exception as _e:
+            print(f"[migrate] invoices backfill atlandı: {_e}")
 
         # Eksik seed şablonlarını ekle (idempotent)
         _seed_email_templates()
