@@ -735,9 +735,11 @@ def migrate_db():
                     updated_at    TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_invoices_request_id ON invoices(request_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_invoices_request_id ON invoices(request_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_invoices_request_id atlandı: {_e}")
         else:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS invoices (
@@ -761,9 +763,11 @@ def migrate_db():
                     updated_at    TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_invoices_request_id ON invoices(request_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_invoices_request_id ON invoices(request_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_invoices_request_id atlandı: {_e}")
         # email_templates tablosu — yoksa oluştur
         if _is_sqlite:
             conn.execute(text("""
@@ -811,9 +815,11 @@ def migrate_db():
                     updated_at     TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_expense_reports_request_id ON expense_reports(request_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_expense_reports_request_id ON expense_reports(request_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_expense_reports_request_id atlandı: {_e}")
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS expense_items (
                     id             TEXT PRIMARY KEY,
@@ -832,9 +838,11 @@ def migrate_db():
                     created_at     TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_expense_items_report_id ON expense_items(report_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_expense_items_report_id ON expense_items(report_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_expense_items_report_id atlandı: {_e}")
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS undocumented_entries (
                     id          TEXT PRIMARY KEY,
@@ -847,9 +855,11 @@ def migrate_db():
                     created_at  TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_undocumented_entries_request_id ON undocumented_entries(request_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_undocumented_entries_request_id ON undocumented_entries(request_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_undocumented_entries_request_id atlandı: {_e}")
         else:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS expense_reports (
@@ -865,9 +875,11 @@ def migrate_db():
                     updated_at     TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_expense_reports_request_id ON expense_reports(request_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_expense_reports_request_id ON expense_reports(request_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_expense_reports_request_id atlandı: {_e}")
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS expense_items (
                     id             VARCHAR(36) PRIMARY KEY,
@@ -886,9 +898,11 @@ def migrate_db():
                     created_at     TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_expense_items_report_id ON expense_items(report_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_expense_items_report_id ON expense_items(report_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_expense_items_report_id atlandı: {_e}")
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS undocumented_entries (
                     id          VARCHAR(36) PRIMARY KEY,
@@ -901,9 +915,11 @@ def migrate_db():
                     created_at  TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_undocumented_entries_request_id ON undocumented_entries(request_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_undocumented_entries_request_id ON undocumented_entries(request_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_undocumented_entries_request_id atlandı: {_e}")
         conn.commit()
 
         # notifications tablosu
@@ -921,9 +937,11 @@ def migrate_db():
                     created_at TEXT NOT NULL
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_notifications_user_id atlandı: {_e}")
         else:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS notifications (
@@ -938,9 +956,11 @@ def migrate_db():
                     created_at TIMESTAMP NOT NULL
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)"
-            ))
+            try:
+                with engine.begin() as _ic:
+                    _ic.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)"))
+            except Exception as _e:
+                print(f"[migrate] ix_notifications_user_id atlandı: {_e}")
         conn.commit()
 
         # closure_requests tablosu
