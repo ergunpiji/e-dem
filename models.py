@@ -335,7 +335,7 @@ class User(Base):
 
     @property
     def initials(self) -> str:
-        parts = [self.name[:1], self.surname[:1]]
+        parts = [(self.name or "")[:1], (self.surname or "")[:1]]
         return "".join(p for p in parts if p).upper() or "?"
 
     def to_dict(self) -> dict:
