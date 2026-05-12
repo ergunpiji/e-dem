@@ -689,12 +689,16 @@ def migrate_db():
                     created_at          TIMESTAMP
                 )
             """))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_fund ON fund_transfers(fund_request_id)"
-            ))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_related ON fund_transfers(related_request_id)"
-            ))
+            # INDEX'ler ayrı transaction'da — paylaşımlı DB'de kolon olmayabilir
+            for _idx_sql in [
+                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_fund ON fund_transfers(fund_request_id)",
+                "CREATE INDEX IF NOT EXISTS ix_fund_transfers_related ON fund_transfers(related_request_id)",
+            ]:
+                try:
+                    with engine.begin() as _ic:
+                        _ic.execute(text(_idx_sql))
+                except Exception as _e:
+                    print(f"[migrate] fund_transfers index atlandı: {_e}")
         conn.commit()
 
         # Customers
