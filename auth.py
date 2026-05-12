@@ -233,17 +233,17 @@ def can_approve_expense(user: User) -> bool:
 
 def can_send_offer(user: User) -> bool:
     """Müşteriye teklif gönderme: admin, mudur, yonetici."""
-    return user.role in ("admin", "mudur", "yonetici")
+    return user.role in ("admin", "mudur", "yonetici") or user.is_gm
 
 
 def can_approve_budget(user: User) -> bool:
     """Bütçe onayı: admin, mudur, yonetici."""
-    return user.role in ("admin", "mudur", "yonetici")
+    return user.role in ("admin", "mudur", "yonetici") or user.is_gm
 
 
 def can_start_closure(user: User) -> bool:
     """Dosya kapamayı başlatma: admin, mudur, yonetici."""
-    return user.role in ("admin", "mudur", "yonetici")
+    return user.role in ("admin", "mudur", "yonetici") or user.is_gm
 
 
 def can_approve_closure_l1(user: User) -> bool:
