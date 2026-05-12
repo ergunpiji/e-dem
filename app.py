@@ -34,6 +34,16 @@ elif _db_url.startswith("sqlite") or not _db_url:
 else:
     print(f"[DB] Bağlantı tipi: {_db_url[:20]}...", flush=True)
 
+if os.environ.get("RESET_DB") == "1":
+    print("[db] RESET_DB=1 — schema sıfırlanıyor (CASCADE)...", flush=True)
+    from sqlalchemy import text
+    with engine.connect() as _conn:
+        _conn.execute(text("DROP SCHEMA public CASCADE"))
+        _conn.execute(text("CREATE SCHEMA public"))
+        _conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+        _conn.commit()
+    print("[db] Schema sıfırlandı.", flush=True)
+
 Base.metadata.create_all(bind=engine)
 migrate_db()
 seed_data()
