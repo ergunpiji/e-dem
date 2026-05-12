@@ -638,6 +638,13 @@ def migrate_db():
         _safe_add_column(conn, "invoices", "is_split_parent",        _bool_type, _bool_default)
         _safe_add_column(conn, "invoices", "parent_invoice_id",      "TEXT")
 
+        # Invoices — micedesk köprü alanları (koordinatör onay akışı, Faz 1)
+        _safe_add_column(conn, "invoices", "ref_id",                  "TEXT")
+        _safe_add_column(conn, "invoices", "coordinator_status",      "TEXT")
+        _safe_add_column(conn, "invoices", "coordinator_note",        "TEXT")
+        _safe_add_column(conn, "invoices", "coordinator_reviewed_at", "TIMESTAMP")
+        _safe_add_column(conn, "invoices", "coordinator_reviewed_by", "TEXT")
+
         # fund_transfers tablosu
         if _is_sqlite:
             conn.execute(text("""
