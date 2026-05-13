@@ -1195,6 +1195,7 @@ class Invoice(Base):
     cc_due_date      = Column(String(10), nullable=True)       # kredi kartı son ödeme tarihi (YYYY-MM-DD)
     cc_pending_amount= Column(Float, default=0.0)              # kartla taahhüt edilen ama henüz bankadan çıkmayan tutar
     rejection_note       = Column(String(300), default="")
+    notes                = Column(Text, nullable=True)   # micedesk uyumu
     approved_by          = Column(String(36), ForeignKey("users.id"), nullable=True)
     approved_at          = Column(DateTime, nullable=True)
     current_approver_id  = Column(String(36), ForeignKey("users.id"), nullable=True)

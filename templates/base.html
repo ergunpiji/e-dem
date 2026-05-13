@@ -411,7 +411,7 @@
       </div>
 
       {# ── Koordinatör Fatura Onayları ── #}
-      {% if current_user.is_gm %}
+      {% if current_user.is_gm or current_user.role in ('mudur', 'yonetici', 'asistan', 'project_manager') %}
       <a href="/coordinator/invoices"
          class="sidebar-link {% if '/coordinator/invoices' in cp %}active{% endif %}">
         <i class="bi bi-clipboard2-check nav-icon"></i> Koordinatör Onayları

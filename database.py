@@ -647,6 +647,7 @@ def migrate_db():
         _safe_add_column(conn, "invoices", "coordinator_note",        "TEXT")
         _safe_add_column(conn, "invoices", "coordinator_reviewed_at", "TIMESTAMP")
         _safe_add_column(conn, "invoices", "coordinator_reviewed_by", "TEXT")
+        _safe_add_column(conn, "invoices", "notes",                    "TEXT")
 
         # fund_transfers tablosu
         if _is_sqlite:
