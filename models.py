@@ -212,12 +212,13 @@ class Team(Base):
     """Etkinlik takımı — mudur + yonetici(ler) + asistan(lar)"""
     __tablename__ = "teams"
 
-    id          = Column(String(36), primary_key=True, default=_uuid)
-    name        = Column(String(200), nullable=False)
-    code        = Column(String(50), default="")
-    description = Column(Text, default="")
-    active      = Column(Boolean, default=True, nullable=False)
-    created_at  = Column(DateTime, default=_now, nullable=False)
+    id                  = Column(String(36), primary_key=True, default=_uuid)
+    name                = Column(String(200), nullable=False)
+    code                = Column(String(50), default="")
+    description         = Column(Text, default="")
+    active              = Column(Boolean, default=True, nullable=False)
+    is_support_team     = Column(Boolean, default=False, nullable=False)
+    created_at          = Column(DateTime, default=_now, nullable=False)
 
     members = relationship("User", back_populates="team", foreign_keys="User.team_id")
 

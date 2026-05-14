@@ -146,13 +146,15 @@ async def teams_edit(
     team_id: str,
     name: str = Form(...),
     code: str = Form(""),
+    is_support_team: str = Form(""),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     team = db.query(Team).filter(Team.id == team_id).first()
     if team:
-        team.name = name.strip()
-        team.code = code.strip().upper()[:10]
+        team.name            = name.strip()
+        team.code            = code.strip().upper()[:10]
+        team.is_support_team = (is_support_team == "on")
         db.commit()
     return RedirectResponse(f"/teams/{team_id}?saved=1", status_code=status.HTTP_303_SEE_OTHER)
 

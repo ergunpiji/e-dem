@@ -1069,6 +1069,8 @@ def migrate_db():
         # Takım tabanlı erişim: customers ve requests tablolarına team_id ekle
         _safe_add_column(conn, "customers", "team_id", "TEXT")
         _safe_add_column(conn, "requests",  "team_id", "TEXT")
+        # Destek ekibi bayrağı
+        _safe_add_column(conn, "teams", "is_support_team", "BOOLEAN DEFAULT FALSE")
         # Backfill: mevcut requests için created_by → user.team_id
         if not _is_sqlite:
             try:

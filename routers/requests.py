@@ -20,7 +20,7 @@ from auth import get_current_user, has_permission
 from database import generate_ref_no, get_db
 from models import (
     Budget, Customer, CustomCategory, EmailTemplate, EventType, REQUEST_STATUSES, REQUEST_TABS,
-    TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, RequestModule, User, Vendor,
+    TR_CITIES, SUPPLIER_TYPES, Service, SERVICE_CATEGORIES, Request as ReqModel, RequestModule, Team, User, Vendor,
     _uuid, _now, REQUEST_STATUS_LABELS,
 )
 from routers.library import log_activity
@@ -92,12 +92,25 @@ async def requests_list(
     query = db.query(ReqModel)
 
     # ── ADIM 1: Rol bazlı BASE SCOPE — tüm view filtreleri bunun üstüne eklenir ──
-    # GM ve mudur (Etkinlik Süreç Müdürü) tüm referansları görür — çapraz takım erişimi.
-    if current_user.is_gm or current_user.role == "mudur":
-        pass  # filtre yok
+    if current_user.is_gm:
+        pass  # GM: tüm referanslar
+    elif current_user.role == "mudur":
+        _mudur_team = db.query(Team).filter(Team.id == current_user.team_id).first() if current_user.team_id else None
+        if _mudur_team and _mudur_team.is_support_team:
+            # Destek ekibi müdürü: kendi üyelerinin oluşturduğu tüm referanslar
+            _member_ids = [u.id for u in db.query(User).filter(
+                User.team_id == current_user.team_id, User.active == True).all()]
+            query = query.filter(ReqModel.created_by.in_(_member_ids))
+        elif current_user.team_id:
+            # Normal birim müdürü: sadece kendi takımı
+            query = query.filter(ReqModel.team_id == current_user.team_id)
+        else:
+            query = query.filter(False)
     elif current_user.role == "yonetici":
         sub_ids = _get_subtree_ids(current_user.id, db)
         query = query.filter(ReqModel.created_by.in_([current_user.id] + sub_ids))
+        if current_user.team_id:
+            query = query.filter(ReqModel.team_id == current_user.team_id)
     elif current_user.role == "asistan":
         query = query.filter(ReqModel.created_by == current_user.id)
     elif current_user.role == "e_dem":
@@ -105,7 +118,7 @@ async def requests_list(
             ReqModel.status.in_(["pending", "in_progress", "venues_contacted", "budget_ready",
                                   "offer_sent", "revision"])
         )
-    # admin, takımsız mudur (GM), muhasebe_muduru → filtre yok (tüm veriler)
+    # admin, muhasebe_muduru → filtre yok (tüm veriler)
 
     # ── ADIM 2: View / sayfa filtreleri (base scope üstüne eklenir) ──
     page_title = ""
@@ -528,6 +541,7 @@ async def requests_new(
         custom_cats = db.query(CustomCategory).all()
     except Exception:
         pass
+    teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all() if current_user.is_gm else []
 
     return templates.TemplateResponse(
         "requests/form.html",
@@ -545,6 +559,8 @@ async def requests_new(
             "request_tabs":     REQUEST_TABS,
             "supplier_types":   SUPPLIER_TYPES,
             "custom_cats":      custom_cats,
+            "teams":            teams,
+            "show_team_selector": current_user.is_gm,
             "error":            None,
         },
     )
@@ -573,6 +589,7 @@ async def requests_create(
     funding_source:       str = Form(""),
     parent_fund_request_id: str = Form(""),   # fon havuzu (is_funded=on ise doldurulur)
     action:               str = Form("draft"),  # 'draft' veya 'send'
+    team_id:              str = Form(""),       # GM seçimi için
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -587,6 +604,9 @@ async def requests_create(
             customer_code = cust.code
             if cust.team_id:
                 _team_id = cust.team_id  # müşterinin takımı öncelikli
+    # GM ise formdan gelen team_id önceliklidir
+    if current_user.is_gm and team_id.strip():
+        _team_id = team_id.strip()
 
     # Resolve event_type_code
     event_type_code = event_type  # already a code like 'yi'
@@ -665,13 +685,24 @@ async def requests_detail(
     if not req:
         return RedirectResponse(url="/requests", status_code=status.HTTP_302_FOUND)
 
-    # Erişim kontrolü — admin/GM/mudur/muhasebe_muduru tümünü görür;
-    # yonetici sadece kendi alt ağacının referanslarını; asistan sadece kendi referansını;
-    # e_dem ve muhasebe ise iş akışı gereği tüm referansları görür.
-    if current_user.role == "yonetici":
+    # Erişim kontrolü — admin/GM/muhasebe_muduru tümünü görür;
+    # mudur sadece kendi takımının referanslarını; yonetici alt ağacını; asistan kendininkini;
+    # e_dem ve muhasebe iş akışı gereği tüm referansları görür.
+    if not current_user.is_gm and current_user.role == "mudur":
+        _mudur_team = db.query(Team).filter(Team.id == current_user.team_id).first() if current_user.team_id else None
+        if _mudur_team and _mudur_team.is_support_team:
+            _member_ids = [u.id for u in db.query(User).filter(
+                User.team_id == current_user.team_id, User.active == True).all()]
+            if req.created_by not in _member_ids:
+                raise HTTPException(403, "Bu referans ekibinize ait değil.")
+        elif req.team_id and req.team_id != current_user.team_id:
+            raise HTTPException(403, "Bu referans takımınıza ait değil.")
+    elif current_user.role == "yonetici":
         sub_ids = _get_subtree_ids(current_user.id, db)
         if req.created_by not in [current_user.id] + sub_ids:
             raise HTTPException(403, "Bu referansa erişim yetkiniz yok.")
+        if current_user.team_id and req.team_id and req.team_id != current_user.team_id:
+            raise HTTPException(403, "Bu referans takımınıza ait değil.")
     elif current_user.role == "asistan":
         if req.created_by != current_user.id:
             raise HTTPException(403, "Bu referansa erişim yetkiniz yok.")
@@ -1216,6 +1247,7 @@ async def requests_edit(
     services_by_cat: dict = {}
     for svc in services:
         services_by_cat.setdefault(svc.category, []).append(svc.to_dict())
+    teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all() if current_user.is_gm else []
 
     return templates.TemplateResponse(
         "requests/form.html",
@@ -1233,6 +1265,8 @@ async def requests_edit(
             "request_tabs":     REQUEST_TABS,
             "supplier_types":   SUPPLIER_TYPES,
             "custom_cats":      [],
+            "teams":            teams,
+            "show_team_selector": current_user.is_gm,
             "error":            None,
         },
     )
@@ -1262,6 +1296,7 @@ async def requests_update(
     funding_source:       str = Form(""),
     parent_fund_request_id: str = Form(""),
     action:               str = Form("draft"),
+    team_id:              str = Form(""),       # GM seçimi için
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1279,8 +1314,10 @@ async def requests_update(
 
     req.client_name           = client_name.strip()
     req.customer_id           = customer_id or None
-    # Müşteri değiştiğinde team_id güncelle
-    if customer_id:
+    # Takım tespiti: GM ise formdan gelen team_id öncelikli
+    if current_user.is_gm and team_id.strip():
+        req.team_id = team_id.strip()
+    elif customer_id:
         _upd_cust = db.query(Customer).filter(Customer.id == customer_id).first()
         if _upd_cust and _upd_cust.team_id:
             req.team_id = _upd_cust.team_id

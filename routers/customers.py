@@ -26,7 +26,12 @@ async def customers_list(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    customers = db.query(Customer).order_by(Customer.name).all()
+    query = db.query(Customer)
+    if not current_user.is_gm and current_user.role == "mudur" and current_user.team_id:
+        _team = db.query(Team).filter(Team.id == current_user.team_id).first()
+        if not (_team and _team.is_support_team):
+            query = query.filter(Customer.team_id == current_user.team_id)
+    customers = query.order_by(Customer.name).all()
     return templates.TemplateResponse(
         "customers/list.html",
         {
@@ -136,9 +141,15 @@ async def customers_edit(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    from fastapi import HTTPException
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         return RedirectResponse(url="/customers", status_code=status.HTTP_302_FOUND)
+    if not current_user.is_gm and current_user.role == "mudur":
+        _team = db.query(Team).filter(Team.id == current_user.team_id).first() if current_user.team_id else None
+        _is_support = _team and _team.is_support_team
+        if not _is_support and customer.team_id and customer.team_id != current_user.team_id:
+            raise HTTPException(403, "Bu müşteri takımınıza ait değil.")
     teams = db.query(Team).filter(Team.active == True).order_by(Team.name).all()
     return templates.TemplateResponse(
         "customers/form.html",

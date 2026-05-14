@@ -515,8 +515,8 @@ async def dashboard(
     financial = {}
     recent_requests = []
 
-    if current_user.role in ("admin", "mudur", "muhasebe_muduru"):
-        # mudur (Etkinlik Süreç Müdürü), GM, admin, muhasebe_muduru: tüm referansları görür
+    if current_user.is_gm or current_user.role in ("admin", "muhasebe_muduru"):
+        # GM, admin, muhasebe_muduru: tüm şirket verileri
         req_id_filter = None
         base_q = db.query(ReqModel)
 
@@ -535,6 +535,41 @@ async def dashboard(
         recent_requests = (
             base_q.order_by(ReqModel.created_at.desc()).limit(8).all()
         )
+
+    elif current_user.role == "mudur":
+        _mudur_team = db.query(Team).filter(Team.id == current_user.team_id).first() if current_user.team_id else None
+        _open_statuses = ["pending", "in_progress", "venues_contacted", "budget_ready", "offer_sent", "revision"]
+        if _mudur_team and _mudur_team.is_support_team:
+            # Destek ekibi: created_by bazlı — kendi üyelerinin yürüttüğü etkinlikler
+            _member_ids = [u.id for u in db.query(User).filter(
+                User.team_id == current_user.team_id, User.active == True).all()]
+            base_q = db.query(ReqModel).filter(ReqModel.created_by.in_(_member_ids))
+            req_id_filter = [r.id for r in base_q.with_entities(ReqModel.id).all()]
+            stats = {
+                "total_requests": base_q.count(),
+                "open_requests":  base_q.filter(ReqModel.status.in_(_open_statuses)).count(),
+                "my_confirmed":   base_q.filter(ReqModel.status == "confirmed").count(),
+                "total_budgets":  db.query(Budget).filter(Budget.request_id.in_(req_id_filter)).count(),
+            }
+            financial = _build_financial_stats(db, req_id_filter=req_id_filter)
+            recent_requests = base_q.order_by(ReqModel.created_at.desc()).limit(8).all()
+        else:
+            # Normal birim müdürü: sadece kendi takımının istatistikleri
+            if current_user.team_id:
+                base_q = db.query(ReqModel).filter(ReqModel.team_id == current_user.team_id)
+            else:
+                base_q = db.query(ReqModel).filter(False)
+            req_id_filter = [r.id for r in base_q.with_entities(ReqModel.id).all()]
+            stats = {
+                "total_requests":  base_q.count(),
+                "open_requests":   base_q.filter(ReqModel.status.in_(_open_statuses)).count(),
+                "total_customers": db.query(Customer).filter(
+                    Customer.team_id == current_user.team_id
+                ).count() if current_user.team_id else 0,
+                "total_budgets":   db.query(Budget).filter(Budget.request_id.in_(req_id_filter)).count(),
+            }
+            financial = _build_financial_stats(db, req_id_filter=req_id_filter)
+            recent_requests = base_q.order_by(ReqModel.created_at.desc()).limit(8).all()
 
     elif current_user.role == "yonetici":
         from routers.requests import _get_subtree_ids
@@ -617,7 +652,7 @@ async def dashboard(
 
     # Müşteri YTD grafiği — finansal görüntülemesi olan roller (asistan/e_dem hariç)
     customer_ytd = []
-    show_customer_ytd = current_user.role in ("admin", "mudur", "muhasebe_muduru", "yonetici")
+    show_customer_ytd = current_user.is_gm or current_user.role in ("admin", "mudur", "muhasebe_muduru", "yonetici")
     if show_customer_ytd:
         customer_ytd = _build_ytd_customer_stats(db, req_id_filter=req_id_filter)
 

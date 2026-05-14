@@ -176,6 +176,30 @@
       </div>
       <div class="row g-3">
 
+        {# GM Takım Seçimi #}
+        {% if show_team_selector %}
+        <div class="col-md-12">
+          <div class="alert alert-info d-flex align-items-center gap-2 py-2 mb-0" style="font-size:13px;">
+            <i class="bi bi-people-fill"></i>
+            <div>
+              <strong>Genel Müdür olarak referans oluşturuyorsunuz.</strong>
+              Lütfen bu referansın ait olacağı ekibi seçin.
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold" style="font-size:13px;">Ekip <span class="text-danger">*</span></label>
+          <select name="team_id" id="teamSelect" class="form-select" required>
+            <option value="">— Ekip seçin —</option>
+            {% for t in teams %}
+            <option value="{{ t.id }}" {% if req and req.team_id == t.id %}selected{% endif %}>
+              {{ t.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
         {# Müşteri Seçimi #}
         <div class="col-md-5">
           <label class="form-label fw-semibold" style="font-size:13px;">Müşteri / Firma <span class="text-danger">*</span></label>

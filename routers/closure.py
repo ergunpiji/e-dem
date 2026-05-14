@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db
 from models import (
-    Budget, ClosureRequest, OrgTitle, Request as ReqModel, User,
+    Budget, ClosureRequest, OrgTitle, Request as ReqModel, Team, User,
     CLOSURE_STATUS_LABELS, CLOSURE_STATUS_COLORS,
     _uuid, _now,
 )
@@ -147,9 +147,22 @@ async def closure_list(
     if current_user.role not in ("admin", "mudur", "muhasebe_muduru"):
         raise HTTPException(403)
 
-    from models import Request as ReqModel, User as UserModel
     query = db.query(ClosureRequest)
-    # mudur (Etkinlik Süreç Müdürü) ve GM tüm kapama taleplerini görür — takım engeli yok
+    # Takım bazlı filtreleme
+    if not current_user.is_gm and current_user.role == "mudur" and current_user.team_id:
+        _mudur_team = db.query(Team).filter(Team.id == current_user.team_id).first()
+        if _mudur_team and _mudur_team.is_support_team:
+            # Destek ekibi: kendi üyelerinin oluşturduğu ref'lerin closure'ları
+            _mids = [u.id for u in db.query(User).filter(
+                User.team_id == current_user.team_id, User.active == True).all()]
+            _rids = [r.id for r in db.query(ReqModel.id).filter(
+                ReqModel.created_by.in_(_mids)).all()]
+            query = query.filter(ClosureRequest.request_id.in_(_rids))
+        else:
+            # Normal müdür: kendi takımının ref'lerinin closure'ları
+            _rids = [r.id for r in db.query(ReqModel.id).filter(
+                ReqModel.team_id == current_user.team_id).all()]
+            query = query.filter(ClosureRequest.request_id.in_(_rids))
 
     if status_filter != "all":
         query = query.filter(ClosureRequest.status == status_filter)
@@ -208,11 +221,26 @@ async def closure_submit(
         db.flush()
 
     # Onay zincirini belirle
-    submitter     = current_user
-    mudur         = _find_mudur_in_chain(submitter, db)
-    gm            = _find_gm(db)
-    amount        = _get_confirmed_budget_total(req, db)
-    needs_gm_flag = _needs_gm_step(mudur, amount, gm) if mudur else False
+    submitter      = current_user
+    amount         = _get_confirmed_budget_total(req, db)
+
+    # Destek ekibi referansı mı? Creator takımı ≠ referansın sahibi takım
+    _creator_team = db.query(Team).filter(Team.id == submitter.team_id).first() \
+                    if submitter.team_id else None
+    _is_support_ref = bool(
+        _creator_team and _creator_team.is_support_team
+        and req.team_id and req.team_id != submitter.team_id
+    )
+
+    if _is_support_ref:
+        # Sahip ekibin müdürünü bul → L1 onaylayıcı
+        _owner_team = db.query(Team).filter(Team.id == req.team_id).first()
+        mudur = _owner_team.mudur if _owner_team else _find_mudur_in_chain(submitter, db)
+        needs_gm_flag = True  # Destek ekibi referansları her zaman GM onayına gider
+    else:
+        mudur         = _find_mudur_in_chain(submitter, db)
+        gm            = _find_gm(db)
+        needs_gm_flag = _needs_gm_step(mudur, amount, gm) if mudur else False
 
     cr = ClosureRequest(
         id=_uuid(),
